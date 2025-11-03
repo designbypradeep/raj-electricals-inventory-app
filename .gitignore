@@ -1,1 +1,39 @@
-﻿\
+### Flutter/Dart
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+pubspec.lock
+build/
+
+### IDEs
+.idea/
+.vscode/
+*.iml
+
+### Android
+android/.gradle/
+android/local.properties
+android/app/*.keystore
+android/app/*.jks
+
+### iOS
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/.symlinks/
+ios/Runner/GeneratedPluginRegistrant.*
+
+### Web
+web/.dart_tool/
+
+### Others
+*.log
+*.lock
+*.DS_Store
+*.swp
+*.swo
+*.tmp
+*.bak
