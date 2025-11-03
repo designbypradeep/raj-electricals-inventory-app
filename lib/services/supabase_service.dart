@@ -16,6 +16,54 @@ class SupabaseService {
     _defaultBusinessId = businessId;
   }
 
+  // Aggregate: sales count for customers (by customer_name on sales)
+  static Future<Map<String, int>> getSalesCountsForCustomers(
+    List<String> customerNames,
+  ) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null || customerNames.isEmpty) return {};
+
+    final rows = await _client
+        .from('sales')
+        .select('customer_name')
+        .eq('business_id', businessId)
+        .inFilter('customer_name', customerNames);
+
+    final counts = <String, int>{};
+    for (final r in (rows as List)) {
+      final name = ((r as Map)['customer_name'] ?? '').toString();
+      if (name.isEmpty) continue;
+      counts[name] = (counts[name] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  // Aggregate: total_amount for suppliers (sum of purchases total_amount)
+  static Future<Map<String, double>> getPurchaseTotalsForSuppliers(
+    List<String> supplierNames,
+  ) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null || supplierNames.isEmpty) return {};
+
+    final rows = await _client
+        .from('purchases')
+        .select('dealer_name, total_amount')
+        .eq('business_id', businessId)
+        .inFilter('dealer_name', supplierNames);
+
+    final totals = <String, double>{};
+    for (final r in (rows as List)) {
+      final m = Map<String, dynamic>.from(r as Map);
+      final name = (m['dealer_name'] ?? '').toString();
+      if (name.isEmpty) continue;
+      final amt = (m['total_amount'] as num?)?.toDouble() ?? 0.0;
+      totals[name] = (totals[name] ?? 0.0) + amt;
+    }
+    return totals;
+  }
+
   // Delete a purchase only if it has no purchase_items. Returns true if deleted.
   static Future<bool> deleteEmptyPurchase(int purchaseId) async {
     await getCurrentBusinessProfile();
@@ -3890,8 +3938,9 @@ class SupabaseService {
               .eq('id', bid)
               .maybeSingle();
           if (byId != null) {
-            _currentBusinessProfile =
-                supabase_models.BusinessProfile.fromJson(byId);
+            _currentBusinessProfile = supabase_models.BusinessProfile.fromJson(
+              byId,
+            );
             return _currentBusinessProfile;
           }
         }
@@ -5685,6 +5734,29 @@ class SupabaseService {
 
   // ==================== Customers Management ====================
 
+  // Aggregate: purchases count for suppliers (by dealer_name)
+  static Future<Map<String, int>> getPurchaseCountsForSuppliers(
+    List<String> supplierNames,
+  ) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null || supplierNames.isEmpty) return {};
+
+    final rows = await _client
+        .from('purchases')
+        .select('dealer_name')
+        .eq('business_id', businessId)
+        .inFilter('dealer_name', supplierNames);
+
+    final counts = <String, int>{};
+    for (final r in (rows as List)) {
+      final name = ((r as Map)['dealer_name'] ?? '').toString();
+      if (name.isEmpty) continue;
+      counts[name] = (counts[name] ?? 0) + 1;
+    }
+    return counts;
+  }
+
   static Future<List<supabase_models.Customer>> getCustomers() async {
     await getCurrentBusinessProfile();
     final businessId = getCurrentBusinessId();
@@ -5696,13 +5768,19 @@ class SupabaseService {
         .eq('business_id', businessId)
         .order('name', ascending: true);
 
-    return (rows as List)
+    final list = (rows as List)
         .map(
           (e) => supabase_models.Customer.fromJson(
             Map<String, dynamic>.from(e as Map),
           ),
         )
         .toList();
+
+    // Filter out generic walk-in customers from listings
+    return list.where((c) {
+      final n = c.name.trim().toLowerCase();
+      return n != 'walk-in' && n != 'walk-in customer';
+    }).toList();
   }
 
   static Future<List<supabase_models.Customer>> searchCustomers(
@@ -5722,13 +5800,17 @@ class SupabaseService {
         .order('name', ascending: true)
         .limit(10);
 
-    return (rows as List)
+    final list = (rows as List)
         .map(
           (e) => supabase_models.Customer.fromJson(
             Map<String, dynamic>.from(e as Map),
           ),
         )
         .toList();
+    return list.where((c) {
+      final n = c.name.trim().toLowerCase();
+      return n != 'walk-in' && n != 'walk-in customer';
+    }).toList();
   }
 
   static Future<supabase_models.Customer> getCustomerById(int id) async {

@@ -15,11 +15,35 @@ class _CustomersPageState extends State<CustomersPage> {
   List<Customer> _filteredCustomers = [];
   bool _isLoading = true;
   final _searchController = TextEditingController();
+  Map<String, int> _salesCounts = {};
 
   @override
   void initState() {
     super.initState();
     _loadCustomers();
+  }
+
+  String _formatDateExact(DateTime? date) {
+    if (date == null) return '';
+    final d = date.toLocal();
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final day = d.day.toString().padLeft(2, '0');
+    final mon = months[d.month - 1];
+    final year = d.year.toString();
+    return '$day $mon $year';
   }
 
   @override
@@ -37,6 +61,15 @@ class _CustomersPageState extends State<CustomersPage> {
         _filteredCustomers = customers;
         _isLoading = false;
       });
+      // Fetch sales counts per customer name
+      final counts = await SupabaseService.getSalesCountsForCustomers(
+        customers.map((e) => e.name).toList(),
+      );
+      if (mounted) {
+        setState(() {
+          _salesCounts = counts;
+        });
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
@@ -168,160 +201,497 @@ class _CustomersPageState extends State<CustomersPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        child: Column(
-          children: [
-            PageHeader(
-              title: 'Customers Management',
-              description: 'Manage your customers and track debts',
-              icon: '👥',
-              showBackButton: true,
-              stats: [
-                PageHeaderStat(
-                  label: 'Total Customers',
-                  value: '${_customers.length}',
-                  description: 'Active customers',
-                ),
-                PageHeaderStat(
-                  label: 'Outstanding Debt',
-                  value: '₹${_totalDebt.toStringAsFixed(0)}',
-                  description: '$_customersWithDebt customers',
-                ),
-              ],
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: isMobile ? 12 : 16,
-                vertical: 12,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: InputDecoration(
-                        labelText: 'Search customers',
-                        prefixIcon: const Icon(Icons.search),
-                        border: const OutlineInputBorder(),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  _searchController.clear();
-                                  _filterCustomers('');
-                                },
-                              )
-                            : null,
-                      ),
-                      onChanged: _filterCustomers,
-                    ),
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: PageHeader(
+                title: 'Customers Management',
+                description: 'Manage your customers and track debts',
+                icon: '👥',
+                showBackButton: true,
+                stats: [
+                  PageHeaderStat(
+                    label: 'Total Customers',
+                    value: '${_customers.length}',
+                    description: 'Active customers',
                   ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: () => _showCustomerDialog(),
-                    icon: const Icon(Icons.add),
-                    label: Text(isMobile ? 'Add' : 'Add Customer'),
+                  PageHeaderStat(
+                    label: 'Outstanding Debt',
+                    value: '₹${_totalDebt.toStringAsFixed(0)}',
+                    description: '$_customersWithDebt customers',
                   ),
                 ],
               ),
             ),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _filteredCustomers.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.people,
-                            size: 64,
-                            color: Colors.grey,
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 12 : 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search customers',
+                          prefixIcon: const Icon(Icons.search),
+                          border: const OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Theme.of(
+                            context,
+                          ).cardColor.withOpacity(0.3),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    _filterCustomers('');
+                                  },
+                                )
+                              : null,
+                        ),
+                        onChanged: _filterCustomers,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => _showCustomerDialog(),
+                      icon: const Icon(Icons.add),
+                      label: Text(isMobile ? 'Add' : 'Add Customer'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_isLoading)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_filteredCustomers.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.people, size: 64, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      Text(
+                        _searchController.text.isEmpty
+                            ? 'No customers yet'
+                            : 'No customers found',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => _showCustomerDialog(),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add First Customer'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  isMobile ? 12 : 16,
+                  0,
+                  isMobile ? 12 : 16,
+                  24,
+                ),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final customer = _filteredCustomers[index];
+                    final hasDebt = customer.outstandingBalance > 0;
+                    final hasPhone = (customer.phone ?? '').isNotEmpty;
+                    final hasEmail = (customer.email ?? '').isNotEmpty;
+                    final hasAddress = (customer.address ?? '').isNotEmpty;
+                    final orders = _salesCounts[customer.name] ?? 0;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Theme.of(context).cardColor,
+                            Theme.of(context).cardColor.withOpacity(0.8),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: hasDebt
+                              ? Colors.red.withOpacity(0.4)
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.outline.withOpacity(0.1),
+                          width: hasDebt ? 2 : 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                            spreadRadius: 0,
                           ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _searchController.text.isEmpty
-                                ? 'No customers yet'
-                                : 'No customers found',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 8),
-                          ElevatedButton.icon(
-                            onPressed: () => _showCustomerDialog(),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add First Customer'),
+                          BoxShadow(
+                            color: hasDebt
+                                ? Colors.red.withOpacity(0.12)
+                                : Colors.black.withOpacity(0.03),
+                            blurRadius: 24,
+                            offset: const Offset(0, 8),
+                            spreadRadius: -4,
                           ),
                         ],
                       ),
-                    )
-                  : ListView.builder(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isMobile ? 12 : 16,
-                      ),
-                      itemCount: _filteredCustomers.length,
-                      itemBuilder: (context, index) {
-                        final customer = _filteredCustomers[index];
-                        final hasDebt = customer.outstandingBalance > 0;
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: hasDebt ? Colors.red : null,
-                              child: Text(
-                                customer.name[0].toUpperCase(),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            title: Text(
-                              customer.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            subtitle: Column(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () => _showCustomerDialog(customer: customer),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                if (customer.phone != null)
-                                  Text('📱 ${customer.phone}'),
-                                if (customer.email != null)
-                                  Text('📧 ${customer.email}'),
-                                if (customer.address != null)
-                                  Text('📍 ${customer.address}'),
-                                if (hasDebt)
-                                  Text(
-                                    '💳 Debt: ₹${customer.outstandingBalance.toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.w600,
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 56,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: hasDebt
+                                              ? [
+                                                  Colors.red.shade400,
+                                                  Colors.red.shade600,
+                                                ]
+                                              : [
+                                                  Theme.of(
+                                                    context,
+                                                  ).colorScheme.primary,
+                                                  Theme.of(context)
+                                                      .colorScheme
+                                                      .primaryContainer,
+                                                ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(16),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color:
+                                                (hasDebt
+                                                        ? Colors.red
+                                                        : Theme.of(
+                                                            context,
+                                                          ).colorScheme.primary)
+                                                    .withOpacity(0.3),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          customer.name[0].toUpperCase(),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                              ],
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit),
-                                  onPressed: () =>
-                                      _showCustomerDialog(customer: customer),
-                                  tooltip: 'Edit',
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  customer.name,
+                                                  style: Theme.of(context)
+                                                      .textTheme
+                                                      .titleLarge
+                                                      ?.copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        letterSpacing: -0.5,
+                                                      ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              if (hasDebt)
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.red
+                                                        .withOpacity(0.15),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
+                                                        ),
+                                                    border: Border.all(
+                                                      color: Colors.red
+                                                          .withOpacity(0.3),
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.warning,
+                                                        size: 14,
+                                                        color:
+                                                            Colors.red.shade700,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        '₹${customer.outstandingBalance.toStringAsFixed(0)}',
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                          color: Colors
+                                                              .red
+                                                              .shade700,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.access_time,
+                                                size: 14,
+                                                color: Theme.of(
+                                                  context,
+                                                ).textTheme.bodySmall?.color,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'Added on ${_formatDateExact(customer.createdAt)}',
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodySmall
+                                                    ?.copyWith(
+                                                      color: Theme.of(context)
+                                                          .textTheme
+                                                          .bodySmall
+                                                          ?.color
+                                                          ?.withOpacity(0.7),
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Wrap(
+                                      spacing: 8,
+                                      children: [
+                                        TextButton.icon(
+                                          onPressed: () => _showCustomerDialog(
+                                            customer: customer,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.edit,
+                                            size: 18,
+                                          ),
+                                          label: const Text('Edit'),
+                                        ),
+                                        TextButton.icon(
+                                          onPressed: () =>
+                                              _deleteCustomer(customer),
+                                          icon: const Icon(
+                                            Icons.delete,
+                                            size: 18,
+                                            color: Colors.red,
+                                          ),
+                                          label: const Text(
+                                            'Delete',
+                                            style: TextStyle(color: Colors.red),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.delete,
-                                    color: Colors.red,
+                                if (hasPhone || hasEmail || hasAddress)
+                                  const SizedBox(height: 12),
+                                if (hasPhone || hasEmail || hasAddress)
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    children: [
+                                      if (orders > 0)
+                                        Chip(
+                                          label: Text('🧾 Orders: $orders'),
+                                          visualDensity: VisualDensity.compact,
+                                          side: BorderSide.none,
+                                        ),
+                                      if (hasPhone)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primaryContainer
+                                                .withOpacity(0.3),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.phone,
+                                                size: 16,
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.primary,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                customer.phone!,
+                                                style: TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).colorScheme.onSurface,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      if (hasEmail)
+                                        Flexible(
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .tertiaryContainer
+                                                  .withOpacity(0.3),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.email,
+                                                  size: 16,
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).colorScheme.tertiary,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Flexible(
+                                                  child: Text(
+                                                    customer.email!,
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: Theme.of(
+                                                        context,
+                                                      ).colorScheme.onSurface,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      if (hasAddress)
+                                        Flexible(
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .secondaryContainer
+                                                  .withOpacity(0.3),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.location_on,
+                                                  size: 16,
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).colorScheme.secondary,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Flexible(
+                                                  child: Text(
+                                                    customer.address!,
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: Theme.of(
+                                                        context,
+                                                      ).colorScheme.onSurface,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
-                                  onPressed: () => _deleteCustomer(customer),
-                                  tooltip: 'Delete',
-                                ),
                               ],
                             ),
                           ),
-                        );
-                      },
-                    ),
-            ),
+                        ),
+                      ),
+                    );
+                  }, childCount: _filteredCustomers.length),
+                ),
+              ),
           ],
         ),
       ),
