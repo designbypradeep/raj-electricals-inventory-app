@@ -3875,6 +3875,28 @@ class SupabaseService {
         }
       }
 
+      // New fallback: if profiles has business_id for current user, use it
+      try {
+        final prof = await _client
+            .from('profiles')
+            .select('business_id')
+            .eq('id', user.id)
+            .maybeSingle();
+        final bid = prof != null ? prof['business_id'] as String? : null;
+        if (bid != null && bid.isNotEmpty) {
+          final byId = await _client
+              .from('business_profiles')
+              .select()
+              .eq('id', bid)
+              .maybeSingle();
+          if (byId != null) {
+            _currentBusinessProfile =
+                supabase_models.BusinessProfile.fromJson(byId);
+            return _currentBusinessProfile;
+          }
+        }
+      } catch (_) {}
+
       // Fallback for unauthenticated/public shop mode using default business ID
       if (_currentBusinessProfile == null &&
           _defaultBusinessId != null &&
