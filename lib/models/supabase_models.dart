@@ -328,3 +328,124 @@ class UserProfile {
     };
   }
 }
+
+class Supplier {
+  final int? id;
+  final String businessId;
+  final String name;
+  final String? contactNumber;
+  final String? physicalAddress;
+  final String? mapLocation;
+  final double advancePay;
+  final String? notes;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  Supplier({
+    this.id,
+    required this.businessId,
+    required this.name,
+    this.contactNumber,
+    this.physicalAddress,
+    this.mapLocation,
+    this.advancePay = 0.0,
+    this.notes,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  factory Supplier.fromJson(Map<String, dynamic> json) {
+    return Supplier(
+      id: json['id'] as int?,
+      businessId: json['business_id'] as String,
+      name: json['name'] as String,
+      contactNumber: json['contact_number'] as String?,
+      physicalAddress: json['physical_address'] as String?,
+      mapLocation: json['map_location'] as String?,
+      advancePay: (json['advance_pay'] as num?)?.toDouble() ?? 0.0,
+      notes: json['notes'] as String?,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'] as String)
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id,
+      'business_id': businessId,
+      'name': name,
+      'contact_number': contactNumber,
+      'physical_address': physicalAddress,
+      'map_location': mapLocation,
+      'advance_pay': advancePay,
+      'notes': notes,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+      if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
+    };
+  }
+}
+
+class Customer {
+  final int? id;
+  final String businessId;
+  final String name;
+  final String? phone;
+  final String? email;
+  final String? address;
+  final double outstandingBalance;
+  final String? notes;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+
+  Customer({
+    this.id,
+    required this.businessId,
+    required this.name,
+    this.phone,
+    this.email,
+    this.address,
+    this.outstandingBalance = 0.0,
+    this.notes,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  factory Customer.fromJson(Map<String, dynamic> json) {
+    return Customer(
+      id: json['id'] as int?,
+      businessId: json['business_id'] as String,
+      name: json['name'] as String,
+      phone: json['phone'] as String?,
+      email: json['email'] as String?,
+      address: json['address'] as String?,
+      outstandingBalance:
+          (json['outstanding_balance'] as num?)?.toDouble() ?? 0.0,
+      notes: json['notes'] as String?,
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : null,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'] as String)
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id,
+      'business_id': businessId,
+      'name': name,
+      'phone': phone,
+      'email': email,
+      'address': address,
+      'outstanding_balance': outstandingBalance,
+      'notes': notes,
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+      if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
+    };
+  }
+}

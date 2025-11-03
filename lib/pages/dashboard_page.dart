@@ -27,6 +27,8 @@ import '../pages/replacements_history_page.dart';
 import '../pages/data_management_page.dart';
 import 'supplier_returns_page.dart';
 import 'supplier_credits_page.dart';
+import 'suppliers_page.dart';
+import 'customers_page.dart';
 import '../services/supabase_service.dart';
 import '../services/accounting_service.dart';
 import '../models/supabase_models.dart' as supabase_models;
@@ -1363,6 +1365,16 @@ class _DashboardPageState extends State<DashboardPage> {
           Icons.credit_card,
           'View Supplier Credits',
         ),
+        _buildMoreMenuItem(
+          'Suppliers',
+          Icons.business_center,
+          'Manage Suppliers/Dealers',
+        ),
+        _buildMoreMenuItem(
+          'Customers',
+          Icons.people_outline,
+          'Manage Customers',
+        ),
         const PopupMenuDivider(),
         _buildMoreMenuItem('Shop', Icons.storefront, 'Customer Shop (UPI)'),
         _buildMoreMenuItem(
@@ -1447,6 +1459,16 @@ class _DashboardPageState extends State<DashboardPage> {
             MaterialPageRoute(
               builder: (context) => const SupplierCreditsPage(),
             ),
+          );
+        } else if (value == 'Suppliers') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const SuppliersPage()),
+          );
+        } else if (value == 'Customers') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const CustomersPage()),
           );
         } else if (value == 'Shop') {
           Navigator.pushNamed(context, '/shop');

@@ -5545,4 +5545,234 @@ class SupabaseService {
         )
         .toList();
   }
+
+  // ==================== Suppliers Management ====================
+
+  static Future<List<supabase_models.Supplier>> getSuppliers() async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    final rows = await _client
+        .from('suppliers')
+        .select()
+        .eq('business_id', businessId)
+        .order('name', ascending: true);
+
+    return (rows as List)
+        .map(
+          (e) => supabase_models.Supplier.fromJson(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
+        .toList();
+  }
+
+  static Future<List<supabase_models.Supplier>> searchSuppliers(
+    String query,
+  ) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    if (query.isEmpty) return getSuppliers();
+
+    final rows = await _client
+        .from('suppliers')
+        .select()
+        .eq('business_id', businessId)
+        .ilike('name', '%$query%')
+        .order('name', ascending: true)
+        .limit(10);
+
+    return (rows as List)
+        .map(
+          (e) => supabase_models.Supplier.fromJson(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
+        .toList();
+  }
+
+  static Future<supabase_models.Supplier> getSupplierById(int id) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    final row = await _client
+        .from('suppliers')
+        .select()
+        .eq('business_id', businessId)
+        .eq('id', id)
+        .single();
+
+    return supabase_models.Supplier.fromJson(
+      Map<String, dynamic>.from(row as Map),
+    );
+  }
+
+  static Future<int> createSupplier(supabase_models.Supplier supplier) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    final data = supplier.toJson();
+    data['business_id'] = businessId;
+    data.remove('id');
+    data.remove('created_at');
+    data.remove('updated_at');
+
+    final result = await _client.from('suppliers').insert(data).select('id');
+
+    return (result as List).first['id'] as int;
+  }
+
+  static Future<void> updateSupplier(supabase_models.Supplier supplier) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    if (supplier.id == null) {
+      throw Exception('Supplier ID is required for update');
+    }
+
+    final data = supplier.toJson();
+    data['business_id'] = businessId;
+    data.remove('id');
+    data.remove('created_at');
+    data.remove('updated_at');
+
+    await _client
+        .from('suppliers')
+        .update(data)
+        .eq('id', supplier.id!)
+        .eq('business_id', businessId);
+  }
+
+  static Future<void> deleteSupplier(int id) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    await _client
+        .from('suppliers')
+        .delete()
+        .eq('id', id)
+        .eq('business_id', businessId);
+  }
+
+  // ==================== Customers Management ====================
+
+  static Future<List<supabase_models.Customer>> getCustomers() async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    final rows = await _client
+        .from('customers')
+        .select()
+        .eq('business_id', businessId)
+        .order('name', ascending: true);
+
+    return (rows as List)
+        .map(
+          (e) => supabase_models.Customer.fromJson(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
+        .toList();
+  }
+
+  static Future<List<supabase_models.Customer>> searchCustomers(
+    String query,
+  ) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    if (query.isEmpty) return getCustomers();
+
+    final rows = await _client
+        .from('customers')
+        .select()
+        .eq('business_id', businessId)
+        .or('name.ilike.%$query%,phone.ilike.%$query%')
+        .order('name', ascending: true)
+        .limit(10);
+
+    return (rows as List)
+        .map(
+          (e) => supabase_models.Customer.fromJson(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
+        .toList();
+  }
+
+  static Future<supabase_models.Customer> getCustomerById(int id) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    final row = await _client
+        .from('customers')
+        .select()
+        .eq('business_id', businessId)
+        .eq('id', id)
+        .single();
+
+    return supabase_models.Customer.fromJson(
+      Map<String, dynamic>.from(row as Map),
+    );
+  }
+
+  static Future<int> createCustomer(supabase_models.Customer customer) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    final data = customer.toJson();
+    data['business_id'] = businessId;
+    data.remove('id');
+    data.remove('created_at');
+    data.remove('updated_at');
+
+    final result = await _client.from('customers').insert(data).select('id');
+
+    return (result as List).first['id'] as int;
+  }
+
+  static Future<void> updateCustomer(supabase_models.Customer customer) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    if (customer.id == null) {
+      throw Exception('Customer ID is required for update');
+    }
+
+    final data = customer.toJson();
+    data['business_id'] = businessId;
+    data.remove('id');
+    data.remove('created_at');
+    data.remove('updated_at');
+
+    await _client
+        .from('customers')
+        .update(data)
+        .eq('id', customer.id!)
+        .eq('business_id', businessId);
+  }
+
+  static Future<void> deleteCustomer(int id) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    await _client
+        .from('customers')
+        .delete()
+        .eq('id', id)
+        .eq('business_id', businessId);
+  }
 }

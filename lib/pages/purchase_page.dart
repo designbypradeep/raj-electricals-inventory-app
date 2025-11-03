@@ -289,7 +289,108 @@ class _PurchasePageState extends State<PurchasePage> {
   void _showError(String message) {
     setState(() {
       _errorMessage = message;
+      _successMessage = null;
     });
+  }
+
+  Future<void> _showQuickAddSupplierDialog() async {
+    final nameController = TextEditingController();
+    final phoneController = TextEditingController();
+    final addressController = TextEditingController();
+
+    final result = await showDialog<supabase.Supplier>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Quick Add Supplier'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Supplier Name *',
+                  border: OutlineInputBorder(),
+                ),
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: phoneController,
+                decoration: const InputDecoration(
+                  labelText: 'Phone',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: addressController,
+                decoration: const InputDecoration(
+                  labelText: 'Address',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (nameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Supplier name is required')),
+                );
+                return;
+              }
+              try {
+                final supplier = supabase.Supplier(
+                  businessId: '',
+                  name: nameController.text.trim(),
+                  contactNumber: phoneController.text.trim().isEmpty
+                      ? null
+                      : phoneController.text.trim(),
+                  physicalAddress: addressController.text.trim().isEmpty
+                      ? null
+                      : addressController.text.trim(),
+                );
+                await SupabaseService.createSupplier(supplier);
+                if (context.mounted) {
+                  Navigator.pop(context, supplier);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Supplier added successfully'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        _dealerNameController.text = result.name;
+      });
+    }
   }
 
   // Compute live total amount of the purchase list
@@ -421,18 +522,80 @@ class _PurchasePageState extends State<PurchasePage> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                TextField(
-                                  controller: _dealerNameController,
-                                  decoration: InputDecoration(
-                                    hintText: 'e.g., Gupta Electronics',
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 12,
-                                    ),
-                                  ),
+                                Autocomplete<supabase.Supplier>(
+                                  optionsBuilder:
+                                      (
+                                        TextEditingValue textEditingValue,
+                                      ) async {
+                                        if (textEditingValue.text.isEmpty) {
+                                          return const Iterable<
+                                            supabase.Supplier
+                                          >.empty();
+                                        }
+                                        try {
+                                          final suppliers =
+                                              await SupabaseService.searchSuppliers(
+                                                textEditingValue.text,
+                                              );
+                                          return suppliers;
+                                        } catch (e) {
+                                          return const Iterable<
+                                            supabase.Supplier
+                                          >.empty();
+                                        }
+                                      },
+                                  displayStringForOption:
+                                      (supabase.Supplier supplier) =>
+                                          supplier.name,
+                                  onSelected: (supabase.Supplier supplier) {
+                                    _dealerNameController.text = supplier.name;
+                                  },
+                                  fieldViewBuilder:
+                                      (
+                                        context,
+                                        controller,
+                                        focusNode,
+                                        onEditingComplete,
+                                      ) {
+                                        // Sync controller with _dealerNameController
+                                        controller.text =
+                                            _dealerNameController.text;
+                                        controller.selection =
+                                            _dealerNameController.selection;
+
+                                        return TextField(
+                                          controller: controller,
+                                          focusNode: focusNode,
+                                          onChanged: (value) {
+                                            _dealerNameController.text = value;
+                                            _dealerNameController.selection =
+                                                controller.selection;
+                                          },
+                                          decoration: InputDecoration(
+                                            hintText: 'e.g., Gupta Electronics',
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 12,
+                                                ),
+                                            suffixIcon: IconButton(
+                                              icon: const Icon(
+                                                Icons.add_business,
+                                                size: 20,
+                                              ),
+                                              onPressed: () {
+                                                // Quick add supplier (open dialog)
+                                                _showQuickAddSupplierDialog();
+                                              },
+                                              tooltip: 'Quick add supplier',
+                                            ),
+                                          ),
+                                        );
+                                      },
                                 ),
                               ],
                             );
