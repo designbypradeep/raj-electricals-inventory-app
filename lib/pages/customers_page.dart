@@ -510,7 +510,7 @@ class _CustomersPageState extends State<CustomersPage> {
                                     Wrap(
                                       spacing: 8,
                                       children: [
-                                        TextButton.icon(
+                                        ElevatedButton.icon(
                                           onPressed: () => _showCustomerDialog(
                                             customer: customer,
                                           ),
@@ -519,8 +519,16 @@ class _CustomersPageState extends State<CustomersPage> {
                                             size: 18,
                                           ),
                                           label: const Text('Edit'),
+                                          style: ElevatedButton.styleFrom(
+                                            elevation: 0,
+                                            shape: const StadiumBorder(),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 10,
+                                            ),
+                                          ),
                                         ),
-                                        TextButton.icon(
+                                        OutlinedButton.icon(
                                           onPressed: () =>
                                               _deleteCustomer(customer),
                                           icon: const Icon(
@@ -531,6 +539,14 @@ class _CustomersPageState extends State<CustomersPage> {
                                           label: const Text(
                                             'Delete',
                                             style: TextStyle(color: Colors.red),
+                                          ),
+                                          style: OutlinedButton.styleFrom(
+                                            shape: const StadiumBorder(),
+                                            side: BorderSide(
+                                              color: Colors.red.withOpacity(
+                                                0.5,
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -759,6 +775,78 @@ class __CustomerDialogState extends State<_CustomerDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: widget.customer == null
+                        ? [
+                            Theme.of(context).colorScheme.primary,
+                            Theme.of(context).colorScheme.primaryContainer,
+                          ]
+                        : [Colors.indigo, Colors.indigo.shade700],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          (widget.customer?.name.isNotEmpty == true
+                                  ? widget.customer!.name[0]
+                                  : 'C')
+                              .toUpperCase(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.customer?.name ?? 'Customer details',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.customer == null
+                                ? 'Create a new customer'
+                                : 'Update customer information',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(
@@ -828,7 +916,7 @@ class __CustomerDialogState extends State<_CustomerDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        ElevatedButton(
+        ElevatedButton.icon(
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               final customer = Customer(
@@ -853,7 +941,12 @@ class __CustomerDialogState extends State<_CustomerDialog> {
               Navigator.pop(context, customer);
             }
           },
-          child: Text(widget.customer == null ? 'Add' : 'Update'),
+          icon: const Icon(Icons.save),
+          label: Text(widget.customer == null ? 'Add' : 'Update'),
+          style: ElevatedButton.styleFrom(
+            shape: const StadiumBorder(),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          ),
         ),
       ],
     );

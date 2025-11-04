@@ -509,27 +509,26 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                     Wrap(
                                       spacing: 8,
                                       children: [
-                                        TextButton.icon(
-                                          onPressed: () => _showSupplierDialog(
-                                            supplier: supplier,
-                                          ),
-                                          icon: const Icon(
-                                            Icons.edit,
-                                            size: 18,
-                                          ),
+                                        ElevatedButton.icon(
+                                          onPressed: () => _showSupplierDialog(supplier: supplier),
+                                          icon: const Icon(Icons.edit, size: 18),
                                           label: const Text('Edit'),
-                                        ),
-                                        TextButton.icon(
-                                          onPressed: () =>
-                                              _deleteSupplier(supplier),
-                                          icon: const Icon(
-                                            Icons.delete,
-                                            size: 18,
-                                            color: Colors.red,
+                                          style: ElevatedButton.styleFrom(
+                                            elevation: 0,
+                                            shape: const StadiumBorder(),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 10,
+                                            ),
                                           ),
-                                          label: const Text(
-                                            'Delete',
-                                            style: TextStyle(color: Colors.red),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: () => _deleteSupplier(supplier),
+                                          icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                                          label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                          style: OutlinedButton.styleFrom(
+                                            shape: const StadiumBorder(),
+                                            side: BorderSide(color: Colors.red.withOpacity(0.5)),
                                           ),
                                         ),
                                       ],
@@ -575,6 +574,34 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                                 style: const TextStyle(
                                                   fontSize: 13,
                                                   fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      if (_purchaseTotals[supplier.name] != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.amber.withOpacity(0.12),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: Colors.amber.withOpacity(0.25),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(Icons.payments, size: 16),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                'Total: ₹${(_purchaseTotals[supplier.name] ?? 0).toStringAsFixed(0)}',
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w700,
                                                 ),
                                               ),
                                             ],
@@ -783,6 +810,81 @@ class __SupplierDialogState extends State<_SupplierDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: widget.supplier == null
+                        ? [
+                            Theme.of(context).colorScheme.primary,
+                            Theme.of(context).colorScheme.primaryContainer,
+                          ]
+                        : [
+                            Colors.green.shade500,
+                            Colors.green.shade700,
+                          ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          (widget.supplier?.name.isNotEmpty == true
+                                  ? widget.supplier!.name[0]
+                                  : 'S')
+                              .toUpperCase(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.supplier?.name ?? 'Supplier details',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.2,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.supplier == null
+                                ? 'Create a new supplier'
+                                : 'Update supplier information',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(
@@ -850,7 +952,7 @@ class __SupplierDialogState extends State<_SupplierDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        ElevatedButton(
+        ElevatedButton.icon(
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               final supplier = Supplier(
@@ -874,7 +976,12 @@ class __SupplierDialogState extends State<_SupplierDialog> {
               Navigator.pop(context, supplier);
             }
           },
-          child: Text(widget.supplier == null ? 'Add' : 'Update'),
+          icon: const Icon(Icons.save),
+          label: Text(widget.supplier == null ? 'Add' : 'Update'),
+          style: ElevatedButton.styleFrom(
+            shape: const StadiumBorder(),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          ),
         ),
       ],
     );
