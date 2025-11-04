@@ -236,7 +236,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                           filled: true,
                           fillColor: Theme.of(
                             context,
-                          ).cardColor.withOpacity(0.3),
+                          ).cardColor.withValues(alpha: 0.3),
                           suffixIcon: _searchController.text.isNotEmpty
                               ? IconButton(
                                   icon: const Icon(Icons.clear),
@@ -317,29 +317,29 @@ class _SuppliersPageState extends State<SuppliersPage> {
                           end: Alignment.bottomRight,
                           colors: [
                             Theme.of(context).cardColor,
-                            Theme.of(context).cardColor.withOpacity(0.8),
+                            Theme.of(context).cardColor.withValues(alpha: 0.8),
                           ],
                         ),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: hasAdvance
-                              ? Colors.green.withOpacity(0.3)
+                              ? Colors.green.withValues(alpha: 0.3)
                               : Theme.of(
                                   context,
-                                ).colorScheme.outline.withOpacity(0.1),
+                                ).colorScheme.outline.withValues(alpha: 0.1),
                           width: hasAdvance ? 2 : 1,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
+                            color: Colors.black.withValues(alpha: 0.08),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                             spreadRadius: 0,
                           ),
                           BoxShadow(
                             color: hasAdvance
-                                ? Colors.green.withOpacity(0.1)
-                                : Colors.black.withOpacity(0.03),
+                                ? Colors.green.withValues(alpha: 0.1)
+                                : Colors.black.withValues(alpha: 0.03),
                             blurRadius: 24,
                             offset: const Offset(0, 8),
                             spreadRadius: -4,
@@ -388,7 +388,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                                         : Theme.of(
                                                             context,
                                                           ).colorScheme.primary)
-                                                    .withOpacity(0.3),
+                                                    .withValues(alpha: 0.3),
                                             blurRadius: 8,
                                             offset: const Offset(0, 4),
                                           ),
@@ -438,14 +438,18 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                                       ),
                                                   decoration: BoxDecoration(
                                                     color: Colors.green
-                                                        .withOpacity(0.15),
+                                                        .withValues(
+                                                          alpha: 0.15,
+                                                        ),
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                           8,
                                                         ),
                                                     border: Border.all(
                                                       color: Colors.green
-                                                          .withOpacity(0.3),
+                                                          .withValues(
+                                                            alpha: 0.3,
+                                                          ),
                                                     ),
                                                   ),
                                                   child: Row(
@@ -498,7 +502,9 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                                           .textTheme
                                                           .bodySmall
                                                           ?.color
-                                                          ?.withOpacity(0.7),
+                                                          ?.withValues(
+                                                            alpha: 0.7,
+                                                          ),
                                                     ),
                                               ),
                                             ],
@@ -510,8 +516,13 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                       spacing: 8,
                                       children: [
                                         ElevatedButton.icon(
-                                          onPressed: () => _showSupplierDialog(supplier: supplier),
-                                          icon: const Icon(Icons.edit, size: 18),
+                                          onPressed: () => _showSupplierDialog(
+                                            supplier: supplier,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.edit,
+                                            size: 18,
+                                          ),
                                           label: const Text('Edit'),
                                           style: ElevatedButton.styleFrom(
                                             elevation: 0,
@@ -523,12 +534,24 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                           ),
                                         ),
                                         OutlinedButton.icon(
-                                          onPressed: () => _deleteSupplier(supplier),
-                                          icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                                          label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                          onPressed: () =>
+                                              _deleteSupplier(supplier),
+                                          icon: const Icon(
+                                            Icons.delete,
+                                            size: 18,
+                                            color: Colors.red,
+                                          ),
+                                          label: const Text(
+                                            'Delete',
+                                            style: TextStyle(color: Colors.red),
+                                          ),
                                           style: OutlinedButton.styleFrom(
                                             shape: const StadiumBorder(),
-                                            side: BorderSide(color: Colors.red.withOpacity(0.5)),
+                                            side: BorderSide(
+                                              color: Colors.red.withValues(
+                                                alpha: 0.5,
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ],
@@ -550,15 +573,16 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                             vertical: 8,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: Colors.blueGrey.withOpacity(
-                                              0.15,
+                                            color: Colors.blueGrey.withValues(
+                                              alpha: 0.15,
                                             ),
                                             borderRadius: BorderRadius.circular(
                                               10,
                                             ),
                                             border: Border.all(
-                                              color: Colors.blueGrey
-                                                  .withOpacity(0.25),
+                                              color: Colors.blueGrey.withValues(
+                                                alpha: 0.25,
+                                              ),
                                             ),
                                           ),
                                           child: Row(
@@ -579,23 +603,33 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                             ],
                                           ),
                                         ),
-                                      if (_purchaseTotals[supplier.name] != null)
+                                      if (_purchaseTotals[supplier.name] !=
+                                          null)
                                         Container(
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 12,
                                             vertical: 8,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: Colors.amber.withOpacity(0.12),
-                                            borderRadius: BorderRadius.circular(10),
+                                            color: Colors.amber.withValues(
+                                              alpha: 0.12,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
                                             border: Border.all(
-                                              color: Colors.amber.withOpacity(0.25),
+                                              color: Colors.amber.withValues(
+                                                alpha: 0.25,
+                                              ),
                                             ),
                                           ),
                                           child: Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
-                                              const Icon(Icons.payments, size: 16),
+                                              const Icon(
+                                                Icons.payments,
+                                                size: 16,
+                                              ),
                                               const SizedBox(width: 6),
                                               Text(
                                                 'Total: ₹${(_purchaseTotals[supplier.name] ?? 0).toStringAsFixed(0)}',
@@ -617,7 +651,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .primaryContainer
-                                                .withOpacity(0.3),
+                                                .withValues(alpha: 0.3),
                                             borderRadius: BorderRadius.circular(
                                               10,
                                             ),
@@ -657,7 +691,7 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                               color: Theme.of(context)
                                                   .colorScheme
                                                   .secondaryContainer
-                                                  .withOpacity(0.3),
+                                                  .withValues(alpha: 0.3),
                                               borderRadius:
                                                   BorderRadius.circular(10),
                                             ),
@@ -704,8 +738,8 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                     decoration: BoxDecoration(
                                       color: Theme.of(context)
                                           .colorScheme
-                                          .surfaceVariant
-                                          .withOpacity(0.3),
+                                          .surfaceContainerHighest
+                                          .withValues(alpha: 0.3),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Row(
@@ -822,10 +856,7 @@ class __SupplierDialogState extends State<_SupplierDialog> {
                             Theme.of(context).colorScheme.primary,
                             Theme.of(context).colorScheme.primaryContainer,
                           ]
-                        : [
-                            Colors.green.shade500,
-                            Colors.green.shade700,
-                          ],
+                        : [Colors.green.shade500, Colors.green.shade700],
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -835,7 +866,7 @@ class __SupplierDialogState extends State<_SupplierDialog> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
@@ -874,7 +905,7 @@ class __SupplierDialogState extends State<_SupplierDialog> {
                                 ? 'Create a new supplier'
                                 : 'Update supplier information',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                               fontSize: 12,
                             ),
                           ),
