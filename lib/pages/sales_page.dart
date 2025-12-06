@@ -80,6 +80,8 @@ class _SalesPageState extends State<SalesPage> {
   // Payment details
   double _discount = 0.0;
   String _paymentMethod = 'Cash';
+  double _paidNow = 0.0;
+  bool _useAdvance = false;
 
   // Receipt data
   SaleReceipt? _receipt;
@@ -91,6 +93,7 @@ class _SalesPageState extends State<SalesPage> {
   final TextEditingController _transactionIdController =
       TextEditingController();
   final TextEditingController _discountController = TextEditingController();
+  final TextEditingController _paidNowController = TextEditingController();
   DateTime? _customDate;
 
   @override
@@ -105,6 +108,7 @@ class _SalesPageState extends State<SalesPage> {
     _customerPhoneController.dispose();
     _transactionIdController.dispose();
     _discountController.dispose();
+    _paidNowController.dispose();
     super.dispose();
   }
 
@@ -227,10 +231,13 @@ class _SalesPageState extends State<SalesPage> {
       _salesItems.clear();
       _discount = 0;
       _receipt = null;
+      _paidNow = 0.0;
+      _useAdvance = false;
       _customerNameController.clear();
       _customerPhoneController.clear();
       _transactionIdController.clear();
       _discountController.clear();
+      _paidNowController.clear();
       _paymentMethod = 'Cash';
       _customDate = null;
     });
@@ -278,6 +285,12 @@ class _SalesPageState extends State<SalesPage> {
           )
           .toList();
 
+      final computedPaid = _paidNowController.text.trim().isEmpty
+          ? (_paymentMethod.trim().toLowerCase() == 'credit'
+              ? 0.0
+              : _finalTotal)
+          : _paidNow;
+
       final newSaleId = await SupabaseService.createSaleWithItems(
         customerName: _customerNameController.text.isEmpty
             ? 'Walk-in Customer'
@@ -294,6 +307,8 @@ class _SalesPageState extends State<SalesPage> {
         discountAmount: _discount,
         taxAmount: null,
         items: itemsPayload,
+        amountPaid: computedPaid,
+        useAdvance: _useAdvance,
       );
 
       if (newSaleId == null) {
@@ -1856,6 +1871,116 @@ class _SalesPageState extends State<SalesPage> {
                       ],
                     );
                   },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Paid Now Field
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 420;
+                    final field = SizedBox(
+                      width: compact ? double.infinity : 140,
+                      child: TextField(
+                        controller: _paidNowController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'^\d*\.?\d*'),
+                          ),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _paidNow = double.tryParse(value) ?? 0.0;
+                          });
+                        },
+                        decoration: InputDecoration(
+                          hintText: '0',
+                          filled: true,
+                          fillColor: Theme.of(context).scaffoldBackgroundColor,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(
+                              color: Theme.of(context)
+                                  .dividerColor
+                                  .withValues(alpha: 0.3),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(
+                              color: Theme.of(context)
+                                  .dividerColor
+                                  .withValues(alpha: 0.3),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                    );
+                    if (compact) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Paid Now (₹):',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              color: Theme.of(context).textTheme.bodyLarge?.color,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          field,
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Text(
+                          'Paid Now (₹):',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            color: Theme.of(context).textTheme.bodyLarge?.color,
+                          ),
+                        ),
+                        const Spacer(),
+                        field,
+                      ],
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // Use Advance toggle
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Use available customer advance (if any)',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w500,
+                          color: Theme.of(context).textTheme.bodyLarge?.color,
+                        ),
+                      ),
+                    ),
+                    Switch(
+                      value: _useAdvance,
+                      onChanged: (v) {
+                        setState(() => _useAdvance = v);
+                      },
+                    ),
+                  ],
                 ),
 
                 const SizedBox(height: 16),

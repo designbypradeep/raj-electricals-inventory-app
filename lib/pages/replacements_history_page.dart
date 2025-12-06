@@ -232,7 +232,9 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
   Color _priceDiffColor(double v) {
     if (v > 0) return Colors.green;
     if (v < 0) return Colors.red;
-    return Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6) ??
+    return Theme.of(
+          context,
+        ).textTheme.bodyMedium?.color?.withValues(alpha: 0.6) ??
         Colors.grey;
   }
 
@@ -334,7 +336,7 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
         ),
       ),
       child: LayoutBuilder(
@@ -494,8 +496,8 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
 
   Widget _buildLoading() {
     final cs = Theme.of(context).colorScheme;
-    final base = cs.surfaceContainerHighest.withOpacity(0.3);
-    final highlight = cs.surfaceTint.withOpacity(0.2);
+    final base = cs.surfaceContainerHighest.withValues(alpha: 0.3);
+    final highlight = cs.surfaceTint.withValues(alpha: 0.2);
     return Column(
       children: List.generate(3, (i) => i).map((_) {
         return Shimmer.fromColors(
@@ -508,7 +510,7 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
               color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Theme.of(context).dividerColor.withOpacity(0.2),
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
               ),
             ),
             child: Column(
@@ -547,7 +549,7 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -595,11 +597,11 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Theme.of(context).dividerColor.withOpacity(0.2),
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
             ),
             boxShadow: [
               BoxShadow(
-                color: Theme.of(context).shadowColor.withOpacity(0.03),
+                color: Theme.of(context).shadowColor.withValues(alpha: 0.03),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -617,10 +619,12 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: _statusColor(r['status']).withOpacity(0.1),
+                        color: _statusColor(r['status']).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: _statusColor(r['status']).withOpacity(0.2),
+                          color: _statusColor(
+                            r['status'],
+                          ).withValues(alpha: 0.2),
                         ),
                       ),
                       child: Icon(Icons.sync, color: _statusColor(r['status'])),
@@ -665,7 +669,9 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: _statusColor(r['status']).withOpacity(0.1),
+                            color: _statusColor(
+                              r['status'],
+                            ).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
@@ -809,7 +815,7 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
       child: Container(
         constraints: const BoxConstraints(maxWidth: 800),
         decoration: BoxDecoration(
-          border: Border.all(color: color.withOpacity(0.3)),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
           color: bg,
           borderRadius: BorderRadius.circular(UITokens.radius),
         ),
@@ -834,7 +840,7 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
                 decoration: BoxDecoration(
                   color: Theme.of(
                     context,
-                  ).colorScheme.surfaceContainerHighest.withOpacity(0.7),
+                  ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -883,7 +889,9 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
   TextStyle _mutedStyle({double fontSize = 12}) {
     return TextStyle(
       fontSize: fontSize,
-      color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
+      color: Theme.of(
+        context,
+      ).textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
     );
   }
 
@@ -894,7 +902,7 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
         ),
       ),
       child: Row(
@@ -915,7 +923,7 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
 
   Color _tintBg(Color base) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return base.withOpacity(isDark ? 0.12 : 0.08);
+    return base.withValues(alpha: isDark ? 0.12 : 0.08);
   }
 
   Widget _buildOfflineBanner() {
@@ -923,9 +931,9 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.15),
+        color: Colors.orange.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: const [

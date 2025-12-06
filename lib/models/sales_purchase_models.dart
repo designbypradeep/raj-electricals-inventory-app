@@ -18,6 +18,43 @@ class PurchaseReturnItemInput {
   });
 }
 
+class CustomerLedgerEntry {
+  final int? id;
+  final String businessId;
+  final String customerName;
+  final String entryType; // 'advance' | 'apply' | 'payment' | 'refund'
+  final double amount; // positive
+  final String? refTable;
+  final int? refId;
+  final DateTime? createdAt;
+
+  const CustomerLedgerEntry({
+    this.id,
+    required this.businessId,
+    required this.customerName,
+    required this.entryType,
+    required this.amount,
+    this.refTable,
+    this.refId,
+    this.createdAt,
+  });
+
+  factory CustomerLedgerEntry.fromJson(Map<String, dynamic> json) {
+    return CustomerLedgerEntry(
+      id: json['id'] as int?,
+      businessId: json['business_id'] as String? ?? '',
+      customerName: json['customer_name'] as String? ?? '',
+      entryType: json['entry_type'] as String? ?? 'advance',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      refTable: json['ref_table'] as String?,
+      refId: (json['ref_id'] as num?)?.toInt(),
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
+          : null,
+    );
+  }
+}
+
 class PurchaseReturnItemModel {
   final int? id;
   final int returnId;

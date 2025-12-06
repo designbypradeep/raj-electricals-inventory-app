@@ -104,7 +104,9 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
+              border: Border.all(
+                color: theme.dividerColor.withValues(alpha: 0.3),
+              ),
             ),
             child: Text(
               '$index',
@@ -125,7 +127,9 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 10.5,
-                color: theme.textTheme.bodyMedium?.color?.withOpacity(0.75),
+                color: theme.textTheme.bodyMedium?.color?.withValues(
+                  alpha: 0.75,
+                ),
               ),
             ),
           ),
@@ -138,7 +142,7 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
         height: 2,
         margin: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          color: theme.dividerColor.withOpacity(0.4),
+          color: theme.dividerColor.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(99),
         ),
       ),
@@ -149,7 +153,7 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor.withOpacity(0.2)),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.2)),
       ),
       child: LayoutBuilder(
         builder: (context, c) {
@@ -463,7 +467,7 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
                               border: Border.all(
                                 color: Theme.of(
                                   context,
-                                ).dividerColor.withOpacity(0.35),
+                                ).dividerColor.withValues(alpha: 0.35),
                               ),
                             ),
                             child: Row(
@@ -498,12 +502,12 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
                               side: BorderSide(
                                 color: Theme.of(
                                   context,
-                                ).dividerColor.withOpacity(0.4),
+                                ).dividerColor.withValues(alpha: 0.4),
                               ),
                             ),
                             selectedColor: Theme.of(
                               context,
-                            ).colorScheme.primary.withOpacity(0.12),
+                            ).colorScheme.primary.withValues(alpha: 0.12),
                             backgroundColor: Theme.of(
                               context,
                             ).colorScheme.surfaceContainerHighest,
@@ -531,12 +535,12 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
                               side: BorderSide(
                                 color: Theme.of(
                                   context,
-                                ).dividerColor.withOpacity(0.4),
+                                ).dividerColor.withValues(alpha: 0.4),
                               ),
                             ),
                             selectedColor: Theme.of(
                               context,
-                            ).colorScheme.primary.withOpacity(0.12),
+                            ).colorScheme.primary.withValues(alpha: 0.12),
                             backgroundColor: Theme.of(
                               context,
                             ).colorScheme.surfaceContainerHighest,
@@ -571,7 +575,7 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
                         border: Border.all(
                           color: Theme.of(
                             context,
-                          ).dividerColor.withOpacity(0.2),
+                          ).dividerColor.withValues(alpha: 0.2),
                         ),
                       ),
                       child: Row(
@@ -657,11 +661,11 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(UITokens.radius),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
         ),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).shadowColor.withOpacity(0.03),
+            color: Theme.of(context).shadowColor.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -726,9 +730,11 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
                           Text(
                             (sale['created_at'] as String?) ?? '',
                             style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).textTheme.bodySmall?.color?.withOpacity(0.7),
+                              color: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.color
+                                  ?.withValues(alpha: 0.7),
                               fontSize: 12,
                             ),
                           ),
@@ -825,7 +831,9 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   border: Border.all(
-                    color: Theme.of(context).dividerColor.withOpacity(0.2),
+                    color: Theme.of(
+                      context,
+                    ).dividerColor.withValues(alpha: 0.2),
                   ),
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -849,9 +857,11 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
                             'Available: ${item['original_quantity']} × ₹${(item['price_per_unit'] as num).toStringAsFixed(2)}',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Theme.of(
-                                context,
-                              ).textTheme.bodySmall?.color?.withOpacity(0.7),
+                              color: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.color
+                                  ?.withValues(alpha: 0.7),
                             ),
                           ),
                         ],
@@ -924,7 +934,7 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.05),
+                  color: Colors.red.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -1035,9 +1045,11 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
                             '₹${(item['price_per_unit'] as num).toStringAsFixed(2)} each',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Theme.of(
-                                context,
-                              ).textTheme.bodySmall?.color?.withOpacity(0.7),
+                              color: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.color
+                                  ?.withValues(alpha: 0.7),
                             ),
                           ),
                         ],
@@ -1094,7 +1106,7 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.05),
+                color: Colors.green.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -1298,7 +1310,7 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
                   style: TextStyle(
                     color: Theme.of(
                       context,
-                    ).textTheme.bodySmall?.color?.withOpacity(0.7),
+                    ).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
                     fontSize: 12,
                   ),
                 ),

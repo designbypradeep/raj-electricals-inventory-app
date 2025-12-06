@@ -16,11 +16,87 @@ class _CustomersPageState extends State<CustomersPage> {
   bool _isLoading = true;
   final _searchController = TextEditingController();
   Map<String, int> _salesCounts = {};
+  Map<String, double> _advanceBalances = {};
 
   @override
   void initState() {
     super.initState();
     _loadCustomers();
+  }
+
+  Future<void> _showCustomerLedger(Customer customer) async {
+    try {
+      final entries = await SupabaseService.getCustomerLedger(customer.name);
+      // ignore: use_build_context_synchronously
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Customer Ledger — ${customer.name}'),
+          content: SizedBox(
+            width: 420,
+            child: entries.isEmpty
+                ? const Text('No ledger entries yet')
+                : SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if ((_advanceBalances[customer.name] ?? 0) > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'Advance Available: ₹${(_advanceBalances[customer.name] ?? 0).toStringAsFixed(2)}',
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        if (customer.outstandingBalance > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              'Outstanding Debt: ₹${customer.outstandingBalance.toStringAsFixed(2)}',
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ...entries.map((e) {
+                          final type = e.entryType;
+                          final amt = e.amount.toStringAsFixed(2);
+                          final dt = e.createdAt;
+                          return ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              type == 'advance'
+                                  ? Icons.account_balance_wallet
+                                  : type == 'apply'
+                                      ? Icons.call_made
+                                      : type == 'refund'
+                                          ? Icons.reply
+                                          : Icons.payments,
+                              size: 18,
+                            ),
+                            title: Text('${type.toUpperCase()}  •  ₹$amt'),
+                            subtitle: dt != null
+                                ? Text('${dt.toLocal()}')
+                                : null,
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load ledger: $e')),
+      );
+    }
   }
 
   String _formatDateExact(DateTime? date) {
@@ -65,9 +141,14 @@ class _CustomersPageState extends State<CustomersPage> {
       final counts = await SupabaseService.getSalesCountsForCustomers(
         customers.map((e) => e.name).toList(),
       );
+      // Fetch customer advance balances
+      final advances = await SupabaseService.getCustomerAdvanceBalances(
+        customers.map((e) => e.name).toList(),
+      );
       if (mounted) {
         setState(() {
           _salesCounts = counts;
+          _advanceBalances = advances;
         });
       }
     } catch (e) {
@@ -193,6 +274,118 @@ class _CustomersPageState extends State<CustomersPage> {
 
   int get _customersWithDebt =>
       _customers.where((c) => c.outstandingBalance > 0).length;
+
+  Future<void> _recordCustomerAdvance(Customer customer) async {
+    final controller = TextEditingController();
+    final amount = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Record Advance'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Amount',
+            prefixIcon: Icon(Icons.currency_rupee),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(controller.text.trim());
+              if (v != null && v > 0) {
+                Navigator.pop(context, v);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (amount == null) return;
+    try {
+      await SupabaseService.recordCustomerAdvance(
+        customerName: customer.name,
+        amount: amount,
+      );
+      await _loadCustomers();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Advance recorded'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _recordCustomerPayment(Customer customer) async {
+    final controller = TextEditingController();
+    final amount = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Record Payment'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Amount',
+            prefixIcon: Icon(Icons.currency_rupee),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(controller.text.trim());
+              if (v != null && v > 0) {
+                Navigator.pop(context, v);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (amount == null) return;
+    try {
+      await SupabaseService.recordCustomerPayment(
+        customerName: customer.name,
+        amount: amount,
+      );
+      await _loadCustomers();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment recorded'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -529,6 +722,30 @@ class _CustomersPageState extends State<CustomersPage> {
                                           ),
                                         ),
                                         OutlinedButton.icon(
+                                          onPressed: () => _recordCustomerAdvance(customer),
+                                          icon: const Icon(Icons.account_balance_wallet, size: 18),
+                                          label: const Text('Advance'),
+                                          style: OutlinedButton.styleFrom(
+                                            shape: const StadiumBorder(),
+                                          ),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: () => _recordCustomerPayment(customer),
+                                          icon: const Icon(Icons.currency_rupee, size: 18),
+                                          label: const Text('Payment'),
+                                          style: OutlinedButton.styleFrom(
+                                            shape: const StadiumBorder(),
+                                          ),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: () => _showCustomerLedger(customer),
+                                          icon: const Icon(Icons.receipt_long, size: 18),
+                                          label: const Text('Ledger'),
+                                          style: OutlinedButton.styleFrom(
+                                            shape: const StadiumBorder(),
+                                          ),
+                                        ),
+                                        OutlinedButton.icon(
                                           onPressed: () =>
                                               _deleteCustomer(customer),
                                           icon: const Icon(
@@ -563,6 +780,18 @@ class _CustomersPageState extends State<CustomersPage> {
                                       if (orders > 0)
                                         Chip(
                                           label: Text('🧾 Orders: $orders'),
+                                          visualDensity: VisualDensity.compact,
+                                          side: BorderSide.none,
+                                        ),
+                                      if (customer.outstandingBalance > 0)
+                                        Chip(
+                                          label: Text('Debt: ₹${customer.outstandingBalance.toStringAsFixed(0)}'),
+                                          visualDensity: VisualDensity.compact,
+                                          side: BorderSide.none,
+                                        ),
+                                      if ((_advanceBalances[customer.name] ?? 0) > 0)
+                                        Chip(
+                                          label: Text('Advance: ₹${(_advanceBalances[customer.name] ?? 0).toStringAsFixed(0)}'),
                                           visualDensity: VisualDensity.compact,
                                           side: BorderSide.none,
                                         ),

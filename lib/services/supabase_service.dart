@@ -119,7 +119,6 @@ class SupabaseService {
         if (productId == null) continue;
         final int currentStock = (prod['current_stock'] as num?)?.toInt() ?? 0;
         final String? unit = m['unit']?.toString();
-        final String? unitSingle = prod['unit_type_single']?.toString();
         final String? unitWholesale = prod['unit_type_wholesale']?.toString();
         final int itemsPerWholesale =
             (prod['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
@@ -1664,7 +1663,6 @@ class SupabaseService {
       }
 
       // Perform inserts
-      Map<int, List<String>> newImagesById = {};
       if (rowsToInsert.isNotEmpty) {
         try {
           final resp = await _client
@@ -1768,7 +1766,6 @@ class SupabaseService {
       throw Exception('Not signed in');
     }
 
-    final meta = Map<String, dynamic>.from((json['metadata'] as Map?) ?? {});
     final data = Map<String, dynamic>.from((json['business'] as Map?) ?? {});
     if (data.isEmpty) throw Exception('Invalid business info JSON');
 
@@ -3226,6 +3223,8 @@ class SupabaseService {
     double? taxAmount,
     required List<Map<String, dynamic>>
     items, // {product_id, quantity, price_per_unit, unit?}
+    double? amountPaid,
+    bool useAdvance = false,
   }) async {
     await getCurrentBusinessProfile();
     final businessId = getCurrentBusinessId();
@@ -3344,6 +3343,52 @@ class SupabaseService {
           'decrement_stock',
           params: {'product_id_to_update': pid, 'quantity_to_subtract': qty},
         );
+      }
+
+      // 4) Handle customer due and optional advance application
+      final String cust = (customerName ?? '').trim();
+      if (cust.isNotEmpty && cust.toLowerCase() != 'walk-in customer') {
+        double paid = amountPaid ?? totalAmount;
+        if (paid < 0) paid = 0;
+        if (paid > totalAmount) paid = totalAmount;
+        double due = totalAmount - paid;
+
+        if (useAdvance && due > 0) {
+          try {
+            final adv = await getCustomerAdvanceBalances([cust]);
+            final available = adv[cust] ?? 0.0;
+            final toApply = available > 0 ? (available >= due ? due : available) : 0.0;
+            if (toApply > 0) {
+              await applyCustomerAdvance(
+                customerName: cust,
+                amount: toApply,
+                refTable: 'sales',
+                refId: saleId,
+              );
+              due -= toApply;
+            }
+          } catch (_) {}
+        }
+
+        if (due > 0) {
+          try {
+            final row = await _client
+                .from('customers')
+                .select('id, outstanding_balance')
+                .eq('business_id', businessId)
+                .eq('name', cust)
+                .maybeSingle();
+            if (row != null) {
+              final cid = (row['id'] as num).toInt();
+              final current = (row['outstanding_balance'] as num?)?.toDouble() ?? 0.0;
+              await _client
+                  .from('customers')
+                  .update({'outstanding_balance': current + due})
+                  .eq('id', cid)
+                  .eq('business_id', businessId);
+            }
+          } catch (_) {}
+        }
       }
 
       return saleId;
@@ -5615,6 +5660,135 @@ class SupabaseService {
               SupplierLedgerEntry.fromJson(Map<String, dynamic>.from(e as Map)),
         )
         .toList();
+  }
+
+  // ==================== Customer Ledger ====================
+
+  static Future<bool> recordCustomerAdvance({
+    required String customerName,
+    required double amount,
+    String? refTable,
+    int? refId,
+  }) async {
+    if (amount <= 0) return false;
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    await _client.from('customer_ledger').insert({
+      'business_id': businessId,
+      'customer_name': customerName,
+      'entry_type': 'advance',
+      'amount': amount,
+      if (refTable != null) 'ref_table': refTable,
+      if (refId != null) 'ref_id': refId,
+    });
+    return true;
+  }
+
+  static Future<bool> applyCustomerAdvance({
+    required String customerName,
+    required double amount,
+    String? refTable,
+    int? refId,
+  }) async {
+    if (amount <= 0) return false;
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    await _client.from('customer_ledger').insert({
+      'business_id': businessId,
+      'customer_name': customerName,
+      'entry_type': 'apply',
+      'amount': amount,
+      if (refTable != null) 'ref_table': refTable,
+      if (refId != null) 'ref_id': refId,
+    });
+    return true;
+  }
+
+  static Future<bool> recordCustomerPayment({
+    required String customerName,
+    required double amount,
+  }) async {
+    if (amount <= 0) return false;
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    final row = await _client
+        .from('customers')
+        .select('id, outstanding_balance')
+        .eq('business_id', businessId)
+        .eq('name', customerName)
+        .maybeSingle();
+
+    if (row == null) return false;
+    final id = (row['id'] as num).toInt();
+    final current = (row['outstanding_balance'] as num?)?.toDouble() ?? 0.0;
+    final next = (current - amount) < 0 ? 0.0 : (current - amount);
+
+    await _client
+        .from('customers')
+        .update({'outstanding_balance': next})
+        .eq('id', id)
+        .eq('business_id', businessId);
+
+    await _client.from('customer_ledger').insert({
+      'business_id': businessId,
+      'customer_name': customerName,
+      'entry_type': 'payment',
+      'amount': amount,
+    });
+    return true;
+  }
+
+  static Future<List<CustomerLedgerEntry>> getCustomerLedger(
+    String customerName,
+  ) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    final rows = await _client
+        .from('customer_ledger')
+        .select()
+        .eq('business_id', businessId)
+        .eq('customer_name', customerName)
+        .order('created_at', ascending: false);
+
+    return (rows as List)
+        .map((e) => CustomerLedgerEntry.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  static Future<Map<String, double>> getCustomerAdvanceBalances(
+    List<String> customerNames,
+  ) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null || customerNames.isEmpty) return {};
+
+    final rows = await _client
+        .from('customer_ledger')
+        .select('customer_name, entry_type, amount')
+        .eq('business_id', businessId)
+        .inFilter('customer_name', customerNames);
+
+    final totals = <String, double>{};
+    for (final r in (rows as List)) {
+      final m = Map<String, dynamic>.from(r as Map);
+      final name = (m['customer_name'] ?? '').toString();
+      final type = (m['entry_type'] ?? '').toString();
+      final amt = (m['amount'] as num?)?.toDouble() ?? 0.0;
+      if (name.isEmpty || amt <= 0) continue;
+      double sign = 0;
+      if (type == 'advance') sign = 1;
+      if (type == 'apply' || type == 'refund') sign = -1;
+      if (sign != 0) totals[name] = (totals[name] ?? 0.0) + sign * amt;
+    }
+    return totals;
   }
 
   // ==================== Suppliers Management ====================
