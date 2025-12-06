@@ -76,6 +76,7 @@ class _SalesPageState extends State<SalesPage> {
   String _selectedUnit = '';
   int _quantity = 1;
   supabase.Product? _selectedProductObj;
+  double _pricePerUnit = 0.0;
 
   // Payment details
   double _discount = 0.0;
@@ -94,12 +95,74 @@ class _SalesPageState extends State<SalesPage> {
       TextEditingController();
   final TextEditingController _discountController = TextEditingController();
   final TextEditingController _paidNowController = TextEditingController();
+  final TextEditingController _priceController = TextEditingController();
   DateTime? _customDate;
 
   @override
   void initState() {
     super.initState();
     _loadProducts();
+  }
+
+  Widget _buildPriceField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Price per Unit (₹)',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Theme.of(context).textTheme.bodyLarge?.color,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _priceController,
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _pricePerUnit = double.tryParse(value) ?? 0.0;
+            });
+          },
+          decoration: InputDecoration(
+            hintText: (_selectedProductObj?.sellingPrice ?? 0) > 0
+                ? (_selectedProductObj!.sellingPrice!.toStringAsFixed(
+                    ((_selectedProductObj!.sellingPrice! % 1 == 0) ? 0 : 2),
+                  ))
+                : '0',
+            filled: true,
+            fillColor: Theme.of(context).scaffoldBackgroundColor,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.primary,
+                width: 2,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 14,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -109,6 +172,7 @@ class _SalesPageState extends State<SalesPage> {
     _transactionIdController.dispose();
     _discountController.dispose();
     _paidNowController.dispose();
+    _priceController.dispose();
     super.dispose();
   }
 
@@ -158,6 +222,14 @@ class _SalesPageState extends State<SalesPage> {
     final selectedProduct = _selectedProductForSale;
     if (selectedProduct == null) return;
 
+    if ((_pricePerUnit) <= 0) {
+      setState(() {
+        _errorMessage = 'Enter a valid price per unit.';
+      });
+      _clearErrorAfterDelay();
+      return;
+    }
+
     // Calculate stock check based on unit type
     int availableStock = selectedProduct.currentStock;
     int quantityInSingleUnits = _quantity;
@@ -197,7 +269,7 @@ class _SalesPageState extends State<SalesPage> {
               '${selectedProduct.brand ?? ''} ${selectedProduct.name} ${selectedProduct.sizeOrSpec ?? ''}'
                   .trim(),
           quantity: _quantity,
-          pricePerUnit: selectedProduct.sellingPrice ?? 0,
+          pricePerUnit: _pricePerUnit,
           unit: _selectedUnit,
         ),
       );
@@ -207,6 +279,8 @@ class _SalesPageState extends State<SalesPage> {
       _quantity = 1;
       _selectedUnit = '';
       _selectedProductObj = null;
+      _pricePerUnit = 0.0;
+      _priceController.text = '';
     });
   }
 
@@ -1194,6 +1268,8 @@ class _SalesPageState extends State<SalesPage> {
                     Expanded(child: _buildUnitDropdown()),
                     const SizedBox(width: 24),
                     Expanded(child: _buildQuantityField()),
+                    const SizedBox(width: 24),
+                    Expanded(child: _buildPriceField()),
                   ],
                 );
               } else {
@@ -1209,6 +1285,8 @@ class _SalesPageState extends State<SalesPage> {
                         Expanded(child: _buildQuantityField()),
                       ],
                     ),
+                    const SizedBox(height: 24),
+                    _buildPriceField(),
                   ],
                 );
               }
@@ -1329,8 +1407,16 @@ class _SalesPageState extends State<SalesPage> {
               _selectedProductId = p?.id;
               if (p != null) {
                 _selectedUnit = p.unitTypeSingle ?? '';
+                _pricePerUnit = p.sellingPrice ?? 0.0;
+                _priceController.text = (_pricePerUnit == 0)
+                    ? ''
+                    : _pricePerUnit.toStringAsFixed(
+                        (_pricePerUnit % 1 == 0) ? 0 : 2,
+                      );
               } else {
                 _selectedUnit = '';
+                _pricePerUnit = 0.0;
+                _priceController.text = '';
               }
             });
           },
