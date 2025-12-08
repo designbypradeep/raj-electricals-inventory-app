@@ -20,6 +20,10 @@ class _SystemHealthPageState extends State<SystemHealthPage>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   Timer? _autoRefreshTimer;
+  List<Map<String, dynamic>> _stockRecon = [];
+  bool _stockReconLoading = false;
+  bool _stockReconApplying = false;
+  bool _stockReconAllMismatches = false;
 
   // Real health check data
   Map<String, dynamic> _healthCheck = {
@@ -64,6 +68,50 @@ class _SystemHealthPageState extends State<SystemHealthPage>
         _loadHealthData();
       }
     });
+  }
+
+  Future<void> _runStockReconPreview() async {
+    setState(() {
+      _stockReconLoading = true;
+    });
+    try {
+      final rows = await SupabaseService.healthStockReconcilePreview(
+        includeAllMismatches: _stockReconAllMismatches,
+      );
+      setState(() {
+        _stockRecon = rows;
+        _stockReconLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _stockReconLoading = false;
+        _errorMessage = 'Failed to load reconciliation preview: $e';
+      });
+    }
+  }
+
+  Future<void> _applyStockRecon() async {
+    setState(() {
+      _stockReconApplying = true;
+      _successMessage = null;
+      _errorMessage = null;
+    });
+    try {
+      final count = await SupabaseService.healthStockReconcileApply(
+        onlyZeroToExpected: !_stockReconAllMismatches,
+      );
+      setState(() {
+        _stockReconApplying = false;
+        _successMessage = 'Updated $count products';
+      });
+      await _runStockReconPreview();
+      await _loadHealthData();
+    } catch (e) {
+      setState(() {
+        _stockReconApplying = false;
+        _errorMessage = 'Failed to apply reconciliation: $e';
+      });
+    }
   }
 
   Widget _buildProblematicPurchasesCard() {
@@ -2503,7 +2551,208 @@ class _SystemHealthPageState extends State<SystemHealthPage>
         _buildDataCompletenessCard(),
         _buildDuplicateProductsCard(),
         _buildProblematicPurchasesCard(),
+        _buildStockReconciliationCard(),
       ],
+    );
+  }
+
+  Widget _buildStockReconciliationCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isWide = MediaQuery.of(context).size.width > 768;
+    final double listHeight = isWide ? 220.0 : 260.0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        border: Border.all(
+          color: isDark
+              ? Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)
+              : Colors.grey.shade200,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.3)
+                : Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.blue.shade900.withValues(alpha: 0.3)
+                      : Colors.blue.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.inventory_2_outlined,
+                  color: isDark ? Colors.blue.shade300 : Colors.blue.shade700,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Stock Reconciliation',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    Text(
+                      _stockReconAllMismatches
+                          ? 'All mismatches (advanced)'
+                          : 'Fix zeros where history shows stock',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                children: [
+                  Switch(
+                    value: _stockReconAllMismatches,
+                    onChanged: _stockReconLoading || _stockReconApplying
+                        ? null
+                        : (v) => setState(() => _stockReconAllMismatches = v),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: _stockReconLoading ? null : _runStockReconPreview,
+                icon: _stockReconLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.visibility_outlined, size: 16),
+                label: Text(_stockReconLoading ? 'Loading...' : 'Preview'),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: (_stockReconApplying || _stockRecon.isEmpty)
+                    ? null
+                    : _applyStockRecon,
+                icon: _stockReconApplying
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check_circle_outline, size: 16),
+                label: Text(
+                  _stockReconApplying ? 'Applying...' : 'Apply fixes',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_stockRecon.isNotEmpty)
+            SizedBox(
+              height: listHeight,
+              child: ListView.separated(
+                itemCount: _stockRecon.length.clamp(0, 50),
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final row = _stockRecon[index];
+                  final id = row['id'];
+                  final name = (row['name'] ?? '').toString();
+                  final cur = (row['current_stock'] ?? 0).toString();
+                  final exp = (row['expected_units'] ?? 0).toString();
+                  final diff = (row['diff'] ?? 0).toString();
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outline.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '#$id  $name',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Current: $cur  →  Expected: $exp  (Δ $diff)',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (row['should_fix_simple'] == true)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'Simple fix',
+                              style: TextStyle(
+                                color: Colors.green,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            )
+          else
+            Center(
+              child: Text(
+                'No items to fix. Run preview.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).hintColor,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

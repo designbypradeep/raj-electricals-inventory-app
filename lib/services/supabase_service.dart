@@ -16,6 +16,211 @@ class SupabaseService {
     _defaultBusinessId = businessId;
   }
 
+  // =====================
+  // System Health: Stock reconciliation (preview and apply)
+  // =====================
+  static Future<List<Map<String, dynamic>>> healthStockReconcilePreview({
+    bool includeAllMismatches = false,
+  }) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    // Load products base
+    final productsRows = await _client
+        .from('products')
+        .select(
+          'id, name, current_stock, items_per_wholesale_unit, unit_type_wholesale',
+        )
+        .eq('business_id', businessId);
+    final products = <int, Map<String, dynamic>>{};
+    for (final r in (productsRows as List)) {
+      final m = Map<String, dynamic>.from(r as Map);
+      products[(m['id'] as num).toInt()] = m;
+    }
+
+    // Sum purchased units (with wholesale conversion) scoped to business
+    final purchItems = await _client
+        .from('purchase_items')
+        .select('product_id, quantity, unit, purchases!inner(business_id)')
+        .eq('purchases.business_id', businessId);
+    final purchased = <int, int>{};
+    for (final r in (purchItems as List)) {
+      final m = Map<String, dynamic>.from(r as Map);
+      final pid = (m['product_id'] as num?)?.toInt();
+      final qty = (m['quantity'] as num?)?.toInt() ?? 0;
+      if (pid == null) continue;
+      final prod = products[pid];
+      if (prod == null) continue;
+      final ipwu = (prod['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
+      final uwh = (prod['unit_type_wholesale'] ?? '').toString().toLowerCase();
+      final unit = (m['unit'] ?? '').toString().toLowerCase();
+      final add = (unit.isNotEmpty && uwh.isNotEmpty && unit == uwh && ipwu > 0)
+          ? qty * ipwu
+          : qty;
+      purchased[pid] = (purchased[pid] ?? 0) + add;
+    }
+
+    // Sum sold units (sales_items assumed in single units) scoped to business
+    final salesItems = await _client
+        .from('sales_items')
+        .select('product_id, quantity, sales!inner(business_id)')
+        .eq('sales.business_id', businessId);
+    final sold = <int, int>{};
+    for (final r in (salesItems as List)) {
+      final m = Map<String, dynamic>.from(r as Map);
+      final pid = (m['product_id'] as num?)?.toInt();
+      final qty = (m['quantity'] as num?)?.toInt() ?? 0;
+      if (pid == null) continue;
+      sold[pid] = (sold[pid] ?? 0) + qty;
+    }
+
+    // Build discrepancies
+    final results = <Map<String, dynamic>>[];
+    products.forEach((pid, prod) {
+      final current = (prod['current_stock'] as num?)?.toInt() ?? 0;
+      final exp = (purchased[pid] ?? 0) - (sold[pid] ?? 0);
+      final diff = exp - current;
+      final row = {
+        'id': pid,
+        'name': prod['name'],
+        'current_stock': current,
+        'expected_units': exp,
+        'diff': diff,
+        'items_per_wholesale_unit': (prod['items_per_wholesale_unit'] as num?)
+            ?.toInt(),
+        'unit_type_wholesale': prod['unit_type_wholesale'],
+        'should_fix_simple': (current == 0 && exp > 0),
+      };
+      if (includeAllMismatches) {
+        if (diff != 0) results.add(row);
+      } else {
+        if (row['should_fix_simple'] == true) results.add(row);
+      }
+    });
+
+    // Sort by diff desc
+    results.sort(
+      (a, b) =>
+          ((b['diff'] as num).toInt()).compareTo((a['diff'] as num).toInt()),
+    );
+    return results;
+  }
+
+  static Future<int> healthStockReconcileApply({
+    List<int>? productIds,
+    bool onlyZeroToExpected = true,
+  }) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    final preview = await healthStockReconcilePreview(
+      includeAllMismatches: !onlyZeroToExpected,
+    );
+    final targets = <Map<String, dynamic>>[];
+    for (final r in preview) {
+      if (productIds != null &&
+          productIds.isNotEmpty &&
+          !productIds.contains(r['id'])) {
+        continue;
+      }
+      if (onlyZeroToExpected) {
+        if (r['should_fix_simple'] == true) targets.add(r);
+      } else {
+        if ((r['diff'] as num).toInt() != 0) targets.add(r);
+      }
+    }
+
+    int updated = 0;
+    for (final chunk in _chunkList(targets, 100)) {
+      final ids = chunk.map<int>((e) => (e['id'] as int)).toList();
+      final byId = {
+        for (final e in chunk) (e['id'] as int): (e['expected_units'] as int),
+      };
+      // Postgrest doesn't support per-row different values in a single update; update sequentially per id
+      for (final id in ids) {
+        try {
+          await _client
+              .from('products')
+              .update({'current_stock': byId[id]})
+              .eq('id', id)
+              .eq('business_id', businessId);
+          updated++;
+        } catch (_) {}
+      }
+    }
+    return updated;
+  }
+
+  static List<List<T>> _chunkList<T>(List<T> list, int size) {
+    final chunks = <List<T>>[];
+    for (var i = 0; i < list.length; i += size) {
+      chunks.add(
+        list.sublist(i, i + size > list.length ? list.length : i + size),
+      );
+    }
+    return chunks;
+  }
+
+  static Future<void> updateSaleStatus({
+    required int saleId,
+    required String status,
+    String? verifiedBy,
+    String? verificationNotes,
+  }) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) {
+      throw Exception('Not signed in. Please login to update sales.');
+    }
+
+    final Map<String, dynamic> update = {
+      'status': status,
+      if (verifiedBy != null && verifiedBy.isNotEmpty)
+        'verified_by': verifiedBy,
+      if (verificationNotes != null) 'verification_notes': verificationNotes,
+      if (status.toLowerCase() == 'verified')
+        'verified_at': DateTime.now().toIso8601String(),
+    };
+    await _client
+        .from('sales')
+        .update(update)
+        .eq('id', saleId)
+        .eq('business_id', businessId);
+  }
+
+  static Future<List<Map<String, dynamic>>> getPendingSalesWithProof({
+    int limit = 50,
+    String? createdBefore,
+  }) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) return [];
+
+    try {
+      var query = _client
+          .from('sales')
+          .select(
+            'id, customer_name, customer_phone, total_amount, created_at, status, payment_proof_url',
+          )
+          .eq('business_id', businessId)
+          .eq('status', 'pending')
+          .not('payment_proof_url', 'is', null);
+      if (createdBefore != null && createdBefore.isNotEmpty) {
+        query = query.lt('created_at', createdBefore);
+      }
+      final resp = await query
+          .order('created_at', ascending: false)
+          .limit(limit);
+      return (resp as List)
+          .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   // Aggregate: sales count for customers (by customer_name on sales)
   static Future<Map<String, int>> getSalesCountsForCustomers(
     List<String> customerNames,
@@ -3225,6 +3430,8 @@ class SupabaseService {
     items, // {product_id, quantity, price_per_unit, unit?}
     double? amountPaid,
     bool useAdvance = false,
+    String? status,
+    String? paymentProofUrl,
   }) async {
     await getCurrentBusinessProfile();
     final businessId = getCurrentBusinessId();
@@ -3345,6 +3552,25 @@ class SupabaseService {
         );
       }
 
+      // 3b) Best-effort update of optional fields if columns exist
+      if ((status != null && status.isNotEmpty) ||
+          (paymentProofUrl != null && paymentProofUrl.isNotEmpty)) {
+        try {
+          final Map<String, dynamic> extra = {};
+          if (status != null && status.isNotEmpty) extra['status'] = status;
+          if (paymentProofUrl != null && paymentProofUrl.isNotEmpty) {
+            extra['payment_proof_url'] = paymentProofUrl;
+          }
+          if (extra.isNotEmpty) {
+            await _client
+                .from('sales')
+                .update(extra)
+                .eq('id', saleId)
+                .eq('business_id', businessId);
+          }
+        } catch (_) {}
+      }
+
       // 4) Handle customer due and optional advance application
       final String cust = (customerName ?? '').trim();
       if (cust.isNotEmpty && cust.toLowerCase() != 'walk-in customer') {
@@ -3357,7 +3583,9 @@ class SupabaseService {
           try {
             final adv = await getCustomerAdvanceBalances([cust]);
             final available = adv[cust] ?? 0.0;
-            final toApply = available > 0 ? (available >= due ? due : available) : 0.0;
+            final toApply = available > 0
+                ? (available >= due ? due : available)
+                : 0.0;
             if (toApply > 0) {
               await applyCustomerAdvance(
                 customerName: cust,
@@ -3380,7 +3608,8 @@ class SupabaseService {
                 .maybeSingle();
             if (row != null) {
               final cid = (row['id'] as num).toInt();
-              final current = (row['outstanding_balance'] as num?)?.toDouble() ?? 0.0;
+              final current =
+                  (row['outstanding_balance'] as num?)?.toDouble() ?? 0.0;
               await _client
                   .from('customers')
                   .update({'outstanding_balance': current + due})
@@ -5759,7 +5988,10 @@ class SupabaseService {
         .order('created_at', ascending: false);
 
     return (rows as List)
-        .map((e) => CustomerLedgerEntry.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map(
+          (e) =>
+              CustomerLedgerEntry.fromJson(Map<String, dynamic>.from(e as Map)),
+        )
         .toList();
   }
 
