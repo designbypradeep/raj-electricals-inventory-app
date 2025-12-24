@@ -13,6 +13,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:google_mlkit_image_labeling/google_mlkit_image_labeling.dart';
 import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart';
@@ -1615,20 +1617,21 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       'tn=${Uri.encodeQueryComponent(tn)}',
     ].join('&');
 
-    bool launched = await _tryLaunchUri(Uri.parse('upi://pay?$qp'));
-    if (!launched) {
-      final intentUri = Uri.parse('intent://pay?$qp#Intent;scheme=upi;end');
-      launched = await _tryLaunchUri(intentUri);
-    }
-    if (!launched) {
-      if (mounted) {
+    final bool isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+    bool launched = false;
+    if (isMobile) {
+      launched = await _tryLaunchUri(Uri.parse('upi://pay?$qp'));
+      if (!launched) {
+        final intentUri = Uri.parse('intent://pay?$qp#Intent;scheme=upi;end');
+        launched = await _tryLaunchUri(intentUri);
+      }
+      if (!launched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No UPI app found to handle this payment.'),
           ),
         );
       }
-      return;
     }
 
     if (mounted) {
@@ -1644,72 +1647,167 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   ) {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: false,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.payments_outlined),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Complete Payment',
-                      style: Theme.of(ctx).textTheme.titleMedium,
+        bool showQr = !(Platform.isAndroid || Platform.isIOS);
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            // Build UPI URI for QR
+            const upiId = 'pradeepsupergalaxy12@okicici';
+            String pn = _sanitizeUpiName(_businessName).trim();
+            if (pn.isEmpty) pn = 'Merchant';
+            if (pn.length > 20) pn = pn.substring(0, 20);
+            String tnBase = 'Buy ${product['name'] ?? 'Item'}';
+            if (tnBase.length > 28) tnBase = tnBase.substring(0, 28);
+            String tn =
+                '$tnBase ${checkoutId.substring(checkoutId.length - 6)}';
+            if (tn.length > 40) tn = tn.substring(0, 40);
+            final qp = [
+              'pa=${Uri.encodeQueryComponent(upiId)}',
+              'pn=${Uri.encodeQueryComponent(pn)}',
+              'am=${Uri.encodeQueryComponent(total.toStringAsFixed(2))}',
+              'cu=INR',
+              'tr=${Uri.encodeQueryComponent(checkoutId)}',
+              'tid=${Uri.encodeQueryComponent(checkoutId)}',
+              'tn=${Uri.encodeQueryComponent(tn)}',
+            ].join('&');
+            final upiUri = 'upi://pay?$qp';
+            final mq = MediaQuery.of(ctx);
+            double qrSize = 260;
+            final double w = mq.size.width;
+            final double h = mq.size.height;
+            if (w < 360) {
+              qrSize = 200;
+            } else if (w < 480) {
+              qrSize = 220;
+            } else if (w < 768) {
+              qrSize = 240;
+            } else {
+              qrSize = 280;
+            }
+            final double capByHeight = h * 0.35;
+            if (qrSize > capByHeight) {
+              qrSize = capByHeight;
+            }
+            final bool disableScroll = h >= 720;
+
+            return SingleChildScrollView(
+              physics: disableScroll
+                  ? const NeverScrollableScrollPhysics()
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.payments_outlined),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Complete Payment',
+                            style: Theme.of(ctx).textTheme.titleMedium,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () =>
+                              setSheetState(() => showQr = !showQr),
+                          icon: const Icon(Icons.qr_code_2),
+                          label: Text(showQr ? 'Hide QR' : 'Show QR'),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Amount: ₹${total.toStringAsFixed(2)}  •  Item: ${product['name']}',
-                style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(
-                    ctx,
-                  ).textTheme.bodySmall?.color?.withValues(alpha: 0.8),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Amount: ₹${total.toStringAsFixed(2)}  •  Item: ${product['name']}',
+                      style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(
+                          ctx,
+                        ).textTheme.bodySmall?.color?.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (showQr) ...[
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              ctx,
+                            ).colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Theme.of(
+                                ctx,
+                              ).dividerColor.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: QrImageView(
+                            data: upiUri,
+                            version: QrVersions.auto,
+                            size: qrSize,
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: SelectableText(
+                          upiId,
+                          style: Theme.of(ctx).textTheme.bodySmall,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      'Pay via UPI app or scan QR from another phone, then upload the payment screenshot for verification.',
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(
+                          ctx,
+                        ).textTheme.bodySmall?.color?.withValues(alpha: 0.9),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            icon: const Icon(Icons.close),
+                            label: const Text('Close'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () async {
+                              final file = await _pickPaymentScreenshot();
+                              if (file == null) return;
+                              if (mounted) Navigator.of(ctx).pop();
+                              await _completeBuyNowSaleWithProof(
+                                checkoutId,
+                                total,
+                                product,
+                                qty,
+                                file,
+                              );
+                            },
+                            icon: const Icon(Icons.upload_file),
+                            label: const Text('Upload Payment Screenshot'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'We opened your UPI app. After payment, tap “Payment Successful” to generate your receipt.',
-                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(
-                    ctx,
-                  ).textTheme.bodySmall?.color?.withValues(alpha: 0.9),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      icon: const Icon(Icons.close),
-                      label: const Text('Close'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        _completeBuyNowSale('upi', product, qty);
-                      },
-                      icon: const Icon(Icons.check_circle_outline),
-                      label: const Text('Payment Successful'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -3033,21 +3131,21 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         'tn=${Uri.encodeQueryComponent(tn)}',
       ].join('&');
 
-      // Try standard deep link first, then intent-based chooser as fallback
-      bool launched = await _tryLaunchUri(Uri.parse('upi://pay?$qp'));
-      if (!launched) {
-        final intentUri = Uri.parse('intent://pay?$qp#Intent;scheme=upi;end');
-        launched = await _tryLaunchUri(intentUri);
-      }
-      if (!launched) {
-        if (mounted) {
+      final bool isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+      bool launched = false;
+      if (isMobile) {
+        launched = await _tryLaunchUri(Uri.parse('upi://pay?$qp'));
+        if (!launched) {
+          final intentUri = Uri.parse('intent://pay?$qp#Intent;scheme=upi;end');
+          launched = await _tryLaunchUri(intentUri);
+        }
+        if (!launched && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('No UPI app found to handle this payment.'),
             ),
           );
         }
-        return;
       }
       if (mounted) {
         _showUpiConfirmationSheet(checkoutId, total);
@@ -3064,110 +3162,413 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   void _showUpiConfirmationSheet(String checkoutId, double total) {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: false,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.payments_outlined),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Complete Payment',
-                      style: Theme.of(ctx).textTheme.titleMedium,
+        bool showQr = !(Platform.isAndroid || Platform.isIOS);
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            const upiId = 'pradeepsupergalaxy12@okicici';
+            String pn = _sanitizeUpiName(_businessName).trim();
+            if (pn.isEmpty) pn = 'Merchant';
+            if (pn.length > 20) pn = pn.substring(0, 20);
+            String tn =
+                'Checkout ${checkoutId.substring(checkoutId.length - 6)}';
+            if (tn.length > 40) tn = tn.substring(0, 40);
+            final qp = [
+              'pa=${Uri.encodeQueryComponent(upiId)}',
+              'pn=${Uri.encodeQueryComponent(pn)}',
+              'am=${Uri.encodeQueryComponent(total.toStringAsFixed(2))}',
+              'cu=INR',
+              'tr=${Uri.encodeQueryComponent(checkoutId)}',
+              'tid=${Uri.encodeQueryComponent(checkoutId)}',
+              'tn=${Uri.encodeQueryComponent(tn)}',
+            ].join('&');
+            final upiUri = 'upi://pay?$qp';
+
+            final mq = MediaQuery.of(ctx);
+            double qrSize = 260;
+            final double w = mq.size.width;
+            final double h = mq.size.height;
+            if (w < 360) {
+              qrSize = 200;
+            } else if (w < 480) {
+              qrSize = 220;
+            } else if (w < 768) {
+              qrSize = 240;
+            } else {
+              qrSize = 280;
+            }
+            final double capByHeight = h * 0.35;
+            if (qrSize > capByHeight) {
+              qrSize = capByHeight;
+            }
+            final bool disableScroll = h >= 720;
+
+            return SingleChildScrollView(
+              physics: disableScroll
+                  ? const NeverScrollableScrollPhysics()
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.payments_outlined),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Complete Payment',
+                            style: Theme.of(ctx).textTheme.titleMedium,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () =>
+                              setSheetState(() => showQr = !showQr),
+                          icon: const Icon(Icons.qr_code_2),
+                          label: Text(showQr ? 'Hide QR' : 'Show QR'),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Amount: ₹${total.toStringAsFixed(2)}  •  Receiver: $_businessName',
-                style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(
-                    ctx,
-                  ).textTheme.bodySmall?.color?.withValues(alpha: 0.8),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Amount: ₹${total.toStringAsFixed(2)}  •  Receiver: $_businessName',
+                      style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(
+                          ctx,
+                        ).textTheme.bodySmall?.color?.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (showQr) ...[
+                      Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              ctx,
+                            ).colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Theme.of(
+                                ctx,
+                              ).dividerColor.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: QrImageView(
+                            data: upiUri,
+                            version: QrVersions.auto,
+                            size: qrSize,
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: SelectableText(
+                          upiId,
+                          style: Theme.of(ctx).textTheme.bodySmall,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      'Pay via UPI app or scan QR from another phone, then upload the payment screenshot for verification.',
+                      style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(
+                          ctx,
+                        ).textTheme.bodySmall?.color?.withValues(alpha: 0.9),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            icon: const Icon(Icons.close),
+                            label: const Text('Close'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () async {
+                              final file = await _pickPaymentScreenshot();
+                              if (file == null) return;
+                              if (mounted) Navigator.of(ctx).pop();
+                              await _completeCartSaleWithProof(
+                                checkoutId,
+                                total,
+                                file,
+                              );
+                            },
+                            icon: const Icon(Icons.upload_file),
+                            label: const Text('Upload Payment Screenshot'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          // Allow user to open another UPI app
+                          bool launched = await _tryLaunchUri(
+                            Uri.parse(upiUri),
+                          );
+                          if (!launched) {
+                            final intentUri = Uri.parse(
+                              'intent://pay?$qp#Intent;scheme=upi;end',
+                            );
+                            await _tryLaunchUri(intentUri);
+                          }
+                        },
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('Open in another UPI app'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'We opened your preferred UPI app. Once you finish the payment, tap “Payment Successful” to generate your receipt.',
-                style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(
-                    ctx,
-                  ).textTheme.bodySmall?.color?.withValues(alpha: 0.9),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      icon: const Icon(Icons.close),
-                      label: const Text('Close'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () {
-                        Navigator.of(ctx).pop();
-                        _completeSale('upi');
-                      },
-                      icon: const Icon(Icons.check_circle_outline),
-                      label: const Text('Payment Successful'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: TextButton.icon(
-                  onPressed: () async {
-                    // Open UPI via deep link first, then show chooser as fallback
-                    const upiId = 'pradeepsupergalaxy12@okicici';
-                    String pn = _sanitizeUpiName(_businessName).trim();
-                    if (pn.isEmpty) pn = 'Merchant';
-                    if (pn.length > 20) pn = pn.substring(0, 20);
-                    String tn =
-                        'Checkout ${checkoutId.substring(checkoutId.length - 6)}';
-                    if (tn.length > 40) tn = tn.substring(0, 40);
-                    final qp = [
-                      'pa=${Uri.encodeQueryComponent(upiId)}',
-                      'pn=${Uri.encodeQueryComponent(pn)}',
-                      'am=${Uri.encodeQueryComponent(total.toStringAsFixed(2))}',
-                      'cu=INR',
-                      'tr=${Uri.encodeQueryComponent(checkoutId)}',
-                      'tid=${Uri.encodeQueryComponent(checkoutId)}',
-                      'tn=${Uri.encodeQueryComponent(tn)}',
-                    ].join('&');
-                    bool launched = await _tryLaunchUri(
-                      Uri.parse('upi://pay?$qp'),
-                    );
-                    if (!launched) {
-                      final intentUri = Uri.parse(
-                        'intent://pay?$qp#Intent;scheme=upi;end',
-                      );
-                      await _tryLaunchUri(intentUri);
-                    }
-                  },
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Open in another UPI app'),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
+  }
+
+  Future<File?> _pickPaymentScreenshot() async {
+    try {
+      if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+        final ImagePicker picker = ImagePicker();
+        final XFile? shot = await picker.pickImage(source: ImageSource.gallery);
+        if (shot == null) return null;
+        return File(shot.path);
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.image,
+          allowMultiple: false,
+          withData: false,
+        );
+        if (result == null || result.files.isEmpty) return null;
+        final path = result.files.single.path;
+        if (path == null) return null;
+        return File(path);
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _uploadPaymentProof(File file, String checkoutId) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final ext = file.path.split('.').last.toLowerCase();
+      final name =
+          'payment_proofs/${checkoutId}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await Supabase.instance.client.storage
+          .from('payment_proofs')
+          .uploadBinary(
+            name,
+            bytes,
+            fileOptions: const FileOptions(
+              upsert: true,
+              contentType: 'image/jpeg',
+            ),
+          );
+      final publicUrl = Supabase.instance.client.storage
+          .from('payment_proofs')
+          .getPublicUrl(name);
+      return publicUrl;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _completeCartSaleWithProof(
+    String checkoutId,
+    double total,
+    File proof,
+  ) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final items = _cartItems
+          .map(
+            (e) => {
+              'product_id': e['id'],
+              'quantity': e['qty'],
+              'price_per_unit': (e['price'] as num).toDouble(),
+            },
+          )
+          .toList();
+
+      // Upload proof first (best-effort)
+      final proofUrl = await _uploadPaymentProof(proof, checkoutId);
+
+      final saleId = await SupabaseService.createSaleWithItems(
+        customerName: 'Walk-in Customer',
+        paymentMethod: 'upi',
+        totalAmount: total,
+        transactionId: checkoutId,
+        amountPaid: total,
+        status: 'pending',
+        paymentProofUrl: proofUrl,
+        items: items,
+      );
+
+      if (saleId != null && mounted) {
+        // Build receipt items
+        final receiptItems = _cartItems
+            .map(
+              (e) => ReceiptItem(
+                name: e['name'] ?? 'Item',
+                quantity: e['qty'] as int,
+                pricePerUnit: (e['price'] as num).toDouble(),
+              ),
+            )
+            .toList();
+
+        final receipt = ReceiptData(
+          saleId: saleId.toString(),
+          customerName: 'Walk-in Customer',
+          customerPhone: null,
+          items: receiptItems,
+          subTotal: total,
+          discount: 0,
+          finalTotal: total,
+          paymentMethod: 'upi',
+          saleDate: DateTime.now(),
+          // Note: proofUrl correlated by transactionId in storage
+        );
+        await ReceiptService.shareReceiptPdf(receipt);
+
+        // Clear cart
+        setState(() {
+          _cartItems.clear();
+          _cartCount = 0;
+        });
+
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Payment submitted for verification. Sale ID: $saleId',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      } else {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to record sale.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to record sale: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _completeBuyNowSaleWithProof(
+    String checkoutId,
+    double total,
+    Map<String, dynamic> product,
+    int qty,
+    File proof,
+  ) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      // Upload proof first (best-effort)
+      final proofUrl = await _uploadPaymentProof(proof, checkoutId);
+
+      final double price = (product['price'] as num?)?.toDouble() ?? 0.0;
+      final items = [
+        {'product_id': product['id'], 'quantity': qty, 'price_per_unit': price},
+      ];
+
+      final saleId = await SupabaseService.createSaleWithItems(
+        customerName: 'Walk-in Customer',
+        paymentMethod: 'upi',
+        totalAmount: total,
+        transactionId: checkoutId,
+        amountPaid: total,
+        status: 'pending',
+        paymentProofUrl: proofUrl,
+        items: items,
+      );
+
+      if (saleId != null && mounted) {
+        final receipt = ReceiptData(
+          saleId: saleId.toString(),
+          customerName: 'Walk-in Customer',
+          customerPhone: null,
+          items: [
+            ReceiptItem(
+              name: product['name'] ?? 'Item',
+              quantity: qty,
+              pricePerUnit: price,
+            ),
+          ],
+          subTotal: total,
+          discount: 0,
+          finalTotal: total,
+          paymentMethod: 'upi',
+          saleDate: DateTime.now(),
+        );
+        await ReceiptService.shareReceiptPdf(receipt);
+
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Payment submitted for verification. Sale ID: $saleId',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      } else {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to record sale.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to record sale: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _addToCart(Map<String, dynamic> product, {int qty = 1}) {
@@ -3810,9 +4211,33 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
     final isDesktop = constraints.maxWidth > 768;
     if (_isGridView) {
-      final crossAxisCount = isDesktop
-          ? 4
-          : (constraints.maxWidth > 480 ? 2 : 1);
+      final double maxW = constraints.maxWidth;
+      const double horizontalPadding = 32; // SliverPadding left+right
+      const double crossSpacing = 14; // grid crossAxisSpacing
+
+      // Adaptive count based on desired minimum tile width (~300px on desktop)
+      int crossAxisCount = (maxW / 300).floor();
+      if (crossAxisCount < 1) crossAxisCount = 1;
+      if (crossAxisCount > 6) crossAxisCount = 6;
+
+      // Compute effective tile width after padding and spacing
+      final double tileWidth =
+          (maxW - horizontalPadding - crossSpacing * (crossAxisCount - 1)) /
+          crossAxisCount;
+
+      // Derive aspect ratio (w/h). Smaller widths need taller cards to avoid overflow.
+      double childAspectRatio;
+      if (tileWidth < 240) {
+        childAspectRatio = 0.68;
+      } else if (tileWidth < 280) {
+        childAspectRatio = 0.70;
+      } else if (tileWidth < 340) {
+        childAspectRatio = 0.76;
+      } else if (tileWidth < 420) {
+        childAspectRatio = 0.82;
+      } else {
+        childAspectRatio = 0.88;
+      }
       return SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         sliver: SliverGrid(
@@ -3820,7 +4245,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: 14,
             mainAxisSpacing: 14,
-            childAspectRatio: isDesktop ? 0.84 : 0.88,
+            childAspectRatio: childAspectRatio,
           ),
           delegate: SliverChildBuilderDelegate((context, index) {
             final p = _filteredProducts[index];

@@ -12,6 +12,7 @@ import 'pages/replacements_history_page.dart';
 import 'pages/returns_page.dart';
 import 'pages/process_replacement_page.dart';
 import 'pages/shop_page.dart';
+import 'pages/payment_verification_page.dart';
 import 'services/supabase_service.dart';
 import 'services/theme_service.dart';
 import 'services/theme_controller.dart';
@@ -97,6 +98,7 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
         '/history/returns': (context) => const ReturnsHistoryPage(),
         '/replacements-history': (context) => const ReplacementsHistoryPage(),
         '/history/replacements': (context) => const ReplacementsHistoryPage(),
+        '/payments/verification': (context) => const PaymentVerificationPage(),
       },
     );
   }
@@ -151,7 +153,9 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
         thumbVisibility: WidgetStateProperty.all(true),
         trackVisibility: WidgetStateProperty.all(true),
         thumbColor: WidgetStateProperty.all(brandPrimary),
-        trackColor: WidgetStateProperty.all(brandPrimary.withOpacity(0.2)),
+        trackColor: WidgetStateProperty.all(
+          brandPrimary.withValues(alpha: 0.2),
+        ),
         radius: const Radius.circular(4),
         thickness: WidgetStateProperty.all(8),
       ),
@@ -209,7 +213,9 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
         thumbVisibility: WidgetStateProperty.all(true),
         trackVisibility: WidgetStateProperty.all(true),
         thumbColor: WidgetStateProperty.all(brandPrimary),
-        trackColor: WidgetStateProperty.all(brandPrimary.withOpacity(0.2)),
+        trackColor: WidgetStateProperty.all(
+          brandPrimary.withValues(alpha: 0.2),
+        ),
         radius: const Radius.circular(4),
         thickness: WidgetStateProperty.all(8),
       ),

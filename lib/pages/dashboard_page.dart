@@ -495,7 +495,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final category = product.category ?? 'Uncategorized';
       grouped[category] = (grouped[category] ?? 0) + 1;
 
-      if (product.currentStock <= 5) {
+      if (product.currentStock <= 5 && product.currentStock > 0) {
         lowStockCount++;
       }
     }
@@ -702,7 +702,7 @@ class _DashboardPageState extends State<DashboardPage> {
       0.0,
       (sum, sale) => sum + (sale.totalAmount ?? 0.0),
     );
-    final lowStockCount = products.where((p) => p.currentStock <= 5).length;
+    final lowStockCount = products.where((p) => p.currentStock <= 5 && p.currentStock > 0).length;
     final outOfStockCount = products.where((p) => p.currentStock == 0).length;
 
     final todaysRevenue = todaysSales.fold<double>(
@@ -2901,6 +2901,17 @@ class _DashboardPageState extends State<DashboardPage> {
                   Icons.account_balance_wallet,
                   _statusColors(context).success,
                   'From ${_stats['salesCount'] ?? 0} sales',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ReportsPage(
+                          initialReportType: 'Financial',
+                          initialPeriod: 'All Time',
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 _buildMetricCard(
                   'Total Profit/Loss',
@@ -2912,6 +2923,17 @@ class _DashboardPageState extends State<DashboardPage> {
                       ? _statusColors(context).success
                       : Theme.of(context).colorScheme.error,
                   (_stats['totalProfit'] ?? 0) >= 0 ? 'Profit' : 'Loss',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ReportsPage(
+                          initialReportType: 'Financial',
+                          initialPeriod: 'All Time',
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 _buildMetricCard(
                   'Low Stock Items',
@@ -2919,6 +2941,16 @@ class _DashboardPageState extends State<DashboardPage> {
                   Icons.warning,
                   _statusColors(context).warning,
                   'Items ≤5 in stock',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ReportsPage(
+                          initialReportType: 'Inventory',
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 _buildMetricCard(
                   'Total Returns',
@@ -2954,14 +2986,15 @@ class _DashboardPageState extends State<DashboardPage> {
     String value,
     IconData icon,
     Color color,
-    String subtitle,
-  ) {
+    String subtitle, {
+    VoidCallback? onTap,
+  }) {
     final width = MediaQuery.of(context).size.width;
     final isMobile = width < 480;
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {},
+        onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
@@ -3655,6 +3688,11 @@ class _DashboardPageState extends State<DashboardPage> {
                   Icons.inventory_2,
                   _twColor('indigo'),
                 ),
+                _buildSecondaryActionCard(
+                  'Payment Verification',
+                  Icons.verified,
+                  _statusColors(context).success,
+                ),
               ],
             );
           },
@@ -3913,6 +3951,8 @@ class _DashboardPageState extends State<DashboardPage> {
               context,
               MaterialPageRoute(builder: (context) => const RequestsPage()),
             );
+          } else if (title == 'Payment Verification') {
+            Navigator.pushNamed(context, '/payments/verification');
           } else if (title == 'View Inventory') {
             Navigator.push(
               context,

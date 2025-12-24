@@ -10,7 +10,14 @@ import '../models/supabase_models.dart' as supabase_models;
 import '../models/sales_purchase_models.dart';
 
 class ReportsPage extends StatefulWidget {
-  const ReportsPage({super.key});
+  final String? initialReportType;
+  final String? initialPeriod;
+
+  const ReportsPage({
+    super.key,
+    this.initialReportType,
+    this.initialPeriod,
+  });
 
   @override
   State<ReportsPage> createState() => _ReportsPageState();
@@ -31,6 +38,12 @@ class _ReportsPageState extends State<ReportsPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialReportType != null) {
+      _selectedReportType = widget.initialReportType!;
+    }
+    if (widget.initialPeriod != null) {
+      _selectedPeriod = widget.initialPeriod!;
+    }
     _loadData();
   }
 
@@ -597,7 +610,7 @@ class _ReportsPageState extends State<ReportsPage> {
     final totalProfit = netSummary.netProfit;
     final totalOrders = filteredSales.length;
     final activeProducts = _products.length;
-    final lowStockItems = _products.where((p) => p.currentStock <= 5).length;
+    final lowStockItems = _products.where((p) => p.currentStock <= 5 && p.currentStock > 0).length;
 
     return [
       {
@@ -786,6 +799,11 @@ class _ReportsPageState extends State<ReportsPage> {
         );
       case 'Custom':
         return DateTimeRange(start: _startDate, end: _endDate);
+      case 'All Time':
+        return DateTimeRange(
+          start: DateTime(2000, 1, 1),
+          end: now.add(const Duration(seconds: 1)),
+        );
       default:
         final start = DateTime(now.year, now.month, 1);
         return DateTimeRange(
@@ -847,6 +865,11 @@ class _ReportsPageState extends State<ReportsPage> {
                     _buildQuickStats(),
                     const SizedBox(height: 24),
                     _buildFinancialBreakdown(),
+                    if (_selectedReportType == 'All' ||
+                        _selectedReportType == 'Inventory') ...[
+                      const SizedBox(height: 24),
+                      _buildLowStockAlert(),
+                    ],
                     const SizedBox(height: 24),
                     _buildFiltersAndPeriod(),
                     const SizedBox(height: 16),
@@ -1072,6 +1095,9 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Widget _buildFinancialBreakdown() {
     if (_isLoading) return const SizedBox.shrink();
+    if (_selectedReportType != 'All' && _selectedReportType != 'Financial') {
+      return const SizedBox.shrink();
+    }
 
     final range = _getPeriodRange();
     final net = AccountingService.computeNetSummary(
@@ -1244,6 +1270,141 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
+  Widget _buildLowStockAlert() {
+    if (_isLoading) return const SizedBox.shrink();
+    if (_selectedReportType != 'All' && _selectedReportType != 'Inventory') {
+      return const SizedBox.shrink();
+    }
+
+    final lowStockItems = _products.where((p) => p.currentStock <= 5 && p.currentStock > 0).toList();
+    if (lowStockItems.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.12),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('⚠️', style: TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Text(
+                'Low Stock Alert',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).textTheme.titleLarge?.color,
+                ),
+              ),
+              const Spacer(),
+              _chip(
+                '${lowStockItems.length} items',
+                Theme.of(context).colorScheme.errorContainer,
+                Theme.of(context).colorScheme.error,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                  child: DataTable(
+                    headingRowHeight: 40,
+                    dataRowMinHeight: 48,
+                    columns: const [
+                      DataColumn(label: Text('Product')),
+                      DataColumn(label: Text('Stock')),
+                      DataColumn(label: Text('Status')),
+                    ],
+                    rows: lowStockItems.take(10).map((p) {
+                      return DataRow(
+                        cells: [
+                          DataCell(
+                            Container(
+                              constraints: const BoxConstraints(maxWidth: 200),
+                              child: Text(
+                                p.name,
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            Text(
+                              '${p.currentStock}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: p.currentStock == 0
+                                    ? Theme.of(context).colorScheme.error
+                                    : Colors.orange,
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: p.currentStock == 0
+                                    ? Theme.of(context).colorScheme.errorContainer
+                                    : Colors.orange.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                p.currentStock == 0 ? 'Out of Stock' : 'Low',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: p.currentStock == 0
+                                      ? Theme.of(context).colorScheme.error
+                                      : Colors.orange[800],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                ),
+              );
+            },
+          ),
+          if (lowStockItems.length > 10)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(
+                '+ ${lowStockItems.length - 10} more items...',
+                style: TextStyle(
+                  fontStyle: FontStyle.italic,
+                  color: Theme.of(context).textTheme.bodySmall?.color,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSectionHeader(String title, bool isDark) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1405,6 +1566,7 @@ class _ReportsPageState extends State<ReportsPage> {
                 'This Month',
                 'This Quarter',
                 'This Year',
+                'All Time',
                 'Custom',
               ].map((period) {
                 return DropdownMenuItem(

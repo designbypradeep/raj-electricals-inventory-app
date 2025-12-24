@@ -17,6 +17,25 @@ class SupabaseService {
   }
 
   // =====================
+  // Session Management (RPC)
+  // =====================
+  static Future<List<Map<String, dynamic>>> getMySessions() async {
+    try {
+      final response = await _client.rpc('get_my_sessions');
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      if (kDebugMode) print('Error fetching sessions: $e');
+      return [];
+    }
+  }
+
+  static Future<void> revokeSession(String sessionId) async {
+    await _client.rpc('revoke_my_session', params: {
+      'target_session_id': sessionId,
+    });
+  }
+
+  // =====================
   // System Health: Stock reconciliation (preview and apply)
   // =====================
   static Future<List<Map<String, dynamic>>> healthStockReconcilePreview({
@@ -365,6 +384,51 @@ class SupabaseService {
       }
       return false;
     }
+  }
+
+  // Fix incomplete products (missing name) by deleting them if no history, or resetting stock if history exists.
+  static Future<int> healthFixIncompleteProducts() async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    // Find products with missing name or empty name
+    final rows = await _client
+        .from('products')
+        .select('id')
+        .eq('business_id', businessId)
+        .or('name.is.null,name.eq.""');
+
+    int fixed = 0;
+    for (final r in rows as List) {
+      final id = (r as Map)['id'] as int;
+      
+      // Check for dependencies
+      final hasPurch = await _client
+          .from('purchase_items')
+          .select('id')
+          .eq('product_id', id)
+          .limit(1);
+      final hasSales = await _client
+          .from('sales_items')
+          .select('id')
+          .eq('product_id', id)
+          .limit(1);
+
+      if (hasPurch.isEmpty && hasSales.isEmpty) {
+        // Safe to delete
+        await _client.from('products').delete().eq('id', id);
+        fixed++;
+      } else {
+        // Has history, just reset stock to 0 to fix negative stock issues
+        await _client
+            .from('products')
+            .update({'current_stock': 0})
+            .eq('id', id);
+        fixed++;
+      }
+    }
+    return fixed;
   }
 
   /// Import a full backup (phase 1): restores products and product_images.

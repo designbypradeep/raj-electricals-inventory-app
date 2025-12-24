@@ -24,10 +24,15 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
   DateTime? _memberSince;
   DateTime? _lastUpdated;
 
+  // Session Management
+  List<Map<String, dynamic>> _sessions = [];
+  bool _loadingSessions = false;
+
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    _loadSessions();
   }
 
   @override
@@ -35,6 +40,37 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
     _fullNameController.dispose();
     _phoneController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSessions() async {
+    if (!mounted) return;
+    setState(() => _loadingSessions = true);
+    final sessions = await SupabaseService.getMySessions();
+    if (mounted) {
+      setState(() {
+        _sessions = sessions;
+        _loadingSessions = false;
+      });
+    }
+  }
+
+  Future<void> _revokeSession(String sessionId) async {
+    try {
+      await SupabaseService.revokeSession(sessionId);
+      if (mounted) {
+        setState(() {
+          _sessions.removeWhere((s) => s['id'] == sessionId);
+          _successMessage = 'Session revoked successfully';
+        });
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _successMessage = '');
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Failed to revoke session');
+      }
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -539,6 +575,8 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                             _buildPhoneField(),
                             const SizedBox(height: 24),
                             _buildAccountStatsCard(),
+                            const SizedBox(height: 24),
+                            _buildSessionManagement(),
                           ],
                         ),
                       ),
@@ -554,6 +592,8 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                       _buildPhoneField(),
                       const SizedBox(height: 24),
                       _buildAccountStatsCard(),
+                      const SizedBox(height: 24),
+                      _buildSessionManagement(),
                     ],
                   );
                 }
@@ -1017,5 +1057,138 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
       'Dec',
     ];
     return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  Widget _buildSessionManagement() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.security,
+                size: 16,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Active Sessions',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_loadingSessions)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(8.0),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (_sessions.isEmpty)
+            Text(
+              'No active sessions found.',
+              style: TextStyle(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.7),
+                fontSize: 13,
+              ),
+            )
+          else
+            ..._sessions.map((session) {
+              String ua = session['user_agent'] ?? 'Unknown Device';
+              // Check if known mobile/desktop
+              IconData icon = Icons.devices;
+              if (ua.toLowerCase().contains('mobile') ||
+                  ua.toLowerCase().contains('android') ||
+                  ua.toLowerCase().contains('iphone')) {
+                icon = Icons.smartphone;
+              } else if (ua.toLowerCase().contains('windows') ||
+                  ua.toLowerCase().contains('mac') ||
+                  ua.toLowerCase().contains('linux')) {
+                icon = Icons.laptop;
+              }
+
+              String ip = session['ip'] ?? 'Unknown IP';
+              String date = _formatDate(
+                DateTime.tryParse(session['updated_at'] ?? ''),
+              );
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        icon,
+                        size: 20,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.7),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            ua,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '$ip • $date',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                      color: Theme.of(context).colorScheme.error,
+                      onPressed: () => _revokeSession(session['id']),
+                      tooltip: 'Revoke',
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
   }
 }
