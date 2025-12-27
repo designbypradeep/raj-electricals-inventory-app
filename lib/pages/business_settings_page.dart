@@ -116,7 +116,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   final TextEditingController _slugController = TextEditingController();
   final RegExp _slugRegex = RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$');
   String? _loadedSlug;
-  bool _validatingSlug = false;
+  final bool _validatingSlug = false;
 
   @override
   void initState() {

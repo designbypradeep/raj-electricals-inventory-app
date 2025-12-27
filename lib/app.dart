@@ -118,10 +118,10 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
         const Color(0xFF118AB2);
     const accent1 = Color(0xFFFFD166);
     const errorColor = Color(0xFFD62828);
-    const background = Color(0xFFF9F5F3);
+    const background = Color(0xFFF8FAFC); // Cleaner Slate-50 background
     const surface = Color(0xFFFFFFFF);
     const onSurface = Color(0xFF1E1E1E);
-    const outline = Color(0xFFE0E0E0);
+    const outline = Color(0xFFE2E8F0); // Cooler outline
 
     final scheme =
         ColorScheme.fromSeed(

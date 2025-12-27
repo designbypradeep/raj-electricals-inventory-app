@@ -83,6 +83,12 @@ class _WelcomePageState extends State<WelcomePage> {
         builder: (context) => Scaffold(
           appBar: AppBar(title: const Text('Scan Shop QR')),
           body: MobileScanner(
+            controller: MobileScannerController(
+              detectionSpeed: DetectionSpeed.noDuplicates,
+              returnImage: false,
+              formats: [BarcodeFormat.qrCode],
+            ),
+            fit: BoxFit.cover,
             onDetect: (capture) {
               final List<Barcode> barcodes = capture.barcodes;
               for (final barcode in barcodes) {
@@ -121,6 +127,27 @@ class _WelcomePageState extends State<WelcomePage> {
                   }
                 }
               }
+            },
+            errorBuilder: (context, error, child) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error, color: Colors.red, size: 48),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Camera Error: ${error.errorCode}',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      error.errorDetails?.message ?? 'Unknown error',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              );
             },
           ),
         ),
