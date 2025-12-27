@@ -7,11 +7,12 @@ list(APPEND FLUTTER_PLUGIN_LIST
   connectivity_plus
   desktop_drop
   file_selector_windows
-  irondash_engine_context
   local_auth_windows
+  permission_handler_windows
   printing
+  share_plus
+  speech_to_text_windows
   sqlite3_flutter_libs
-  super_native_extensions
   url_launcher_windows
 )
 

@@ -196,6 +196,11 @@ class BusinessProfile {
   // Payment settings
   final String? upiVpa;
   final String? upiPayeeName;
+  // Shop settings
+  final String? slug;
+  final bool isActive;
+  final String? primaryColor;
+  final String? secondaryColor;
 
   BusinessProfile({
     required this.id,
@@ -220,6 +225,10 @@ class BusinessProfile {
     this.updatedAt,
     this.upiVpa,
     this.upiPayeeName,
+    this.slug,
+    this.isActive = true,
+    this.primaryColor,
+    this.secondaryColor,
   });
 
   factory BusinessProfile.fromJson(Map<String, dynamic> json) {
@@ -250,6 +259,10 @@ class BusinessProfile {
           : null,
       upiVpa: json['upi_vpa'] as String?,
       upiPayeeName: json['upi_payee_name'] as String?,
+      slug: json['slug'] as String?,
+      isActive: json['is_active'] as bool? ?? true,
+      primaryColor: json['primary_color'] as String?,
+      secondaryColor: json['secondary_color'] as String?,
     );
   }
 
@@ -277,6 +290,10 @@ class BusinessProfile {
       if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
       if (upiVpa != null) 'upi_vpa': upiVpa,
       if (upiPayeeName != null) 'upi_payee_name': upiPayeeName,
+      if (slug != null) 'slug': slug,
+      'is_active': isActive,
+      if (primaryColor != null) 'primary_color': primaryColor,
+      if (secondaryColor != null) 'secondary_color': secondaryColor,
     };
   }
 }

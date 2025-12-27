@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:raj_electricals_inventory_app/pages/welcome_page.dart';
+import 'package:raj_electricals_inventory_app/services/slug_resolver.dart';
 import 'data/app_database.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/login_page.dart';
@@ -19,6 +21,8 @@ import 'services/theme_controller.dart';
 import 'theme/status_colors.dart';
 import 'theme/brand_accents.dart';
 import 'widgets/biometric_lock_gate.dart';
+
+import 'package:package_info_plus/package_info_plus.dart';
 
 class RajElectricalsApp extends StatefulWidget {
   final AppDatabase database;
@@ -76,7 +80,7 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
       darkTheme: _buildDarkTheme(),
       initialRoute: '/',
       routes: {
-        '/': (context) => AuthWrapper(
+        '/': (context) => FlavorWrapper(
           onThemeChanged: _changeThemeMode,
           database: widget.database,
         ),
@@ -223,6 +227,92 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
         StatusColors.dark,
         BrandAccents.dark,
       ],
+    );
+  }
+}
+
+class FlavorWrapper extends StatefulWidget {
+  final Function(ThemeMode) onThemeChanged;
+  final AppDatabase database;
+  const FlavorWrapper({
+    super.key,
+    required this.onThemeChanged,
+    required this.database,
+  });
+
+  @override
+  State<FlavorWrapper> createState() => _FlavorWrapperState();
+}
+
+class _FlavorWrapperState extends State<FlavorWrapper> {
+  bool? _isShopFlavor;
+  bool _isShopResolved = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkFlavor();
+  }
+
+  Future<void> _checkFlavor() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    final isShop = packageInfo.packageName.endsWith('.shop');
+
+    if (isShop) {
+      // 1. Runtime Slug Resolution
+      try {
+        final slugResolver = SlugResolver();
+        final slug = await slugResolver.resolveInitialSlug();
+
+        if (slug != null && slug.isNotEmpty) {
+          // 2. Validate & Load Context
+          final response = await SupabaseService.client.rpc(
+            'get_public_business_by_slug',
+            params: {'p_slug': slug},
+          );
+
+          if (response != null) {
+            final profileMap = Map<String, dynamic>.from(response);
+            SupabaseService.setBusinessContext(profileMap);
+            if (mounted) {
+              setState(() {
+                _isShopResolved = true;
+              });
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error resolving shop slug: $e');
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isShopFlavor = isShop;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isShopFlavor == null) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF8FAFC),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_isShopFlavor == true) {
+      if (_isShopResolved) {
+        return ShopPage(db: widget.database);
+      } else {
+        return WelcomePage(db: widget.database);
+      }
+    }
+
+    return AuthWrapper(
+      onThemeChanged: widget.onThemeChanged,
+      database: widget.database,
     );
   }
 }

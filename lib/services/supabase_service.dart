@@ -11,7 +11,16 @@ class SupabaseService {
   static SupabaseClient get supabase => _client;
   static SupabaseClient get client => _client;
 
-  // Optional: allow public browsing by setting a default business ID
+  // Method to set business context explicitly (for Shop App runtime resolution)
+  static void setBusinessContext(Map<String, dynamic> profileMap) {
+    if (profileMap.isNotEmpty) {
+      _currentBusinessProfile = supabase_models.BusinessProfile.fromJson(
+        profileMap,
+      );
+      _defaultBusinessId = _currentBusinessProfile!.id;
+    }
+  }
+
   static void setDefaultBusinessId(String businessId) {
     _defaultBusinessId = businessId;
   }
@@ -30,9 +39,10 @@ class SupabaseService {
   }
 
   static Future<void> revokeSession(String sessionId) async {
-    await _client.rpc('revoke_my_session', params: {
-      'target_session_id': sessionId,
-    });
+    await _client.rpc(
+      'revoke_my_session',
+      params: {'target_session_id': sessionId},
+    );
   }
 
   // =====================
@@ -402,7 +412,7 @@ class SupabaseService {
     int fixed = 0;
     for (final r in rows as List) {
       final id = (r as Map)['id'] as int;
-      
+
       // Check for dependencies
       final hasPurch = await _client
           .from('purchase_items')
@@ -3476,7 +3486,7 @@ class SupabaseService {
     required String url,
     required String anonKey,
   }) async {
-    await Supabase.initialize(url: url, anonKey: anonKey);
+    await Supabase.initialize(url: url, anonKey: anonKey, debug: false);
     _client = Supabase.instance.client;
   }
 
@@ -3513,10 +3523,33 @@ class SupabaseService {
         throw Exception('Invalid sale total amount');
       }
 
+      // Handle Public Shop Orders (Anonymous) via Secure RPC
+      final user = _client.auth.currentUser;
+      if (user == null) {
+        final rpcParams = {
+          'p_business_id': businessId,
+          'p_customer_name': customerName ?? 'Walk-in Customer',
+          'p_customer_phone': customerPhone,
+          'p_total_amount': totalAmount,
+          'p_payment_method': paymentMethod,
+          'p_items': items,
+          'p_transaction_id': transactionId,
+          'p_payment_proof_url': paymentProofUrl,
+        };
+
+        final rpcResp = await _client.rpc(
+          'submit_shop_order',
+          params: rpcParams,
+        );
+        return (rpcResp as num).toInt();
+      }
+
       for (final it in items) {
         final int pid = it['product_id'] as int;
         final int qty = (it['quantity'] as int);
         final double ppu = (it['price_per_unit'] as num).toDouble();
+
+        // ... standard validation for authenticated users which follows ...
         if (pid <= 0 || qty <= 0 || ppu < 0) {
           throw Exception('Invalid sale item data');
         }
@@ -4184,14 +4217,22 @@ class SupabaseService {
         // Unauthenticated/public shop mode: try default business ID
         if (_defaultBusinessId != null && _defaultBusinessId!.isNotEmpty) {
           try {
-            final byId = await _client
-                .from('business_profiles')
-                .select()
-                .eq('id', _defaultBusinessId!)
-                .maybeSingle();
+            // Use RPC for secure public access
+            final response = await _client.rpc(
+              'get_public_business_profile',
+              params: {'target_business_id': _defaultBusinessId!},
+            );
+
+            dynamic byId;
+            if (response is List && response.isNotEmpty) {
+              byId = response.first;
+            } else if (response is Map) {
+              byId = response;
+            }
+
             if (byId != null) {
-              _currentBusinessProfile =
-                  supabase_models.BusinessProfile.fromJson(byId);
+              _currentBusinessProfile = supabase_models
+                  .BusinessProfile.fromJson(Map<String, dynamic>.from(byId));
               return _currentBusinessProfile;
             }
           } catch (_) {}
@@ -4246,16 +4287,7 @@ class SupabaseService {
             _currentBusinessProfile = supabase_models.BusinessProfile.fromJson(
               businessResponse,
             );
-            if (kDebugMode) {
-              print(
-                'Migrated business profile from existing user to current user',
-              );
-            }
-            if (kDebugMode) {
-              print(
-                'Business ID: $businessId - Categories and products should now be accessible',
-              );
-            }
+
             return _currentBusinessProfile;
           }
         }
@@ -4539,14 +4571,24 @@ class SupabaseService {
     if (businessId == null) return [];
 
     try {
-      final response = await _client
-          .from('products')
-          .select()
-          .eq('business_id', businessId)
-          .neq('status', 'deleted')
-          .neq('status', 'archived');
+      dynamic response;
+      if (currentUser == null) {
+        // Public/Shop mode: use secure RPC
+        response = await _client.rpc(
+          'get_public_products',
+          params: {'target_business_id': businessId},
+        );
+      } else {
+        // Authenticated mode: use standard table access
+        response = await _client
+            .from('products')
+            .select()
+            .eq('business_id', businessId)
+            .neq('status', 'deleted')
+            .neq('status', 'archived');
+      }
 
-      return response
+      return (response as List)
           .map<supabase_models.Product>(
             (json) => supabase_models.Product.fromJson(json),
           )

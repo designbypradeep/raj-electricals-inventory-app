@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import '../widgets/page_header.dart';
 import '../services/supabase_service.dart';
 import '../models/supabase_models.dart';
@@ -109,6 +112,12 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
     'Puducherry',
   ];
 
+  // Slug Logic
+  final TextEditingController _slugController = TextEditingController();
+  final RegExp _slugRegex = RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$');
+  String? _loadedSlug;
+  bool _validatingSlug = false;
+
   @override
   void initState() {
     super.initState();
@@ -121,6 +130,235 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   }
 
   // UPI VPA validation is no longer required here since it is app-managed
+
+  // ===================== Shop Access Section =====================
+  Widget _buildShopAccessSection() {
+    final slug = _loadedSlug;
+    final hasSlug = slug != null && slug.isNotEmpty;
+    // Using the custom scheme as defined in AndroidManifest/Runner
+    final shopLink = hasSlug ? 'myshop://store/$slug' : 'Not set';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withOpacity(0.1),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionHeader('Shop Access', Icons.storefront),
+            const SizedBox(height: 24),
+
+            if (!hasSlug)
+              Center(
+                child: Column(
+                  children: [
+                    const Text('No Shop Code set.'),
+                    const SizedBox(height: 8),
+                    ElevatedButton(
+                      onPressed: _editSlug,
+                      child: const Text('Create Shop Code'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Column(
+                children: [
+                  // Shop Code Display
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.primary.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'SHOP CODE',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              slug,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined),
+                          onPressed: _editSlug,
+                          tooltip: 'Edit Shop Code',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.copy),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: slug));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Shop Code copied')),
+                            );
+                          },
+                          tooltip: 'Copy Code',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // QR & Link Row
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final isSmall = constraints.maxWidth < 500;
+                      return Flex(
+                        direction: isSmall ? Axis.vertical : Axis.horizontal,
+                        crossAxisAlignment: isSmall
+                            ? CrossAxisAlignment.center
+                            : CrossAxisAlignment.start,
+                        children: [
+                          // QR Code
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
+                            child: QrImageView(
+                              data: 'myshop://store/$slug',
+                              version: QrVersions.auto,
+                              size: 140.0,
+                              backgroundColor: Colors.white,
+                            ),
+                          ),
+                          if (isSmall)
+                            const SizedBox(height: 24)
+                          else
+                            const SizedBox(width: 24),
+
+                          // Link Actions
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Share this link with customers:',
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.surface,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: Theme.of(context).dividerColor,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          shopLink,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: () {
+                                          Clipboard.setData(
+                                            ClipboardData(text: shopLink),
+                                          );
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Link copied'),
+                                            ),
+                                          );
+                                        },
+                                        icon: const Icon(Icons.copy, size: 18),
+                                        label: const Text('Copy Link'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: () {
+                                          Share.share(
+                                            'Check out my shop: $shopLink',
+                                          );
+                                        },
+                                        icon: const Icon(Icons.share, size: 18),
+                                        label: const Text('Share'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   // ===================== Brand Colors (Live Preview) =====================
   Widget _buildBrandColorsSection() {
@@ -586,6 +824,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
           _gstNumberController.text = businessProfile.gstNumber ?? '';
           _panNumberController.text = businessProfile.panNumber ?? '';
           _logoUrl = businessProfile.logoUrl;
+          _loadedSlug = businessProfile.slug;
           _upiVpaController.text = _staticUpiVpa;
         });
       }
@@ -593,6 +832,88 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
       _showError('Failed to load business profile: $e');
     } finally {
       setState(() {});
+    }
+  }
+
+  Future<void> _editSlug() async {
+    _slugController.text = _loadedSlug ?? '';
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Shop Code'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'This code is used for your shop link and QR code.\n'
+              'Changing it will invalidate old links.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _slugController,
+              decoration: const InputDecoration(
+                labelText: 'Shop Code',
+                hintText: 'e.g. raj-electricals',
+                border: OutlineInputBorder(),
+                prefixText: 'myshop://store/',
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9-]')),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, _slugController.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty && result != _loadedSlug) {
+      if (!_slugRegex.hasMatch(result)) {
+        _showError(
+          'Invalid Shop Code. Use lowercase letters, numbers, and hyphens only.',
+        );
+        return;
+      }
+
+      setState(() {
+        _isSaving = true;
+      });
+
+      try {
+        final currentProfile = await SupabaseService.getBusinessProfile();
+        if (currentProfile != null) {
+          // Check uniqueness (handled by DB constraint, but nice to check first if possible,
+          // but for now relying on DB error or success)
+          await SupabaseService.updateBusinessProfile({'slug': result});
+
+          setState(() {
+            _loadedSlug = result;
+            _successMessage = 'Shop Code updated successfully!';
+          });
+
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) setState(() => _successMessage = null);
+          });
+        }
+      } catch (e) {
+        if (e.toString().contains('unique constraint')) {
+          _showError('This Shop Code is already taken. Please choose another.');
+        } else {
+          _showError('Failed to update Shop Code: $e');
+        }
+      } finally {
+        if (mounted) setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -1057,6 +1378,11 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                               }
                             },
                           ),
+
+                          const SizedBox(height: 40),
+
+                          // Shop Access Section
+                          _buildShopAccessSection(),
 
                           const SizedBox(height: 40),
 
