@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import '../widgets/page_header.dart';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 import '../theme/ui_tokens.dart';
 
 class ReplacementsHistoryPage extends StatefulWidget {
@@ -951,6 +952,16 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
   }
 
   Future<void> _updateStatus(int id, String status) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot update status.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final ok = await SupabaseService.updateReplacementStatus(
       replacementId: id,
       status: status,
@@ -969,6 +980,16 @@ class _ReplacementsHistoryPageState extends State<ReplacementsHistoryPage> {
   }
 
   Future<void> _confirmAndDelete(int id) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot delete replacement.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final yes = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(

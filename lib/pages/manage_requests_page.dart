@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/page_header.dart';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 
 class ManageRequestsPage extends StatefulWidget {
   const ManageRequestsPage({super.key});
@@ -500,6 +501,23 @@ class _ManageRequestsPageState extends State<ManageRequestsPage> {
   }
 
   void _confirmClearAll() {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Text('You are offline. Cannot clear requests.'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -545,6 +563,23 @@ class _ManageRequestsPageState extends State<ManageRequestsPage> {
   }
 
   void _confirmDeleteRequest(int requestId) {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Text('You are offline. Cannot delete request.'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -592,6 +627,23 @@ class _ManageRequestsPageState extends State<ManageRequestsPage> {
   }
 
   Future<void> _deleteRequestItem(int itemId) async {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Text('You are offline. Cannot remove item.'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     final ok = await SupabaseService.deleteRequestItem(itemId);
     if (ok) {
       setState(() {

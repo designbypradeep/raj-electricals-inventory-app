@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:raj_electricals_inventory_app/models/supabase_models.dart';
 import 'package:raj_electricals_inventory_app/services/supabase_service.dart';
+import 'package:raj_electricals_inventory_app/services/connectivity_service.dart';
 import 'package:raj_electricals_inventory_app/widgets/page_header.dart';
 
 class SuppliersPage extends StatefulWidget {
@@ -107,6 +108,15 @@ class _SuppliersPageState extends State<SuppliersPage> {
   }
 
   Future<void> _showSupplierDialog({Supplier? supplier}) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot manage suppliers.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final result = await showDialog<Supplier>(
       context: context,
       builder: (context) => _SupplierDialog(supplier: supplier),
@@ -150,6 +160,15 @@ class _SuppliersPageState extends State<SuppliersPage> {
   }
 
   Future<void> _deleteSupplier(Supplier supplier) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot delete supplier.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

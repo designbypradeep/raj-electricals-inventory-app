@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/page_header.dart';
 import '../services/supabase_service.dart';
 import '../models/supabase_models.dart' as models;
+import '../services/connectivity_service.dart';
 
 class ArchivedProductsPage extends StatefulWidget {
   const ArchivedProductsPage({super.key});
@@ -63,6 +64,22 @@ class _ArchivedProductsPageState extends State<ArchivedProductsPage> {
   }
 
   Future<void> _restoreProduct(models.Product p) async {
+    if (!ConnectivityService().isOnline.value) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.wifi_off, color: Colors.white),
+              SizedBox(width: 8),
+              Text('You are offline. Cannot restore product.'),
+            ],
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final ok = await SupabaseService.restoreProductById(p.id!);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -79,6 +96,22 @@ class _ArchivedProductsPageState extends State<ArchivedProductsPage> {
   }
 
   Future<void> _deleteProduct(models.Product p) async {
+    if (!ConnectivityService().isOnline.value) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.wifi_off, color: Colors.white),
+              SizedBox(width: 8),
+              Text('You are offline. Cannot delete product.'),
+            ],
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

@@ -8,6 +8,7 @@ import '../data/app_database.dart';
 import '../models/supabase_models.dart' as supabase_models;
 import '../services/supabase_service.dart';
 import '../services/image_storage_service.dart';
+import '../services/connectivity_service.dart';
 import '../widgets/page_header.dart';
 
 class CatalogPage extends StatefulWidget {
@@ -295,6 +296,16 @@ class _CatalogPageState extends State<CatalogPage> {
   }
 
   Future<void> _bulkDeleteProducts() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot delete products.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     if (_selectedProducts.isEmpty) return;
 
     final confirmed = await showDialog<bool>(
@@ -355,6 +366,16 @@ class _CatalogPageState extends State<CatalogPage> {
   }
 
   Future<void> _bulkEditProducts() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot edit products.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     if (_selectedProducts.isEmpty) return;
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -414,6 +435,16 @@ class _CatalogPageState extends State<CatalogPage> {
   }
 
   Future<void> _bulkChangeCategory() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot change categories.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     if (_selectedProducts.isEmpty) return;
 
     final selectedCategory = await showDialog<String>(
@@ -3171,6 +3202,16 @@ class _EditProductDialogState extends State<EditProductDialog> {
   }
 
   Future<void> _updateProduct() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot update product.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -3571,6 +3612,16 @@ class _EditProductDialogState extends State<EditProductDialog> {
   }
 
   Future<void> _showAddCategoryDialog() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot add new category.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     _newCategoryController.clear();
     final result = await showDialog<String>(
       context: context,

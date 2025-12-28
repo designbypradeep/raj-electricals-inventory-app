@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:raj_electricals_inventory_app/models/sales_purchase_models.dart';
 import 'package:raj_electricals_inventory_app/services/supabase_service.dart';
-import 'package:raj_electricals_inventory_app/models/supabase_models.dart' as supabase_models;
+import 'package:raj_electricals_inventory_app/models/supabase_models.dart'
+    as supabase_models;
+import 'package:raj_electricals_inventory_app/services/connectivity_service.dart';
 import 'package:raj_electricals_inventory_app/widgets/page_header.dart';
 
 class SupplierReturnsPage extends StatefulWidget {
@@ -205,14 +207,16 @@ class _SupplierReturnsPageState extends State<SupplierReturnsPage> {
                                 Radio<String>(
                                   value: 'credit',
                                   groupValue: _refundType,
-                                  onChanged: (v) => setState(() => _refundType = v!),
+                                  onChanged: (v) =>
+                                      setState(() => _refundType = v!),
                                 ),
                                 const Text('Credit'),
                                 const SizedBox(width: 8),
                                 Radio<String>(
                                   value: 'cash',
                                   groupValue: _refundType,
-                                  onChanged: (v) => setState(() => _refundType = v!),
+                                  onChanged: (v) =>
+                                      setState(() => _refundType = v!),
                                 ),
                                 const Text('Cash'),
                               ],
@@ -247,7 +251,10 @@ class _SupplierReturnsPageState extends State<SupplierReturnsPage> {
                       const SizedBox(height: 12),
                       const Text(
                         'Return Items',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       _buildReturnItemsList(),
@@ -272,9 +279,7 @@ class _SupplierReturnsPageState extends State<SupplierReturnsPage> {
                           ),
                           Text(
                             '₹${_computeTotal().toStringAsFixed(2)}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
+                            style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w700),
                           ),
                         ],
@@ -285,15 +290,29 @@ class _SupplierReturnsPageState extends State<SupplierReturnsPage> {
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: () async {
+                            if (!ConnectivityService().isOnline.value) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'You are offline. Cannot save return.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
                             if (!_formKey.currentState!.validate()) return;
                             if (_returnItems.isEmpty) {
-                              setState(() => _errorMessage = 'Add at least one return item');
+                              setState(
+                                () => _errorMessage =
+                                    'Add at least one return item',
+                              );
                               return;
                             }
                             setState(() => _errorMessage = null);
                             try {
                               await SupabaseService.createPurchaseReturn(
-                                supplierName: _supplierNameController.text.trim(),
+                                supplierName: _supplierNameController.text
+                                    .trim(),
                                 returnDate: _returnDate,
                                 refundType: _refundType,
                                 items: _returnItems,
@@ -308,9 +327,12 @@ class _SupplierReturnsPageState extends State<SupplierReturnsPage> {
                                 _refundType = 'credit';
                               });
                               await Future.delayed(const Duration(seconds: 2));
-                              if (mounted) setState(() => _successMessage = null);
+                              if (mounted)
+                                setState(() => _successMessage = null);
                             } catch (e) {
-                              setState(() => _errorMessage = 'Error saving return: $e');
+                              setState(
+                                () => _errorMessage = 'Error saving return: $e',
+                              );
                             }
                           },
                           child: const Text('Save Return'),
@@ -387,7 +409,9 @@ class __AddReturnItemDialogState extends State<_AddReturnItemDialog> {
       });
       return;
     }
-    SupabaseService.searchProductsQuick(_searchController.text).then((products) {
+    SupabaseService.searchProductsQuick(_searchController.text).then((
+      products,
+    ) {
       setState(() {
         _searchResults = products;
       });

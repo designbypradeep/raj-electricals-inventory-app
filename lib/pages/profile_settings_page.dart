@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/page_header.dart';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 
 class ProfileSettingsPage extends StatefulWidget {
   const ProfileSettingsPage({super.key});
@@ -177,6 +178,23 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
   }
 
   Future<void> _updateProfile() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Text('You are offline. Cannot update profile.'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -1102,10 +1120,9 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
             Text(
               'No active sessions found.',
               style: TextStyle(
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.7),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
                 fontSize: 13,
               ),
             )
@@ -1142,10 +1159,9 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                       child: Icon(
                         icon,
                         size: 20,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.7),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1168,10 +1184,9 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                             '$ip • $date',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.5),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.5),
                             ),
                           ),
                         ],

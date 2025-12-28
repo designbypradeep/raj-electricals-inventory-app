@@ -3,6 +3,7 @@ import 'dart:io';
 import '../widgets/page_header.dart';
 import 'manage_requests_page.dart';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -170,6 +171,13 @@ class _RequestsPageState extends State<RequestsPage> {
 
   Future<void> _saveRequest() async {
     if (!_formKey.currentState!.validate() || _requestItems.isEmpty) {
+      return;
+    }
+
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You are offline. Cannot save request.')),
+      );
       return;
     }
 

@@ -16,6 +16,7 @@ import 'pages/process_replacement_page.dart';
 import 'pages/shop_page.dart';
 import 'pages/payment_verification_page.dart';
 import 'services/supabase_service.dart';
+import 'services/connectivity_service.dart';
 import 'services/theme_service.dart';
 import 'services/theme_controller.dart';
 import 'theme/status_colors.dart';
@@ -44,6 +45,7 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
     _loadThemeMode();
     _themeController.addListener(_onThemeColorsChanged);
     _themeController.loadSavedColors();
+    ConnectivityService().initialize();
   }
 
   void _loadThemeMode() async {
@@ -67,6 +69,7 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
   @override
   void dispose() {
     _themeController.removeListener(_onThemeColorsChanged);
+    ConnectivityService().dispose();
     super.dispose();
   }
 
@@ -78,6 +81,44 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
       themeMode: _themeMode,
       theme: _buildLightTheme(),
       darkTheme: _buildDarkTheme(),
+      builder: (context, child) {
+        return Stack(
+          children: [
+            if (child != null) child,
+            ValueListenableBuilder<bool>(
+              valueListenable: ConnectivityService().isOnline,
+              builder: (context, isOnline, _) {
+                if (isOnline) return const SizedBox.shrink();
+                return Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Material(
+                    color: Colors.red.shade700,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 4,
+                        horizontal: 16,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.wifi_off, color: Colors.white, size: 16),
+                          SizedBox(width: 8),
+                          Text(
+                            'No Internet Connection',
+                            style: TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        );
+      },
       initialRoute: '/',
       routes: {
         '/': (context) => FlavorWrapper(
@@ -118,10 +159,10 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
         const Color(0xFF118AB2);
     const accent1 = Color(0xFFFFD166);
     const errorColor = Color(0xFFD62828);
-    const background = Color(0xFFF8FAFC); // Cleaner Slate-50 background
+    const background = Color(0xFFEFF3F6); // Darker Cool Grey for contrast
     const surface = Color(0xFFFFFFFF);
     const onSurface = Color(0xFF1E1E1E);
-    const outline = Color(0xFFE2E8F0); // Cooler outline
+    const outline = Color(0xFFE2E8F0);
 
     final scheme =
         ColorScheme.fromSeed(
@@ -135,8 +176,9 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
           error: errorColor,
           onError: Colors.white,
           surface: surface,
+          surfaceContainerLow: const Color(0xFFFFF9F6), // Warm tint for cards
           onSurface: onSurface,
-          tertiary: accent1, // Warning/Accent
+          tertiary: accent1,
           onTertiary: onSurface,
           outline: outline,
         );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/page_header.dart';
 import '../widgets/search_bar_widget.dart';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 import '../models/sales_purchase_models.dart' as models;
 import 'package:intl/intl.dart';
 
@@ -209,6 +210,16 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
   }
 
   Future<void> _handleBulkDelete() async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot delete sales.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     if (_selectedSales.isEmpty) return;
 
     final selectedSalesData = _filteredSales

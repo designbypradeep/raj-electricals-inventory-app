@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 import '../models/supabase_models.dart' as supabase;
 import '../widgets/page_header.dart';
 import '../widgets/product_search_field.dart';
@@ -218,6 +219,24 @@ class _PurchasePageState extends State<PurchasePage> {
   }
 
   Future<void> _savePurchase() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Text('You are offline. Cannot save purchase.'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     if (_dealerNameController.text.trim().isEmpty) {
       _showError('Please enter dealer name');
       return;

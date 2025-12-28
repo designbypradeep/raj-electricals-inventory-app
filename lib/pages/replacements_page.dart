@@ -3,6 +3,7 @@ import '../widgets/page_header.dart';
 import '../widgets/search_bar_widget.dart';
 import '../data/app_database.dart';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 
 class ReplacementsPage extends StatefulWidget {
   final AppDatabase db;
@@ -987,6 +988,14 @@ class _ReplacementsPageState extends State<ReplacementsPage> {
           if (isPending) ...[
             TextButton(
               onPressed: () {
+                if (!ConnectivityService().isOnline.value) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('You are offline. Cannot decline.'),
+                    ),
+                  );
+                  return;
+                }
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -999,6 +1008,14 @@ class _ReplacementsPageState extends State<ReplacementsPage> {
             ),
             ElevatedButton(
               onPressed: () {
+                if (!ConnectivityService().isOnline.value) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('You are offline. Cannot approve.'),
+                    ),
+                  );
+                  return;
+                }
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(

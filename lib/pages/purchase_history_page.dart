@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../theme/ui_tokens.dart';
 import '../models/sales_purchase_models.dart' as models;
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 import '../widgets/page_header.dart';
 
 class PurchaseHistoryPage extends StatefulWidget {
@@ -43,6 +44,16 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
   }
 
   Future<void> _confirmAndDeletePurchase(models.Purchase purchase) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot delete purchase.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final items = _safePurchaseItems(purchase);
     final hasItems = items.isNotEmpty;
     final rootContext = context; // keep a stable context

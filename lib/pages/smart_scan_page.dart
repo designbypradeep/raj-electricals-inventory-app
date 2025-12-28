@@ -252,6 +252,8 @@ class _SmartScanPageState extends State<SmartScanPage>
 
     // Build tokens
     final ordered = <String>[];
+
+    // 1. Barcodes are highest priority
     if (codes.isNotEmpty) {
       ordered.addAll(
         codes
@@ -260,17 +262,138 @@ class _SmartScanPageState extends State<SmartScanPage>
             .take(2),
       );
     }
-    // Prefer crop OCR words early to capture brands near the object
+
+    // 2. Crop OCR Words (Brands/Model numbers)
     ordered.addAll(cropOcrWords);
+
+    // 3. Filtered Labels (Crop)
+    // Filter out hallucinations common in basic ML models for electrical items
+    final ignoredLabels = {
+      'musical instrument',
+      'guitar',
+      'piano',
+      'drum',
+      'furniture',
+      'clothing',
+      'shoe',
+      'plant',
+      'animal',
+      'food',
+      'vehicle',
+      'art',
+      'toy',
+      'room',
+    };
+
+    // Priority labels: If we find these, boost them to the TOP!
+    final priorityLabels = {
+      'switch',
+      'socket',
+      'bulb',
+      'screwdriver',
+      'plier',
+      'screw',
+      'plug',
+      'pipe',
+      'glue',
+      'light',
+      'tape',
+      'wire',
+      'cable',
+      'fan',
+      'motor',
+      'board',
+      'box',
+      'control',
+      'power',
+      'electric',
+      'hardware',
+      'tool',
+      'cutter',
+      'drill',
+      'lamp',
+      'led',
+      'holder',
+    };
+
+    // Generic materials to deprioritize (only use if nothing else found)
+    final genericLabels = {
+      'metal',
+      'plastic',
+      'wood',
+      'glass',
+      'rectangle',
+      'square',
+      'circle',
+      'material',
+      'pattern',
+      'technology',
+      'electronic device',
+      'gadget',
+    };
+
+    bool isRelevantLabel(String label) {
+      final l = label.toLowerCase();
+      if (ignoredLabels.any((bad) => l.contains(bad))) return false;
+      return true;
+    }
+
+    bool isPriority(String label) {
+      final l = label.toLowerCase();
+      return priorityLabels.any((p) => l.contains(p));
+    }
+
     cropLabels.sort((a, b) => b.confidence.compareTo(a.confidence));
-    ordered.addAll(cropLabels.map((l) => l.label.toLowerCase()));
+
+    final validCropLabels = cropLabels
+        .map((l) => l.label.toLowerCase())
+        .where(isRelevantLabel)
+        .toList();
+
+    // Insert Priority Labels First
+    ordered.addAll(validCropLabels.where((l) => isPriority(l)));
+    // Then Specific Non-Priority
+    ordered.addAll(
+      validCropLabels.where(
+        (l) => !isPriority(l) && !genericLabels.contains(l),
+      ),
+    );
+    // Then Generic (Last)
+    ordered.addAll(validCropLabels.where((l) => genericLabels.contains(l)));
+
+    // 4. Object Labels (Filtered)
+    final objLabels = objects
+        .expand((o) => o.labels.map((l) => l.text.toLowerCase()))
+        .where(isRelevantLabel)
+        .toList();
+    ordered.addAll(objLabels.where((l) => isPriority(l)));
+    ordered.addAll(
+      objLabels.where((l) => !isPriority(l) && !genericLabels.contains(l)),
+    );
+    ordered.addAll(objLabels.where((l) => genericLabels.contains(l)));
+
+    // 5. Full Image Labels (Filtered, Lower Priority)
     final fullLabels = [...labels]
       ..sort((a, b) => b.confidence.compareTo(a.confidence));
-    ordered.addAll(fullLabels.map((l) => l.label.toLowerCase()));
-    ordered.addAll(
-      objects.expand((o) => o.labels.map((l) => l.text.toLowerCase())),
-    );
 
+    final validFullLabels = fullLabels
+        .map((l) => l.label.toLowerCase())
+        .where(isRelevantLabel)
+        .take(8)
+        .toList();
+
+    ordered.addAll(validFullLabels.where((l) => isPriority(l)));
+    ordered.addAll(
+      validFullLabels.where(
+        (l) => !isPriority(l) && !genericLabels.contains(l),
+      ),
+    );
+    // Don't add generic full-image labels if we have anything else.
+    if (ordered.isEmpty) {
+      ordered.addAll(validFullLabels.where((l) => genericLabels.contains(l)));
+    }
+
+    // 6. Full OCR (Fallback)
     final buf = StringBuffer();
     for (final b in recognized.blocks) {
       for (final line in b.lines) {
@@ -278,9 +401,10 @@ class _SmartScanPageState extends State<SmartScanPage>
       }
     }
     final ocr = buf.toString().toLowerCase();
-    ordered.addAll(
-      ocr.split(RegExp(r'[^a-z0-9\-]+')).where((w) => w.length >= 3),
-    );
+    final ocrWords = ocr
+        .split(RegExp(r'[^a-z0-9\-]+'))
+        .where((w) => w.length >= 3);
+    ordered.addAll(ocrWords);
 
     // Return compact query
     final tokens = ordered.where((w) => w.isNotEmpty).toSet().toList();

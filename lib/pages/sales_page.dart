@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/supabase_models.dart' as supabase;
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 import '../widgets/page_header.dart';
 import '../widgets/product_search_field.dart';
 import '../services/receipt_service.dart';
@@ -330,6 +331,23 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   Future<void> _completeSale() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Text('You are offline. Cannot complete sale.'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     if (_salesItems.isEmpty) return;
 
     setState(() {
@@ -361,8 +379,8 @@ class _SalesPageState extends State<SalesPage> {
 
       final computedPaid = _paidNowController.text.trim().isEmpty
           ? (_paymentMethod.trim().toLowerCase() == 'credit'
-              ? 0.0
-              : _finalTotal)
+                ? 0.0
+                : _finalTotal)
           : _paidNow;
 
       final newSaleId = await SupabaseService.createSaleWithItems(
@@ -1987,17 +2005,17 @@ class _SalesPageState extends State<SalesPage> {
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: BorderSide(
-                              color: Theme.of(context)
-                                  .dividerColor
-                                  .withValues(alpha: 0.3),
+                              color: Theme.of(
+                                context,
+                              ).dividerColor.withValues(alpha: 0.3),
                             ),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: BorderSide(
-                              color: Theme.of(context)
-                                  .dividerColor
-                                  .withValues(alpha: 0.3),
+                              color: Theme.of(
+                                context,
+                              ).dividerColor.withValues(alpha: 0.3),
                             ),
                           ),
                           focusedBorder: OutlineInputBorder(
@@ -2022,7 +2040,9 @@ class _SalesPageState extends State<SalesPage> {
                             'Paid Now (₹):',
                             style: TextStyle(
                               fontWeight: FontWeight.w500,
-                              color: Theme.of(context).textTheme.bodyLarge?.color,
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodyLarge?.color,
                             ),
                           ),
                           const SizedBox(height: 8),

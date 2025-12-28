@@ -23,6 +23,7 @@ import 'dart:io';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'smart_scan_page.dart';
+import '../services/connectivity_service.dart';
 
 class ShopPage extends StatefulWidget {
   final AppDatabase db;
@@ -126,7 +127,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         },
         onStatus: (val) {
           debugPrint('Speech status: $val');
-          setState(() {});
+          if (val == 'done' || val == 'notListening') {
+            setState(() => _isListening = false);
+          }
         },
       );
     } catch (e) {
@@ -151,23 +154,34 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       setState(() => _isListening = false);
     } else {
       setState(() => _isListening = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Listening... Say product name'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Theme.of(context).primaryColor,
+        ),
+      );
       await _speech.listen(
         onResult: (val) {
           setState(() {
             _searchQuery = val.recognizedWords;
             _searchController.text = _searchQuery;
-            if (val.hasConfidenceRating && val.confidence > 0) {
-              // _isListening = false; // keep listening until done or silence
+            if (val.finalResult) {
+              _isListening = false;
             }
           });
           _onSearchChanged(_searchQuery);
         },
-
-        listenOptions: stt.SpeechListenOptions(
-          cancelOnError: true,
-          listenMode: stt.ListenMode.search,
-        ),
+        listenFor: const Duration(seconds: 10),
+        pauseFor: const Duration(seconds: 3),
+        partialResults: true,
+        localeId: 'en_IN', // Prefer Indian English
+        cancelOnError: true,
+        listenMode: stt.ListenMode.search,
       );
+      // Auto-stop listening handling is tricky without status listener,
+      // but UI will update via _isListening flag if we toggle it manually or on specific events.
+      // Ideally, we'd use a status listener in initSpeech, but valid for now.
     }
   }
 
@@ -608,7 +622,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           controller: _searchController,
                           onChanged: _onSearchChanged,
                           decoration: InputDecoration(
-                            hintText: 'Search products...',
+                            hintText: _isListening
+                                ? 'Listening...'
+                                : 'Search products...',
                             hintStyle: TextStyle(
                               fontSize: 14,
                               color: cs.onSurfaceVariant,
@@ -633,15 +649,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                       _onSearchChanged('');
                                     },
                                   ),
-                                IconButton(
-                                  icon: Icon(
-                                    _isListening ? Icons.mic : Icons.mic_none,
-                                    size: 20,
-                                    color: _isListening ? Colors.red : null,
+                                if (_speechAvailable)
+                                  IconButton(
+                                    icon: Icon(
+                                      _isListening ? Icons.mic : Icons.mic_none,
+                                      size: 20,
+                                      color: _isListening ? Colors.red : null,
+                                    ),
+                                    onPressed: () => _listen(context),
+                                    tooltip: 'Voice Search',
                                   ),
-                                  onPressed: () => _listen(context),
-                                  tooltip: 'Voice Search',
-                                ),
                                 const SizedBox(width: 4),
                               ],
                             ),
@@ -920,6 +937,23 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     Map<String, dynamic> product,
     int qty,
   ) async {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Text('You are offline. Cannot buy now.'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     final int stock = (product['stock'] as int?) ?? 0;
     if (stock <= 0) {
       if (mounted) {
@@ -2393,7 +2427,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     );
 
     try {
-      final sale = await SupabaseService.getSaleWithItemsById(result);
+      // Use the secure RPC for public shop lookup
+      final sale = await SupabaseService.getShopReceipt(result);
       if (!mounted) return;
       Navigator.of(context).pop(); // close loading
 
@@ -2406,26 +2441,21 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         return;
       }
 
-      // Build receipt from fetched sale
+      // Build receipt from fetched sale (RPC returns 'items' array)
       final itemsRaw = List<Map<String, dynamic>>.from(
-        (sale['sales_items'] as List?)?.map(
+        (sale['items'] as List?)?.map(
               (e) => Map<String, dynamic>.from(e as Map),
             ) ??
             const [],
       );
       final items = <ReceiptItem>[];
       for (final it in itemsRaw) {
-        final name = (it['products'] is Map)
-            ? (((it['products'] as Map)['name']) as String?)
-            : null;
+        // RPC structure: {product_name, quantity, price_per_unit, subtotal}
+        final name = it['product_name'] as String?;
         final qty = (it['quantity'] as num?)?.toInt() ?? 0;
         final ppu = (it['price_per_unit'] as num?)?.toDouble() ?? 0.0;
         items.add(
-          ReceiptItem(
-            name: name ?? 'Item #${it['product_id']}',
-            quantity: qty,
-            pricePerUnit: ppu,
-          ),
+          ReceiptItem(name: name ?? 'Item', quantity: qty, pricePerUnit: ppu),
         );
       }
 
@@ -2435,9 +2465,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       );
       final double totalAmount =
           (sale['total_amount'] as num?)?.toDouble() ?? subTotal;
-      double discount =
-          (sale['discount'] as num?)?.toDouble() ?? (subTotal - totalAmount);
+      // Discount might not be in RPC or different key, check if needed
+      // RPC returns fields matching sales table usually
+      double discount = 0.0;
+      // If RPC doesn't return discount explicitly, calc from totals
+      if (sale.containsKey('discount')) {
+        discount = (sale['discount'] as num?)?.toDouble() ?? 0.0;
+      } else {
+        discount = (subTotal - totalAmount);
+      }
       if (discount < 0) discount = 0;
+
       final String saleIdStr = (sale['id']?.toString()) ?? 'N/A';
       final String custName =
           (sale['customer_name'] as String?)?.trim().isNotEmpty == true
@@ -2507,6 +2545,21 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   Future<void> _proceedToCheckout(BuildContext context) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.wifi_off, color: Colors.white),
+              SizedBox(width: 8),
+              Text('You are offline. Cannot checkout.'),
+            ],
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     if (_cartItems.isEmpty) return;
 
     showModalBottomSheet(
@@ -3041,7 +3094,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       final name =
           'payment_proofs/${checkoutId}_${DateTime.now().millisecondsSinceEpoch}.$ext';
       await Supabase.instance.client.storage
-          .from('payment_proofs')
+          .from('payment-proofs')
           .uploadBinary(
             name,
             bytes,
@@ -3051,7 +3104,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             ),
           );
       final publicUrl = Supabase.instance.client.storage
-          .from('payment_proofs')
+          .from('payment-proofs')
           .getPublicUrl(name);
       return publicUrl;
     } catch (_) {
@@ -3065,6 +3118,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     double total,
     File proof,
   ) async {
+    // Capture state objects before async gap
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -3096,7 +3153,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         items: items,
       );
 
-      if (saleId != null && mounted) {
+      if (saleId != null) {
         // Build receipt items
         final receiptItems = _cartItems
             .map(
@@ -3118,19 +3175,20 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           finalTotal: total,
           paymentMethod: 'upi',
           saleDate: DateTime.now(),
-          // Note: proofUrl correlated by transactionId in storage
         );
+
+        // Share receipt (might take time/switch apps)
         await ReceiptService.shareReceiptPdf(receipt);
 
-        // Clear cart
-        setState(() {
-          _cartItems.clear();
-          _cartCount = 0;
-        });
+        if (mounted) {
+          setState(() {
+            _cartItems.clear();
+            _cartCount = 0;
+          });
+        }
 
-        if (!mounted) return;
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        navigator.pop(); // Pop loading dialog
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(
               'Payment submitted for verification. Sale ID: $saleId',
@@ -3139,9 +3197,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           ),
         );
       } else {
-        if (!mounted) return;
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        navigator.pop(); // Pop loading dialog
+        scaffoldMessenger.showSnackBar(
           const SnackBar(
             content: Text('Failed to record sale.'),
             backgroundColor: Colors.red,
@@ -3149,9 +3206,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         );
       }
     } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
+      navigator.pop(); // Pop loading dialog
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text('Failed to record sale: $e'),
           backgroundColor: Colors.red,
@@ -3168,6 +3224,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     int qty,
     File proof,
   ) async {
+    // Capture state to safely use across async gaps
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -3194,7 +3254,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         items: items,
       );
 
-      if (saleId != null && mounted) {
+      if (saleId != null) {
         final receipt = ReceiptData(
           saleId: saleId.toString(),
           customerName: 'Walk-in Customer',
@@ -3212,11 +3272,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           paymentMethod: 'upi',
           saleDate: DateTime.now(),
         );
+
+        // Share receipt
         await ReceiptService.shareReceiptPdf(receipt);
 
-        if (!mounted) return;
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        navigator.pop(); // Pop dialog
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(
               'Payment submitted for verification. Sale ID: $saleId',
@@ -3225,9 +3286,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           ),
         );
       } else {
-        if (!mounted) return;
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        navigator.pop();
+        scaffoldMessenger.showSnackBar(
           const SnackBar(
             content: Text('Failed to record sale.'),
             backgroundColor: Colors.red,
@@ -3235,9 +3295,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         );
       }
     } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
+      navigator.pop();
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text('Failed to record sale: $e'),
           backgroundColor: Colors.red,
@@ -3942,15 +4001,15 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       // Derive aspect ratio (w/h). Smaller widths need taller cards to avoid overflow.
       double childAspectRatio;
       if (tileWidth < 240) {
-        childAspectRatio = 0.68;
+        childAspectRatio = 0.66;
       } else if (tileWidth < 280) {
-        childAspectRatio = 0.70;
+        childAspectRatio = 0.69;
       } else if (tileWidth < 340) {
-        childAspectRatio = 0.76;
+        childAspectRatio = 0.74;
       } else if (tileWidth < 420) {
-        childAspectRatio = 0.82;
+        childAspectRatio = 0.80;
       } else {
-        childAspectRatio = 0.88;
+        childAspectRatio = 0.85;
       }
       return SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -3983,6 +4042,24 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     }
   }
 
+  Color _stringToColor(String text) {
+    if (text.isEmpty) return Colors.grey;
+    final int hash = text.codeUnits.fold(0, (prev, c) => prev + c);
+    final List<Color> palette = [
+      const Color(0xFFE63946), // Red
+      const Color(0xFFF4A261), // Orange
+      const Color(0xFF2A9D8F), // Teal
+      const Color(0xFF264653), // Dark Blue
+      const Color(0xFF457B9D), // Blue
+      const Color(0xFF1D3557), // Navy
+      const Color(0xFF6A4C93), // Purple
+      const Color(0xFF8AC926), // Green
+      const Color(0xFFFF595E), // Pink
+      const Color(0xFF1982C4), // Bright Blue
+    ];
+    return palette[hash % palette.length];
+  }
+
   Widget _buildProductCard(BuildContext context, Map<String, dynamic> product) {
     final isOutOfStock = product['stock'] == 0;
     final isWishlisted = _wishlist.contains(product['id']);
@@ -3997,9 +4074,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     final quantityInCart = cartItem['qty'] as int;
 
     return Card(
-      elevation: 4,
-      shadowColor: cs.shadow.withValues(alpha: 0.1),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      color: cs.surfaceContainerLow,
+      elevation: 0, // Flat with border looks cleaner on tinted bg
+      shadowColor: Colors.transparent, // Remove shadow, use border/fill
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: cs.outline.withValues(alpha: 0.1)),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _viewProduct(context, product),
@@ -4008,32 +4089,40 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           children: [
             // Image Section
             Expanded(
-              flex: 5,
+              flex: 3,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Hero(
-                    tag: 'pimg-${product['id']}',
-                    child: CachedNetworkImage(
-                      imageUrl: product['image'] ?? '',
-                      fit: BoxFit.cover,
-                      placeholder: (c, _) => Container(
-                        color: cs.surfaceContainerHighest.withValues(
-                          alpha: 0.3,
-                        ),
-                        child: Center(
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment
+                            .topCenter, // Vertical gradient feels more natural like lighting
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          cs.surfaceContainerHighest.withValues(
+                            alpha: 0.4,
+                          ), // Darker top (shadow/depth)
+                          cs.surfaceContainerHighest.withValues(
+                            alpha: 0.1,
+                          ), // Lighter bottom
+                        ],
+                      ),
+                    ),
+                    width: double.infinity,
+                    child: Hero(
+                      tag: 'pimg-${product['id']}',
+                      child: CachedNetworkImage(
+                        imageUrl: product['image'] ?? '',
+                        fit: BoxFit.cover,
+                        placeholder: (c, _) => Center(
                           child: Icon(
                             Icons.image,
                             size: 24,
                             color: cs.onSurfaceVariant,
                           ),
                         ),
-                      ),
-                      errorWidget: (c, _, __) => Container(
-                        color: cs.surfaceContainerHighest.withValues(
-                          alpha: 0.3,
-                        ),
-                        child: Center(
+                        errorWidget: (c, _, __) => Center(
                           child: Icon(
                             Icons.broken_image,
                             size: 24,
@@ -4072,7 +4161,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     top: 8,
                     right: 8,
                     child: Material(
-                      color: cs.surface.withValues(alpha: 0.9),
+                      color: Colors.white,
+                      elevation: 2, // Float effect
+                      shadowColor: Colors.black.withValues(alpha: 0.2),
                       shape: const CircleBorder(),
                       child: InkWell(
                         customBorder: const CircleBorder(),
@@ -4103,15 +4194,29 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.9),
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.orange.shade400,
+                              Colors.deepOrange.shade400,
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                           borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.orange.withValues(alpha: 0.3),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: Text(
                           'Only ${product['stock']} left',
-                          style: const TextStyle(
+                          style: textTheme.labelSmall?.copyWith(
                             color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
                           ),
                         ),
                       ),
@@ -4122,48 +4227,58 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
             // Details Section
             Expanded(
-              flex: 4,
+              flex: 2,
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (product['brand'] != null)
-                          Text(
-                            (product['brand'] as String).toUpperCase(),
-                            style: textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: cs.onSurfaceVariant,
-                              letterSpacing: 0.5,
-                            ),
+                        Text(
+                          [
+                                product['brand'] as String?,
+                                product['category'] as String?,
+                              ]
+                              .where((s) => s != null && s.isNotEmpty)
+                              .join(' • ')
+                              .toUpperCase(),
+                          style: textTheme.labelSmall?.copyWith(
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                            letterSpacing: 0.5,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
                           ),
-                        const SizedBox(height: 4),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
                         Text(
                           product['name'] ?? 'Unknown Item',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: textTheme.titleSmall?.copyWith(
+                          style: textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w600,
-                            height: 1.2,
+                            height: 1.3, // Better readability
+                            fontSize: 15, // Slightly larger visual base
                           ),
                         ),
                       ],
                     ),
 
                     // Price and Add Button
+                    const SizedBox(height: 20),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
                           _currencyFormat.format(product['price'] ?? 0),
-                          style: textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
+                          style: textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
                             color: cs.primary,
+                            letterSpacing: -0.5,
                           ),
                         ),
                         if (!isOutOfStock)
@@ -4227,27 +4342,49 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                       ],
                                     ),
                                   )
-                                : IconButton.filled(
-                                    key: const ValueKey('add'),
-                                    onPressed: () =>
-                                        _addToCart(context, product),
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: Theme.of(
-                                        context,
-                                      ).primaryColor,
-                                      foregroundColor: Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
+                                : // Gradient Add Button
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          cs.primary,
+                                          cs.tertiary.withValues(alpha: 0.8),
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
                                       ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: cs.primary.withValues(
+                                            alpha: 0.3,
+                                          ),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
                                     ),
-                                    icon: const FaIcon(
-                                      FontAwesomeIcons.cartPlus,
-                                      size: 18,
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        onTap: () =>
+                                            _addToCart(context, product),
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(10),
+                                          child: FaIcon(
+                                            FontAwesomeIcons.cartPlus,
+                                            size: 16, // Smaller icon, sleek
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                           ),
                       ],
                     ),
+                    const Spacer(),
                   ],
                 ),
               ),
@@ -4437,15 +4574,64 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         runSpacing: 8,
                         children: [
                           if ((product['brand'] as String?)?.isNotEmpty == true)
-                            Chip(
-                              label: Text('Brand: ${product['brand']}'),
-                              visualDensity: VisualDensity.compact,
+                            Builder(
+                              builder: (context) {
+                                final color = _stringToColor(
+                                  product['brand'] as String,
+                                );
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: color.withValues(alpha: 0.2),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    (product['brand'] as String).toUpperCase(),
+                                    style: TextStyle(
+                                      color: color,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           if ((product['category'] as String?)?.isNotEmpty ==
                               true)
-                            Chip(
-                              label: Text('Category: ${product['category']}'),
-                              visualDensity: VisualDensity.compact,
+                            Builder(
+                              builder: (context) {
+                                final color = _stringToColor(
+                                  product['category'] as String,
+                                );
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: color.withValues(alpha: 0.2),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    product['category'] as String,
+                                    style: TextStyle(
+                                      color: color,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                         ],
                       ),
@@ -5025,6 +5211,20 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       suffixIcon: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (_speechAvailable)
+                            IconButton(
+                              icon: Icon(
+                                _isListening ? Icons.mic : Icons.mic_none,
+                                color: _isListening
+                                    ? Colors.red
+                                    : Theme.of(context).primaryColor,
+                                size: 20,
+                              ),
+                              onPressed: () => _listen(context),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          const SizedBox(width: 8),
                           IconButton(
                             icon: const Icon(
                               Icons.camera_alt_outlined,
@@ -5172,6 +5372,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       elevation: isDesktop ? 2 : 1,
       margin: const EdgeInsets.symmetric(vertical: 6),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: Theme.of(context).cardColor,
       child: InkWell(
         onTap: () => _viewProduct(context, product),
         child: Padding(
@@ -5186,9 +5387,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     width: isDesktop ? 64 : 56,
                     height: isDesktop ? 64 : 56,
                     decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).dividerColor.withValues(alpha: 0.1),
+                      color: cs.primary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(UITokens.radius),
                     ),
                     clipBehavior: Clip.antiAlias,

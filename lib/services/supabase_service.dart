@@ -198,25 +198,37 @@ class SupabaseService {
     String? verifiedBy,
     String? verificationNotes,
   }) async {
-    await getCurrentBusinessProfile();
-    final businessId = getCurrentBusinessId();
-    if (businessId == null) {
-      throw Exception('Not signed in. Please login to update sales.');
-    }
+    // Legacy support or direct updates are replaced by RPCs for Shop Orders
+    if (status.toLowerCase() == 'verified') {
+      await _client.rpc('verify_shop_order', params: {'p_order_id': saleId});
+    } else if (status.toLowerCase() == 'rejected') {
+      final proofUrl = await _client.rpc<String?>(
+        'reject_shop_order',
+        params: {'p_order_id': saleId},
+      );
 
-    final Map<String, dynamic> update = {
-      'status': status,
-      if (verifiedBy != null && verifiedBy.isNotEmpty)
-        'verified_by': verifiedBy,
-      if (verificationNotes != null) 'verification_notes': verificationNotes,
-      if (status.toLowerCase() == 'verified')
-        'verified_at': DateTime.now().toIso8601String(),
-    };
-    await _client
-        .from('sales')
-        .update(update)
-        .eq('id', saleId)
-        .eq('business_id', businessId);
+      // If a proof URL was returned, attempt to delete it
+      if (proofUrl != null && proofUrl.isNotEmpty) {
+        try {
+          // Extract path from URL (after bucket name)
+          // URL format: .../storage/v1/object/public/payment-proofs/filename.jpg
+          final uri = Uri.parse(proofUrl);
+          final segments = uri.pathSegments;
+          final bucketIndex = segments.indexOf('payment-proofs');
+
+          if (bucketIndex != -1 && bucketIndex + 1 < segments.length) {
+            final path = segments.sublist(bucketIndex + 1).join('/');
+            await _client.storage.from('payment-proofs').remove([path]);
+            print('Deleted rejected proof: $path');
+          }
+        } catch (e) {
+          print('Error deleting rejected proof: $e');
+          // Don't block rejection on deletion failure
+        }
+      }
+    } else {
+      throw Exception('Unsupported status update: $status');
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getPendingSalesWithProof({
@@ -229,19 +241,19 @@ class SupabaseService {
 
     try {
       var query = _client
-          .from('sales')
+          .from('shop_orders')
           .select(
-            'id, customer_name, customer_phone, total_amount, created_at, status, payment_proof_url',
+            '*, shop_order_items(quantity, price_per_unit, products(name, product_images(image_url)))',
           )
-          .eq('business_id', businessId)
-          .eq('status', 'pending')
-          .not('payment_proof_url', 'is', null);
+          .eq('business_id', businessId);
+
       if (createdBefore != null && createdBefore.isNotEmpty) {
         query = query.lt('created_at', createdBefore);
       }
       final resp = await query
           .order('created_at', ascending: false)
           .limit(limit);
+
       return (resp as List)
           .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
           .toList();
@@ -2547,7 +2559,7 @@ class SupabaseService {
       final resp = await _client
           .from('sales')
           .select(
-            'id, business_id, customer_name, customer_phone, transaction_id, total_amount, discount, payment_method, created_at, sales_items(id, product_id, quantity, price_per_unit, products(id, name))',
+            'id, business_id, customer_name, customer_phone, transaction_id, total_amount, discount, payment_method, created_at, status, sales_items(id, product_id, quantity, price_per_unit, products(id, name))',
           )
           .eq('id', saleId)
           .eq('business_id', businessId)
@@ -2557,6 +2569,27 @@ class SupabaseService {
     } catch (e) {
       if (kDebugMode) {
         print('Error fetching sale $saleId: $e');
+      }
+      return null;
+    }
+  }
+
+  /// Securely fetch receipt for public shop users via RPC
+  static Future<Map<String, dynamic>?> getShopReceipt(int saleId) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) return null;
+
+    try {
+      final resp = await _client.rpc(
+        'get_shop_receipt',
+        params: {'p_sale_id': saleId, 'p_business_id': businessId},
+      );
+      if (resp == null) return null;
+      return Map<String, dynamic>.from(resp as Map);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error fetching shop receipt $saleId: $e');
       }
       return null;
     }
@@ -3523,9 +3556,15 @@ class SupabaseService {
         throw Exception('Invalid sale total amount');
       }
 
-      // Handle Public Shop Orders (Anonymous) via Secure RPC
+      // Handle Public Shop Orders (Anonymous) OR Pending Authentication Sales via Secure RPC
       final user = _client.auth.currentUser;
-      if (user == null) {
+      // If we have a proof or explicit pending status, we MUST go through the shop_orders flow
+      // so it appears in the Verification Page.
+      final isPendingFlow =
+          (status == 'pending' || status == 'payment_pending') ||
+          (paymentProofUrl != null && paymentProofUrl.isNotEmpty);
+
+      if (user == null || isPendingFlow) {
         final rpcParams = {
           'p_business_id': businessId,
           'p_customer_name': customerName ?? 'Walk-in Customer',

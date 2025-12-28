@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:raj_electricals_inventory_app/models/supabase_models.dart';
 import 'package:raj_electricals_inventory_app/services/supabase_service.dart';
+import 'package:raj_electricals_inventory_app/services/connectivity_service.dart';
 import 'package:raj_electricals_inventory_app/widgets/page_header.dart';
 
 class CustomersPage extends StatefulWidget {
@@ -45,7 +46,9 @@ class _CustomersPageState extends State<CustomersPage> {
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Text(
                               'Advance Available: ₹${(_advanceBalances[customer.name] ?? 0).toStringAsFixed(2)}',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         if (customer.outstandingBalance > 0)
@@ -53,7 +56,9 @@ class _CustomersPageState extends State<CustomersPage> {
                             padding: const EdgeInsets.only(bottom: 12),
                             child: Text(
                               'Outstanding Debt: ₹${customer.outstandingBalance.toStringAsFixed(2)}',
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ...entries.map((e) {
@@ -67,10 +72,10 @@ class _CustomersPageState extends State<CustomersPage> {
                               type == 'advance'
                                   ? Icons.account_balance_wallet
                                   : type == 'apply'
-                                      ? Icons.call_made
-                                      : type == 'refund'
-                                          ? Icons.reply
-                                          : Icons.payments,
+                                  ? Icons.call_made
+                                  : type == 'refund'
+                                  ? Icons.reply
+                                  : Icons.payments,
                               size: 18,
                             ),
                             title: Text('${type.toUpperCase()}  •  ₹$amt'),
@@ -93,9 +98,9 @@ class _CustomersPageState extends State<CustomersPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load ledger: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load ledger: $e')));
     }
   }
 
@@ -182,6 +187,15 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 
   Future<void> _showCustomerDialog({Customer? customer}) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot manage customers.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final result = await showDialog<Customer>(
       context: context,
       builder: (context) => _CustomerDialog(customer: customer),
@@ -225,6 +239,15 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 
   Future<void> _deleteCustomer(Customer customer) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot delete customer.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -276,6 +299,15 @@ class _CustomersPageState extends State<CustomersPage> {
       _customers.where((c) => c.outstandingBalance > 0).length;
 
   Future<void> _recordCustomerAdvance(Customer customer) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot record advance.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final controller = TextEditingController();
     final amount = await showDialog<double>(
       context: context,
@@ -332,6 +364,15 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 
   Future<void> _recordCustomerPayment(Customer customer) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot record payment.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final controller = TextEditingController();
     final amount = await showDialog<double>(
       context: context,
@@ -434,7 +475,7 @@ class _CustomersPageState extends State<CustomersPage> {
                           filled: true,
                           fillColor: Theme.of(
                             context,
-                          ).cardColor.withValues(alpha:0.3),
+                          ).cardColor.withValues(alpha: 0.3),
                           suffixIcon: _searchController.text.isNotEmpty
                               ? IconButton(
                                   icon: const Icon(Icons.clear),
@@ -513,29 +554,29 @@ class _CustomersPageState extends State<CustomersPage> {
                           end: Alignment.bottomRight,
                           colors: [
                             Theme.of(context).cardColor,
-                            Theme.of(context).cardColor.withValues(alpha:0.8),
+                            Theme.of(context).cardColor.withValues(alpha: 0.8),
                           ],
                         ),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: hasDebt
-                              ? Colors.red.withValues(alpha:0.4)
+                              ? Colors.red.withValues(alpha: 0.4)
                               : Theme.of(
                                   context,
-                                ).colorScheme.outline.withValues(alpha:0.1),
+                                ).colorScheme.outline.withValues(alpha: 0.1),
                           width: hasDebt ? 2 : 1,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha:0.08),
+                            color: Colors.black.withValues(alpha: 0.08),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                             spreadRadius: 0,
                           ),
                           BoxShadow(
                             color: hasDebt
-                                ? Colors.red.withValues(alpha:0.12)
-                                : Colors.black.withValues(alpha:0.03),
+                                ? Colors.red.withValues(alpha: 0.12)
+                                : Colors.black.withValues(alpha: 0.03),
                             blurRadius: 24,
                             offset: const Offset(0, 8),
                             spreadRadius: -4,
@@ -584,7 +625,7 @@ class _CustomersPageState extends State<CustomersPage> {
                                                         : Theme.of(
                                                             context,
                                                           ).colorScheme.primary)
-                                                    .withValues(alpha:0.3),
+                                                    .withValues(alpha: 0.3),
                                             blurRadius: 8,
                                             offset: const Offset(0, 4),
                                           ),
@@ -634,14 +675,18 @@ class _CustomersPageState extends State<CustomersPage> {
                                                       ),
                                                   decoration: BoxDecoration(
                                                     color: Colors.red
-                                                        .withValues(alpha:0.15),
+                                                        .withValues(
+                                                          alpha: 0.15,
+                                                        ),
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                           8,
                                                         ),
                                                     border: Border.all(
                                                       color: Colors.red
-                                                          .withValues(alpha:0.3),
+                                                          .withValues(
+                                                            alpha: 0.3,
+                                                          ),
                                                     ),
                                                   ),
                                                   child: Row(
@@ -692,7 +737,9 @@ class _CustomersPageState extends State<CustomersPage> {
                                                           .textTheme
                                                           .bodySmall
                                                           ?.color
-                                                          ?.withValues(alpha:0.7),
+                                                          ?.withValues(
+                                                            alpha: 0.7,
+                                                          ),
                                                     ),
                                               ),
                                             ],
@@ -722,24 +769,36 @@ class _CustomersPageState extends State<CustomersPage> {
                                           ),
                                         ),
                                         OutlinedButton.icon(
-                                          onPressed: () => _recordCustomerAdvance(customer),
-                                          icon: const Icon(Icons.account_balance_wallet, size: 18),
+                                          onPressed: () =>
+                                              _recordCustomerAdvance(customer),
+                                          icon: const Icon(
+                                            Icons.account_balance_wallet,
+                                            size: 18,
+                                          ),
                                           label: const Text('Advance'),
                                           style: OutlinedButton.styleFrom(
                                             shape: const StadiumBorder(),
                                           ),
                                         ),
                                         OutlinedButton.icon(
-                                          onPressed: () => _recordCustomerPayment(customer),
-                                          icon: const Icon(Icons.currency_rupee, size: 18),
+                                          onPressed: () =>
+                                              _recordCustomerPayment(customer),
+                                          icon: const Icon(
+                                            Icons.currency_rupee,
+                                            size: 18,
+                                          ),
                                           label: const Text('Payment'),
                                           style: OutlinedButton.styleFrom(
                                             shape: const StadiumBorder(),
                                           ),
                                         ),
                                         OutlinedButton.icon(
-                                          onPressed: () => _showCustomerLedger(customer),
-                                          icon: const Icon(Icons.receipt_long, size: 18),
+                                          onPressed: () =>
+                                              _showCustomerLedger(customer),
+                                          icon: const Icon(
+                                            Icons.receipt_long,
+                                            size: 18,
+                                          ),
                                           label: const Text('Ledger'),
                                           style: OutlinedButton.styleFrom(
                                             shape: const StadiumBorder(),
@@ -760,8 +819,8 @@ class _CustomersPageState extends State<CustomersPage> {
                                           style: OutlinedButton.styleFrom(
                                             shape: const StadiumBorder(),
                                             side: BorderSide(
-                                              color: Colors.red.withValues(alpha:
-                                                0.5,
+                                              color: Colors.red.withValues(
+                                                alpha: 0.5,
                                               ),
                                             ),
                                           ),
@@ -785,13 +844,19 @@ class _CustomersPageState extends State<CustomersPage> {
                                         ),
                                       if (customer.outstandingBalance > 0)
                                         Chip(
-                                          label: Text('Debt: ₹${customer.outstandingBalance.toStringAsFixed(0)}'),
+                                          label: Text(
+                                            'Debt: ₹${customer.outstandingBalance.toStringAsFixed(0)}',
+                                          ),
                                           visualDensity: VisualDensity.compact,
                                           side: BorderSide.none,
                                         ),
-                                      if ((_advanceBalances[customer.name] ?? 0) > 0)
+                                      if ((_advanceBalances[customer.name] ??
+                                              0) >
+                                          0)
                                         Chip(
-                                          label: Text('Advance: ₹${(_advanceBalances[customer.name] ?? 0).toStringAsFixed(0)}'),
+                                          label: Text(
+                                            'Advance: ₹${(_advanceBalances[customer.name] ?? 0).toStringAsFixed(0)}',
+                                          ),
                                           visualDensity: VisualDensity.compact,
                                           side: BorderSide.none,
                                         ),
@@ -805,7 +870,7 @@ class _CustomersPageState extends State<CustomersPage> {
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .primaryContainer
-                                                .withValues(alpha:0.3),
+                                                .withValues(alpha: 0.3),
                                             borderRadius: BorderRadius.circular(
                                               10,
                                             ),
@@ -845,7 +910,7 @@ class _CustomersPageState extends State<CustomersPage> {
                                               color: Theme.of(context)
                                                   .colorScheme
                                                   .tertiaryContainer
-                                                  .withValues(alpha:0.3),
+                                                  .withValues(alpha: 0.3),
                                               borderRadius:
                                                   BorderRadius.circular(10),
                                             ),
@@ -891,7 +956,7 @@ class _CustomersPageState extends State<CustomersPage> {
                                               color: Theme.of(context)
                                                   .colorScheme
                                                   .secondaryContainer
-                                                  .withValues(alpha:0.3),
+                                                  .withValues(alpha: 0.3),
                                               borderRadius:
                                                   BorderRadius.circular(10),
                                             ),
@@ -1026,7 +1091,7 @@ class __CustomerDialogState extends State<_CustomerDialog> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha:0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
@@ -1065,7 +1130,7 @@ class __CustomerDialogState extends State<_CustomerDialog> {
                                 ? 'Create a new customer'
                                 : 'Update customer information',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha:0.9),
+                              color: Colors.white.withValues(alpha: 0.9),
                               fontSize: 12,
                             ),
                           ),

@@ -3,6 +3,7 @@ import 'package:raj_electricals_inventory_app/theme/ui_tokens.dart';
 import '../widgets/page_header.dart';
 import '../data/app_database.dart';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 
 class ProcessReplacementPage extends StatefulWidget {
   final AppDatabase db;
@@ -352,6 +353,23 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
   }
 
   Future<void> _submitReplacement() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.wifi_off, color: Colors.white),
+                SizedBox(width: 8),
+                Text('You are offline. Cannot process replacement.'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     if (_selectedSale == null) return;
     if (_validItemsOut.isEmpty && _validItemsIn.isEmpty) {
       if (!mounted) return;

@@ -8,6 +8,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:raj_electricals_inventory_app/data/app_database.dart';
 import 'package:raj_electricals_inventory_app/services/image_storage_service.dart';
 import 'package:raj_electricals_inventory_app/services/supabase_service.dart';
+import 'package:raj_electricals_inventory_app/services/connectivity_service.dart';
 import 'package:drift/drift.dart' as drift;
 import '../widgets/page_header.dart';
 import './shop_page.dart';
@@ -1781,6 +1782,16 @@ class _AddProductPageState extends State<AddProductPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Please select a category')));
+      return;
+    }
+
+    if (_isSupabaseEnabled && !ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot save product to cloud.'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 

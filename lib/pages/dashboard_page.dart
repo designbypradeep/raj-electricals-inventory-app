@@ -702,7 +702,9 @@ class _DashboardPageState extends State<DashboardPage> {
       0.0,
       (sum, sale) => sum + (sale.totalAmount ?? 0.0),
     );
-    final lowStockCount = products.where((p) => p.currentStock <= 5 && p.currentStock > 0).length;
+    final lowStockCount = products
+        .where((p) => p.currentStock <= 5 && p.currentStock > 0)
+        .length;
     final outOfStockCount = products.where((p) => p.currentStock == 0).length;
 
     final todaysRevenue = todaysSales.fold<double>(
@@ -2576,6 +2578,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     mainAxisSpacing: 12,
                     children: [
                       _buildMobileMoreItem('Reports', Icons.bar_chart),
+                      _buildMobileMoreItem('Verify Payments', Icons.verified),
                       _buildMobileMoreItem('Returns', Icons.undo),
                       _buildMobileMoreItem('Replacements', Icons.swap_horiz),
                       _buildMobileMoreItem('Business', Icons.business),
@@ -2660,6 +2663,8 @@ class _DashboardPageState extends State<DashboardPage> {
                 builder: (context) => DataManagementPage(db: widget.db),
               ),
             );
+          } else if (label == 'Verify Payments') {
+            Navigator.pushNamed(context, '/payments/verification');
           } else {
             // No-op for unknown labels to avoid disruptive snackbars
           }
@@ -2945,9 +2950,8 @@ class _DashboardPageState extends State<DashboardPage> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const ReportsPage(
-                          initialReportType: 'Inventory',
-                        ),
+                        builder: (context) =>
+                            const ReportsPage(initialReportType: 'Inventory'),
                       ),
                     );
                   },

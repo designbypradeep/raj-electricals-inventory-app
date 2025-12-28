@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -114,6 +115,12 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Future<void> _sendOTP() async {
+    if (!ConnectivityService().isOnline.value) {
+      setState(() {
+        _error = 'You are offline. Please check your internet connection.';
+      });
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -162,6 +169,13 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
     if (otpCode.length != 6) {
       setState(() => _error = 'Please enter the complete 6-digit code');
+      return;
+    }
+
+    if (!ConnectivityService().isOnline.value) {
+      setState(() {
+        _error = 'You are offline. Cannot verify code.';
+      });
       return;
     }
 

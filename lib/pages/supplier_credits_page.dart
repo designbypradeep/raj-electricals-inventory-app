@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:raj_electricals_inventory_app/models/sales_purchase_models.dart';
 import 'package:raj_electricals_inventory_app/services/supabase_service.dart';
+import 'package:raj_electricals_inventory_app/services/connectivity_service.dart';
 
 class SupplierCreditsPage extends StatefulWidget {
   const SupplierCreditsPage({super.key});
@@ -16,6 +17,17 @@ class _SupplierCreditsPageState extends State<SupplierCreditsPage> {
   bool _isLoading = false;
 
   Future<void> _fetchSupplierData() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You are offline. Cannot search supplier data.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     if (_supplierNameController.text.isEmpty) return;
 
     setState(() {

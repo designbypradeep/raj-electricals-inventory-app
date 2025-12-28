@@ -5,6 +5,7 @@ import 'dart:io';
 import '../widgets/page_header.dart';
 import '../data/app_database.dart';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 
 // Export/Import mode enums
 enum ExportMode { full, catalogWithBusiness, catalogTemplate, businessInfo }
@@ -1349,6 +1350,12 @@ class _DataManagementPageState extends State<DataManagementPage> {
   }
 
   Future<void> _exportData() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        _showSnack('You are offline. Cannot export data.', success: false);
+      }
+      return;
+    }
     setState(() => _isExporting = true);
 
     try {
@@ -1448,6 +1455,12 @@ class _DataManagementPageState extends State<DataManagementPage> {
   }
 
   Future<void> _importData() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        _showSnack('You are offline. Cannot import data.', success: false);
+      }
+      return;
+    }
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -1650,6 +1663,12 @@ class _DataManagementPageState extends State<DataManagementPage> {
   }
 
   Future<void> _deleteAllData() async {
+    if (!ConnectivityService().isOnline.value) {
+      if (mounted) {
+        _showSnack('You are offline. Cannot delete data.', success: false);
+      }
+      return;
+    }
     setState(() => _isDeleting = true);
 
     try {

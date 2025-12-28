@@ -11,6 +11,7 @@ import '../services/theme_controller.dart';
 import 'package:local_auth/local_auth.dart';
 import '../services/security_service.dart';
 import '../theme/ui_tokens.dart';
+import '../services/connectivity_service.dart';
 
 class BusinessSettingsPage extends StatefulWidget {
   const BusinessSettingsPage({super.key});

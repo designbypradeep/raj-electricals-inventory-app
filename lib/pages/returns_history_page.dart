@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/page_header.dart';
 import '../services/supabase_service.dart';
+import '../services/connectivity_service.dart';
 
 class ReturnsHistoryPage extends StatefulWidget {
   const ReturnsHistoryPage({super.key});
@@ -212,8 +213,20 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
                     shortLabel: 'New Return',
                     icon: Icons.add,
                     color: Theme.of(context).colorScheme.primary,
-                    onPressed: () =>
-                        Navigator.of(context).pushNamed('/returns'),
+                    onPressed: () {
+                      if (!ConnectivityService().isOnline.value) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'You are offline. Cannot process returns.',
+                            ),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
+                      Navigator.of(context).pushNamed('/returns');
+                    },
                   ),
                 ],
               ),
