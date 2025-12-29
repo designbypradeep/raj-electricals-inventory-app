@@ -50,13 +50,33 @@
 | `supabase_service.dart` | Uses `get_public_products_for_business` |
 | `supabase_service.dart` | Queries `public_business_info` view |
 
-### SvelteKit App
+### SvelteKit App (`src/routes/shop/+page.server.ts`)
+| Change | Details |
+|--------|---------|
+| **Business Profile** | Uses `public_business_info` View (hides sensitive columns like PAN) |
+| **Products** | Uses `get_public_products_for_business` RPC (hides purchase_price) |
+| **Order Submission** | Uses `submit_shop_order_secure` RPC (server-side pricing, rate limited) |
+| **Cleanup** | Deleted `/api/debug-profit` and `/api/test-db` (RLS bypasses) |
 
-| File | Change |
-|------|--------|
-| `debug-profit/+server.ts` | ❌ Deleted (bypassed RLS) |
-| `test-db/+server.ts` | ❌ Deleted |
-| `.gitignore` | Fixed (excludes `.env`) |
+---
+
+## Security Principles (For Future Devs)
+
+### 1. No Client-Side Trust
+*   **Old Way:** Client calculated total price → **Vulnerable** (User could send ₹1 total).
+*   **New Way:** Client sends `product_id` + `quantity`. Server calculates total using database price.
+
+### 2. Views vs Tables
+*   **Tables:** Restricted by RLS. Good for authenticated users, hard for anonymous public access without leaking data.
+*   **Views:** We use `public_business_info` and `public_products` views to explicitly whitelist columns.
+    *   *Why?* It's safer to have a View that physically cannot return `purchase_price` than to rely on an RLS policy that might be accidentally turned off.
+
+### 3. Immediate vs Deferred Stock
+*   **Old Way:** Stock decremented immediately on order → **Vulnerable** (Stock drain attack).
+*   **New Way:** Stock is checked but NOT decremented until secure RPC validation passes. (Inventory is decremented in `submit_shop_order_secure` only *after* validation).
+
+### 4. Rate Limiting
+*   Public RPCs (`submit_shop_order_secure`) now enforce rate limits (e.g., 3 orders per minute per IP) to prevent spam.
 
 ### SQL Files Deprecated
 

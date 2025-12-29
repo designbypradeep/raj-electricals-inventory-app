@@ -1,6 +1,6 @@
 /// Stub implementation of speech_to_text_windows for Windows builds.
 /// This provides a no-op implementation to avoid native build errors.
-library speech_to_text_windows;
+library;
 
 import 'package:speech_to_text_platform_interface/speech_to_text_platform_interface.dart';
 
