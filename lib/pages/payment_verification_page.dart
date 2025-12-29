@@ -71,7 +71,11 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
     }
   }
 
-  Future<void> _markStatus(int saleId, String status) async {
+  Future<void> _markStatus(
+    int saleId,
+    String status, {
+    Map<String, dynamic>? data,
+  }) async {
     if (!ConnectivityService().isOnline.value) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -90,7 +94,10 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
       return;
     }
     try {
-      await SupabaseService.updateSaleStatus(saleId: saleId, status: status);
+      await SupabaseService.updateSaleStatus(
+        saleId: saleId,
+        status: status,
+      ); // SupabaseService now fetches userId/businessId internally
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -99,6 +106,15 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
           ),
         );
       }
+
+      if (status == 'verified' &&
+          data != null &&
+          data['notify_consent'] == true) {
+        if (mounted) {
+          await _showWhatsAppDialog(data);
+        }
+      }
+
       await _load(initial: true);
     } catch (e) {
       if (!mounted) return;
@@ -109,6 +125,69 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
         ),
       );
     }
+  }
+
+  Future<void> _showWhatsAppDialog(Map<String, dynamic> data) async {
+    final saleId = data['id'];
+    final customerName = data['customer_name'] ?? 'Customer';
+    final customerPhone = data['customer_phone'] as String?;
+
+    if (customerPhone == null || customerPhone.isEmpty) return;
+
+    final confirmationText =
+        "🎉 Order confirmed!\n\n"
+        "Your order #$saleId is confirmed.\n"
+        "You can visit Raj Electricals to pick it up.\n\n"
+        "📍 Address: 201, Kamla Cinema Road, Maharana Vihar, Ghaziabad\n"
+        "🕒 Timings: 9:00 AM - 9:00 PM\n\n"
+        "Please show this message or your order ID at the counter.";
+
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Send Confirmation?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Customer requested notification.'),
+            const SizedBox(height: 8),
+            const Text(
+              'Send WhatsApp message to:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Text('$customerName ($customerPhone)'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Skip'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              Navigator.pop(context);
+              final link =
+                  'https://wa.me/$customerPhone?text=${Uri.encodeComponent(confirmationText)}';
+              if (await canLaunchUrl(Uri.parse(link))) {
+                await launchUrl(
+                  Uri.parse(link),
+                  mode: LaunchMode.externalApplication,
+                );
+              } else {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Could not open WhatsApp')),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.send),
+            label: const Text('Send WhatsApp'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openUrl(String url) async {
@@ -216,14 +295,31 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         const SizedBox(height: 4),
-                        if (row['transaction_id'] != null)
-                          Text(
-                            'Ref: ${row['transaction_id']}',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.bold,
-                                ),
+                        if (row['transaction_id'] != null &&
+                            (row['transaction_id'] as String).isNotEmpty &&
+                            row['transaction_id'] != 'CASH-COUNTER')
+                          Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: Colors.blue.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Text(
+                              'UTR: ${row['transaction_id']}',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blue[700],
+                                  ),
+                            ),
                           ),
                         const SizedBox(height: 8),
                         if (row['shop_order_items'] != null &&
@@ -277,7 +373,9 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
                                       width: 32,
                                       height: 32,
                                       decoration: BoxDecoration(
-                                        color: Colors.grey.withOpacity(0.1),
+                                        color: Colors.grey.withValues(
+                                          alpha: 0.1,
+                                        ),
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: const Icon(
@@ -320,7 +418,7 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
                             height: 250,
                             width: double.infinity,
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.2),
+                              color: Colors.black.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: ClipRRect(
@@ -379,7 +477,7 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
                             Expanded(
                               child: OutlinedButton.icon(
                                 onPressed: () =>
-                                    _markStatus(saleId, 'rejected'),
+                                    _markStatus(saleId, 'rejected', data: row),
                                 icon: const Icon(Icons.close),
                                 label: const Text('Reject'),
                               ),
@@ -388,7 +486,7 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
                             Expanded(
                               child: FilledButton.icon(
                                 onPressed: () =>
-                                    _markStatus(saleId, 'verified'),
+                                    _markStatus(saleId, 'verified', data: row),
                                 icon: const Icon(Icons.check),
                                 label: const Text('Mark Verified'),
                               ),

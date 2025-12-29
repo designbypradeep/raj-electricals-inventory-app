@@ -268,7 +268,7 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
         ),
       ),
       child: LayoutBuilder(
@@ -434,7 +434,7 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
         ),
       ),
       child: const Center(child: CircularProgressIndicator()),
@@ -448,7 +448,7 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -493,11 +493,11 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Theme.of(context).dividerColor.withOpacity(0.2),
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
             ),
             boxShadow: [
               BoxShadow(
-                color: Theme.of(context).shadowColor.withOpacity(0.03),
+                color: Theme.of(context).shadowColor.withValues(alpha: 0.03),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -515,10 +515,10 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: _statusColor(status).withOpacity(0.1),
+                        color: _statusColor(status).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: _statusColor(status).withOpacity(0.2),
+                          color: _statusColor(status).withValues(alpha: 0.2),
                         ),
                       ),
                       child: Icon(Icons.reply, color: _statusColor(status)),
@@ -563,7 +563,7 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: _statusColor(status).withOpacity(0.1),
+                            color: _statusColor(status).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
@@ -690,7 +690,9 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
   TextStyle _mutedStyle({double fontSize = 12}) {
     return TextStyle(
       fontSize: fontSize,
-      color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
+      color: Theme.of(
+        context,
+      ).textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
     );
   }
 
@@ -701,7 +703,7 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withOpacity(0.2),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
         ),
       ),
       child: Row(

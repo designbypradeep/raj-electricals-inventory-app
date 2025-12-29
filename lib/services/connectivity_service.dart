@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 class ConnectivityService {
   static final ConnectivityService _instance = ConnectivityService._internal();
@@ -47,42 +47,24 @@ class ConnectivityService {
     }
 
     // If we have a network interface, verify we can actually reach the internet
-    // (Captive portals or dead wifi spots might show as connected but have no net)
-    try {
-      // Light ping to google dns
-      final response = await http
-          .get(Uri.parse('https://8.8.8.8'))
-          .timeout(const Duration(seconds: 3));
-      if (response.statusCode == 200) {
-        if (!isOnline.value) {
-          if (kDebugMode) print('Connectivity: Internet restored.');
-          isOnline.value = true;
-        }
-      } else {
-        // Fallback or specific status handling if needed
-        _markOffline();
-      }
-    } catch (e) {
-      // Try one more reliable host in case 8.8.8.8 blocks pings/http
-      try {
-        final response = await http
-            .get(Uri.parse('https://www.google.com'))
-            .timeout(const Duration(seconds: 3));
-        if (response.statusCode == 200) {
-          if (!isOnline.value) isOnline.value = true;
-        } else {
-          _markOffline();
-        }
-      } catch (_) {
-        _markOffline();
-      }
+    // RELAXED MODE: Trust the interface status primarily to avoid blocking valid users.
+    // We update isOnline to true immediately if we have a network.
+    if (!isOnline.value) {
+      if (kDebugMode)
+        print('Connectivity: Interface detected, marking online.');
+      isOnline.value = true;
     }
-  }
 
-  void _markOffline() {
-    if (isOnline.value) {
-      if (kDebugMode) print('Connectivity: Network connected but no internet.');
-      isOnline.value = false;
+    // Optional: We can still do a background check, but let's NOT block the user if it fails.
+    // Just log it for now.
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
+        if (kDebugMode) print('Connectivity: DNS verified.');
+      }
+    } catch (_) {
+      if (kDebugMode)
+        print('Connectivity: DNS check failed, but keeping online status.');
     }
   }
 

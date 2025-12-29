@@ -428,6 +428,108 @@ class _CustomersPageState extends State<CustomersPage> {
     }
   }
 
+  Future<void> _refundCustomerAdvance(Customer customer) async {
+    if (!ConnectivityService().isOnline.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You are offline. Cannot record refund.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Check if customer has advance balance
+    final advanceBalance = _advanceBalances[customer.name] ?? 0.0;
+    if (advanceBalance <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No advance balance available to refund.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final controller = TextEditingController();
+    final amount = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Refund Advance'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Available: ₹${advanceBalance.toStringAsFixed(2)}',
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.green,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Amount',
+                prefixIcon: Icon(Icons.currency_rupee),
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(controller.text.trim());
+              if (v != null && v > 0 && v <= advanceBalance) {
+                Navigator.pop(context, v);
+              } else if (v != null && v > advanceBalance) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Cannot refund more than ₹${advanceBalance.toStringAsFixed(2)}',
+                    ),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Refund'),
+          ),
+        ],
+      ),
+    );
+    if (amount == null) return;
+    try {
+      await SupabaseService.refundCustomerAdvance(
+        customerName: customer.name,
+        amount: amount,
+      );
+      await _loadCustomers();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Refund recorded'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 768;
@@ -792,6 +894,24 @@ class _CustomersPageState extends State<CustomersPage> {
                                             shape: const StadiumBorder(),
                                           ),
                                         ),
+                                        if ((_advanceBalances[customer.name] ??
+                                                0) >
+                                            0)
+                                          OutlinedButton.icon(
+                                            onPressed: () =>
+                                                _refundCustomerAdvance(
+                                                  customer,
+                                                ),
+                                            icon: const Icon(
+                                              Icons.arrow_downward,
+                                              size: 18,
+                                            ),
+                                            label: const Text('Refund'),
+                                            style: OutlinedButton.styleFrom(
+                                              shape: const StadiumBorder(),
+                                              foregroundColor: Colors.orange,
+                                            ),
+                                          ),
                                         OutlinedButton.icon(
                                           onPressed: () =>
                                               _showCustomerLedger(customer),

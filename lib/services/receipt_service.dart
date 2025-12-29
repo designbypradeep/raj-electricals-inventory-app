@@ -26,6 +26,7 @@ class ReceiptData {
   final double finalTotal;
   final String paymentMethod;
   final DateTime saleDate;
+  final String status;
 
   const ReceiptData({
     required this.saleId,
@@ -38,6 +39,7 @@ class ReceiptData {
     required this.finalTotal,
     required this.paymentMethod,
     required this.saleDate,
+    this.status = 'completed',
   });
 }
 
@@ -196,6 +198,22 @@ class ReceiptService {
               ),
             ],
           ),
+
+          // Pending Warning
+          if (r.status == 'payment_pending' || r.status == 'pending') ...[
+            pw.SizedBox(height: 10),
+            pw.Center(
+              child: pw.Text(
+                'Payment received. Order under verification.',
+                style: pw.TextStyle(
+                  color: PdfColors.blue700,
+                  fontSize: 10,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+
           pw.SizedBox(height: 10),
 
           // Items table

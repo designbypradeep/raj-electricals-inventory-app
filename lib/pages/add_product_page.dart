@@ -1613,9 +1613,9 @@ class _AddProductPageState extends State<AddProductPage> {
                             onTap: () => _removeImage(index),
                             child: Container(
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.55),
+                                color: Colors.black.withValues(alpha: 0.55),
                                 border: Border.all(
-                                  color: Colors.white.withOpacity(0.35),
+                                  color: Colors.white.withValues(alpha: 0.35),
                                 ),
                                 borderRadius: BorderRadius.circular(16),
                               ),
@@ -1638,9 +1638,9 @@ class _AddProductPageState extends State<AddProductPage> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.55),
+                                color: Colors.black.withValues(alpha: 0.55),
                                 border: Border.all(
-                                  color: Colors.white.withOpacity(0.35),
+                                  color: Colors.white.withValues(alpha: 0.35),
                                 ),
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -1666,9 +1666,9 @@ class _AddProductPageState extends State<AddProductPage> {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.55),
+                                  color: Colors.black.withValues(alpha: 0.55),
                                   border: Border.all(
-                                    color: Colors.white.withOpacity(0.35),
+                                    color: Colors.white.withValues(alpha: 0.35),
                                   ),
                                   borderRadius: BorderRadius.circular(12),
                                 ),

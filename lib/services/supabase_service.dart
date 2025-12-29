@@ -199,8 +199,21 @@ class SupabaseService {
     String? verificationNotes,
   }) async {
     // Legacy support or direct updates are replaced by RPCs for Shop Orders
+    final businessId = _currentBusinessProfile?.id;
+    final userId = _client.auth.currentUser?.id;
+
     if (status.toLowerCase() == 'verified') {
-      await _client.rpc('verify_shop_order', params: {'p_order_id': saleId});
+      if (businessId == null || userId == null) {
+        throw Exception('Business ID or User ID missing for verification');
+      }
+      await _client.rpc(
+        'verify_shop_order',
+        params: {
+          'p_order_id': saleId,
+          'p_business_id': businessId,
+          'p_verified_by': userId,
+        },
+      );
     } else if (status.toLowerCase() == 'rejected') {
       final proofUrl = await _client.rpc<String?>(
         'reject_shop_order',
@@ -6078,6 +6091,34 @@ class SupabaseService {
       'amount': amount,
       if (refTable != null) 'ref_table': refTable,
       if (refId != null) 'ref_id': refId,
+    });
+    return true;
+  }
+
+  /// Refund advance to customer (withdraw as cash)
+  static Future<bool> refundCustomerAdvance({
+    required String customerName,
+    required double amount,
+  }) async {
+    if (amount <= 0) return false;
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    // Verify customer has enough advance balance
+    final balances = await getCustomerAdvanceBalances([customerName]);
+    final available = balances[customerName] ?? 0.0;
+    if (amount > available) {
+      throw Exception(
+        'Cannot refund more than available advance (₹${available.toStringAsFixed(2)})',
+      );
+    }
+
+    await _client.from('customer_ledger').insert({
+      'business_id': businessId,
+      'customer_name': customerName,
+      'entry_type': 'refund',
+      'amount': amount,
     });
     return true;
   }

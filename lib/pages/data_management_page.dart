@@ -625,7 +625,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
         elevation: 6,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: fg.withOpacity(0.25)),
+          side: BorderSide(color: fg.withValues(alpha: 0.25)),
         ),
         margin: const EdgeInsets.all(16),
         duration: const Duration(seconds: 5),

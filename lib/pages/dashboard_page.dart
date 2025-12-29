@@ -74,8 +74,11 @@ class _DashboardPageState extends State<DashboardPage> {
   Map<String, int> _categoryCounts = {};
   Map<String, dynamic> _stats = {};
   supabase_models.BusinessProfile? _businessProfile;
+  // ignore: unused_field
   bool _hasPurchases = false;
+  // ignore: unused_field
   bool _isLoadingBusiness = true;
+  // ignore: unused_field
   List<supabase_models.Product> _supabaseProducts = [];
   RealtimeChannel? _bizChannel;
   RealtimeChannel? _salesChannel;
@@ -527,7 +530,7 @@ class _DashboardPageState extends State<DashboardPage> {
     double todaysRevenue = 0;
     final today = DateTime.now();
     for (var sale in sales) {
-      final saleAmount = sale.totalAmount ?? 0.0;
+      final saleAmount = sale.totalAmount;
       if (sale.createdAt != null &&
           sale.createdAt!.year == today.year &&
           sale.createdAt!.month == today.month &&
@@ -593,7 +596,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (sale.createdAt != null && sale.createdAt!.isAfter(sevenDaysAgo)) {
         final dateKey = DateFormat('MMM d').format(sale.createdAt!);
         dailySalesMap[dateKey] =
-            (dailySalesMap[dateKey] ?? 0) + (sale.totalAmount ?? 0);
+            (dailySalesMap[dateKey] ?? 0) + sale.totalAmount;
       }
     }
     _dailySales = dailySalesMap.entries
@@ -670,11 +673,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
     final currentRevenue = currentMonthSales.fold<double>(
       0,
-      (sum, sale) => sum + (sale.totalAmount ?? 0),
+      (sum, sale) => sum + sale.totalAmount,
     );
     final previousRevenue = previousMonthSales.fold<double>(
       0,
-      (sum, sale) => sum + (sale.totalAmount ?? 0),
+      (sum, sale) => sum + sale.totalAmount,
     );
 
     final revenueGrowth = previousRevenue > 0
@@ -697,11 +700,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final todaysSales = sales
         .where((s) => s.createdAt != null && s.createdAt!.isAfter(today))
         .toList();
-    // Calculate total sales revenue
-    final totalSalesRevenue = sales.fold<double>(
-      0.0,
-      (sum, sale) => sum + (sale.totalAmount ?? 0.0),
-    );
+
     final lowStockCount = products
         .where((p) => p.currentStock <= 5 && p.currentStock > 0)
         .length;
@@ -709,7 +708,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
     final todaysRevenue = todaysSales.fold<double>(
       0.0,
-      (sum, sale) => sum + (sale.totalAmount ?? 0.0),
+      (sum, sale) => sum + sale.totalAmount,
     );
 
     // Compute units sold today from actual sales items
@@ -2149,7 +2148,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   Positioned.fill(
                     child: Container(
                       // Subtle dark tint to reduce background visibility in dark mode
-                      color: Colors.black.withOpacity(0.10),
+                      color: Colors.black.withValues(alpha: 0.10),
                     ),
                   ),
                 SafeArea(
@@ -2376,6 +2375,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildMobileNavItem(String label, IconData icon, int index) {
     final isActive = index == _selectedTabIndex;
     final primary = Theme.of(context).colorScheme.primary;
@@ -2501,6 +2501,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   String _formatBadge(int n) => n > 9 ? '9+' : n.toString();
 
+  // ignore: unused_element
   Widget _buildMobileMoreButton({required int index}) {
     final inactive = Theme.of(
       context,
@@ -3172,6 +3173,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildLiveMetrics() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3339,6 +3341,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildChartCard(
     String title,
     String subtitle,
@@ -3406,6 +3409,7 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildBarChart() {
     return BarChart(
       BarChartData(
