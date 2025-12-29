@@ -232,10 +232,14 @@ class SupabaseService {
           if (bucketIndex != -1 && bucketIndex + 1 < segments.length) {
             final path = segments.sublist(bucketIndex + 1).join('/');
             await _client.storage.from('payment-proofs').remove([path]);
-            print('Deleted rejected proof: $path');
+            if (kDebugMode) {
+              print('Deleted rejected proof: $path');
+            }
           }
         } catch (e) {
-          print('Error deleting rejected proof: $e');
+          if (kDebugMode) {
+            print('Error deleting rejected proof: $e');
+          }
           // Don't block rejection on deletion failure
         }
       }
@@ -3578,22 +3582,52 @@ class SupabaseService {
           (paymentProofUrl != null && paymentProofUrl.isNotEmpty);
 
       if (user == null || isPendingFlow) {
+        // Use NEW secure RPC with validation, rate limiting, and server-side pricing
+        // Note: price_per_unit is NOT sent - server uses selling_price from products table
         final rpcParams = {
           'p_business_id': businessId,
           'p_customer_name': customerName ?? 'Walk-in Customer',
           'p_customer_phone': customerPhone,
-          'p_total_amount': totalAmount,
+          'p_items': items
+              .map(
+                (item) => {
+                  'product_id': item['product_id'],
+                  'quantity': item['quantity'],
+                  // price_per_unit intentionally omitted - server enforces selling_price
+                },
+              )
+              .toList(),
           'p_payment_method': paymentMethod,
-          'p_items': items,
           'p_transaction_id': transactionId,
           'p_payment_proof_url': paymentProofUrl,
+          'p_client_identifier':
+              customerPhone ?? 'anonymous', // For rate limiting
         };
 
         final rpcResp = await _client.rpc(
-          'submit_shop_order',
+          'submit_shop_order_secure',
           params: rpcParams,
         );
-        return (rpcResp as num).toInt();
+
+        // Handle JSONB response from secure RPC
+        final response = Map<String, dynamic>.from(rpcResp as Map);
+        if (response['success'] == true) {
+          return (response['order_id'] as num).toInt();
+        } else {
+          // Handle specific error codes
+          final errorCode = response['error'] ?? 'UNKNOWN_ERROR';
+          final message = response['message'] ?? 'Order submission failed';
+
+          if (errorCode == 'RATE_LIMIT_EXCEEDED') {
+            throw Exception('Too many orders. Please wait a few minutes.');
+          } else if (errorCode == 'INSUFFICIENT_STOCK') {
+            final productName = response['product_name'] ?? 'Product';
+            final available = response['available'] ?? 0;
+            throw Exception('$productName: Only $available in stock');
+          } else {
+            throw Exception(message);
+          }
+        }
       }
 
       for (final it in items) {
@@ -4269,22 +4303,20 @@ class SupabaseService {
         // Unauthenticated/public shop mode: try default business ID
         if (_defaultBusinessId != null && _defaultBusinessId!.isNotEmpty) {
           try {
-            // Use RPC for secure public access
-            final response = await _client.rpc(
-              'get_public_business_profile',
-              params: {'target_business_id': _defaultBusinessId!},
-            );
+            // Use RPC for secure public access (returns only public columns)
+            // Note: get_public_business_profile was replaced with public_business_info view
+            final response = await _client
+                .from('public_business_info')
+                .select()
+                .eq('id', _defaultBusinessId!)
+                .maybeSingle();
 
-            dynamic byId;
-            if (response is List && response.isNotEmpty) {
-              byId = response.first;
-            } else if (response is Map) {
-              byId = response;
-            }
-
-            if (byId != null) {
-              _currentBusinessProfile = supabase_models
-                  .BusinessProfile.fromJson(Map<String, dynamic>.from(byId));
+            // maybeSingle returns Map? directly, not a List
+            if (response != null) {
+              _currentBusinessProfile =
+                  supabase_models.BusinessProfile.fromJson(
+                    Map<String, dynamic>.from(response),
+                  );
               return _currentBusinessProfile;
             }
           } catch (_) {}
@@ -4625,10 +4657,10 @@ class SupabaseService {
     try {
       dynamic response;
       if (currentUser == null) {
-        // Public/Shop mode: use secure RPC
+        // Public/Shop mode: use secure RPC (returns public_products view, no purchase_price)
         response = await _client.rpc(
-          'get_public_products',
-          params: {'target_business_id': businessId},
+          'get_public_products_for_business',
+          params: {'p_business_id': businessId},
         );
       } else {
         // Authenticated mode: use standard table access

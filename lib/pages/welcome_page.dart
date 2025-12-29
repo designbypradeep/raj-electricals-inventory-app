@@ -35,8 +35,9 @@ class _WelcomePageState extends State<WelcomePage> {
 
     try {
       // 1. Verify Slug with Backend via secure RPC
+      // Use secure RPC that returns only public columns (no PII)
       final response = await SupabaseService.client.rpc(
-        'get_public_business_by_slug',
+        'get_public_business_by_slug_secure',
         params: {'p_slug': slug.trim().toLowerCase()},
       );
 

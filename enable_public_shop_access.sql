@@ -1,20 +1,22 @@
--- Enable public read access for Shop App (Anonymous users)
+-- ============================================================================
+-- DEPRECATED: DO NOT USE
+-- ============================================================================
+-- This file is kept for historical reference only.
+--
+-- The policies defined here ('USING (true)') exposed ALL data publicly.
+-- This is a security vulnerability.
+--
+-- SECURE ALTERNATIVES (in security_migrations.sql):
+-- - public_business_info view (hides PII)
+-- - public_products view (hides purchase_price)
+-- - get_public_business_by_slug_secure() RPC
+-- - get_public_products_for_business() RPC
+--
+-- TO REMOVE VULNERABLE POLICIES FROM DATABASE:
+-- DROP POLICY IF EXISTS "Public can view business profiles" ON business_profiles;
+-- DROP POLICY IF EXISTS "Public can view products" ON products;
+-- DROP POLICY IF EXISTS "Public can view product images" ON product_images;
+-- ============================================================================
 
--- 1. Business Profiles
--- Allow anyone to read business profiles (to find the shop details)
-DROP POLICY IF EXISTS "Public can view business profiles" ON business_profiles;
-CREATE POLICY "Public can view business profiles" ON business_profiles
-  FOR SELECT USING (true);
-
--- 2. Products
--- Allow anyone to read products
-DROP POLICY IF EXISTS "Public can view products" ON products;
-CREATE POLICY "Public can view products" ON products
-  FOR SELECT USING (true);
-
--- 3. Product Images
--- Allow anyone to read product images
-ALTER TABLE IF EXISTS product_images ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Public can view product images" ON product_images;
-CREATE POLICY "Public can view product images" ON product_images
-  FOR SELECT USING (true);
+-- Original vulnerable code removed to prevent accidental execution.
+-- See security_migrations.sql for the secure implementation.

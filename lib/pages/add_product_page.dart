@@ -234,8 +234,8 @@ class _AddProductPageState extends State<AddProductPage> {
           },
           fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
             return Focus(
-              onKey: (node, event) {
-                if (event is RawKeyDownEvent &&
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent &&
                     event.logicalKey == LogicalKeyboardKey.tab) {
                   if (_nameSuggestions.isNotEmpty) {
                     final first = _nameSuggestions.first;
@@ -372,8 +372,8 @@ class _AddProductPageState extends State<AddProductPage> {
           },
           fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
             return Focus(
-              onKey: (node, event) {
-                if (event is RawKeyDownEvent &&
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent &&
                     event.logicalKey == LogicalKeyboardKey.tab) {
                   if (_brandSuggestions.isNotEmpty) {
                     final first = _brandSuggestions.first;
@@ -496,8 +496,8 @@ class _AddProductPageState extends State<AddProductPage> {
           },
           fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
             return Focus(
-              onKey: (node, event) {
-                if (event is RawKeyDownEvent &&
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent &&
                     event.logicalKey == LogicalKeyboardKey.tab) {
                   if (_sizeSuggestions.isNotEmpty) {
                     final first = _sizeSuggestions.first;
@@ -592,8 +592,8 @@ class _AddProductPageState extends State<AddProductPage> {
   Widget _buildCategoryDropdown() {
     return Focus(
       focusNode: _categoryFocusNode,
-      onKey: (node, event) {
-        if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
         // Determine the typed character; prefer character when available
         String label;
         try {

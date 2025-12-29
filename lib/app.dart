@@ -307,9 +307,9 @@ class _FlavorWrapperState extends State<FlavorWrapper> {
         final slug = await slugResolver.resolveInitialSlug();
 
         if (slug != null && slug.isNotEmpty) {
-          // 2. Validate & Load Context
+          // 2. Validate & Load Context (secure RPC - no PII)
           final response = await SupabaseService.client.rpc(
-            'get_public_business_by_slug',
+            'get_public_business_by_slug_secure',
             params: {'p_slug': slug},
           );
 

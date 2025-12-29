@@ -10,7 +10,7 @@ class ThemeService {
   Future<ThemeMode> getThemeMode() async {
     final prefs = await SharedPreferences.getInstance();
     final themeIndex = prefs.getInt(_themeKey) ?? 0; // Default to system
-    
+
     switch (themeIndex) {
       case 1:
         return ThemeMode.light;
@@ -24,7 +24,7 @@ class ThemeService {
   /// Set the theme mode and save to shared preferences
   Future<void> setThemeMode(ThemeMode themeMode) async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     int themeIndex;
     switch (themeMode) {
       case ThemeMode.light:
@@ -36,7 +36,7 @@ class ThemeService {
       default:
         themeIndex = 0; // system
     }
-    
+
     await prefs.setInt(_themeKey, themeIndex);
   }
 
