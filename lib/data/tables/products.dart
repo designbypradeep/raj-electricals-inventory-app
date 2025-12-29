@@ -9,7 +9,9 @@ class Products extends Table {
   TextColumn get category => text()();
   IntColumn get quantity => integer()();
   IntColumn get price => integer()();
-  TextColumn get imagePaths => text().nullable()(); // JSON array of image file paths
+  TextColumn get imagePaths =>
+      text().nullable()(); // JSON array of image file paths
+  TextColumn get itemCode => text().nullable()();
   BoolColumn get isDeleted =>
       boolean().withDefault(const Constant(false))(); // Soft delete support
 }

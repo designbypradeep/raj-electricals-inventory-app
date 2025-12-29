@@ -562,6 +562,11 @@ class SupabaseService {
             'purchase_price': m['purchase_price'],
             'product_image_url': m['product_image_url'],
             'status': m['status'] ?? 'active',
+            'selling_price': m['selling_price'],
+            'purchase_price': m['purchase_price'],
+            'product_image_url': m['product_image_url'],
+            'status': m['status'] ?? 'active',
+            'item_code': m['item_code'], // NEW
             'created_at': DateTime.now().toIso8601String(),
           };
           final key = keyOf(m);
@@ -4718,6 +4723,7 @@ class SupabaseService {
     String? unitTypeWholesale,
     int? itemsPerWholesaleUnit = 1,
     List<String>? localImagePaths, // Local image paths (not stored in Supabase)
+    String? itemCode, // NEW
   }) async {
     final businessId = getCurrentBusinessId();
     if (businessId == null) return null;
@@ -4746,6 +4752,7 @@ class SupabaseService {
             'unit_type_single': unitTypeSingle,
             'unit_type_wholesale': unitTypeWholesale,
             'items_per_wholesale_unit': itemsPerWholesaleUnit,
+            'item_code': itemCode,
             if (coverImageUrl != null) 'product_image_url': coverImageUrl,
             'status': 'active',
             'created_at': DateTime.now().toIso8601String(),
@@ -4793,6 +4800,7 @@ class SupabaseService {
     String? unitTypeWholesale,
     int? itemsPerWholesaleUnit,
     List<String>? localImagePaths,
+    String? itemCode,
   }) async {
     final businessId = getCurrentBusinessId();
     if (businessId == null) return null;

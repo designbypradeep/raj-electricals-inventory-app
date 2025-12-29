@@ -60,6 +60,7 @@ class _AddProductPageState extends State<AddProductPage> {
   final _brandController = TextEditingController();
   final _sizeSpecController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _itemCodeController = TextEditingController(); // NEW
   final _sellingPriceController = TextEditingController();
   final _unitTypeSingleController = TextEditingController(text: 'Piece');
   final _unitTypeWholesaleController = TextEditingController();
@@ -140,6 +141,7 @@ class _AddProductPageState extends State<AddProductPage> {
     _unitTypeSingleController.dispose();
     _unitTypeWholesaleController.dispose();
     _itemsPerUnitController.dispose();
+    _itemCodeController.dispose(); // NEW
     _newCategoryController.dispose();
     _categoryFocusNode.dispose();
     super.dispose();
@@ -588,6 +590,65 @@ class _AddProductPageState extends State<AddProductPage> {
     );
   }
 
+  // NEW: Item Code Field
+  Widget _buildItemCodeField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Item Code (Optional)',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).textTheme.bodyLarge?.color,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _itemCodeController,
+          textInputAction: TextInputAction.next,
+          decoration: InputDecoration(
+            hintText: 'e.g. IMEI, Serial No, HSN, Model Code',
+            hintStyle: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            helperText:
+                'Use this if you track items by serial, IMEI, model, or your own code',
+            helperStyle: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            filled: true,
+            fillColor: _fieldFillColor(),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: Theme.of(context).colorScheme.primary,
+                width: 2,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 16,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   // Category dropdown with keyboard type-ahead (press a letter to jump/cycle)
   Widget _buildCategoryDropdown() {
     return Focus(
@@ -765,6 +826,8 @@ class _AddProductPageState extends State<AddProductPage> {
               _buildNameAutocompleteField(),
               const SizedBox(height: 20),
               _buildBrandAutocompleteField(),
+              const SizedBox(height: 20),
+              _buildItemCodeField(), // NEW
               const SizedBox(height: 20),
               LayoutBuilder(
                 builder: (context, c) {
@@ -1836,6 +1899,9 @@ class _AddProductPageState extends State<AddProductPage> {
           itemsPerWholesaleUnit:
               int.tryParse(_itemsPerUnitController.text.trim()) ?? 1,
           localImagePaths: savedImagePaths,
+          itemCode: _itemCodeController.text.trim().isEmpty
+              ? null
+              : _itemCodeController.text.trim(), // NEW
         );
 
         success = product != null;
@@ -1863,6 +1929,11 @@ class _AddProductPageState extends State<AddProductPage> {
                   ? null
                   : ImageStorageService.imagePathsToJson(savedImagePaths),
             ),
+            itemCode: drift.Value(
+              _itemCodeController.text.trim().isEmpty
+                  ? null
+                  : _itemCodeController.text.trim(),
+            ), // NEW
           ),
         );
         success = true;
@@ -1883,6 +1954,7 @@ class _AddProductPageState extends State<AddProductPage> {
         // Clear form
         _nameController.clear();
         _brandController.clear();
+        _itemCodeController.clear(); // NEW
         _sizeSpecController.clear();
         _sellingPriceController.clear();
         _descriptionController.clear();
