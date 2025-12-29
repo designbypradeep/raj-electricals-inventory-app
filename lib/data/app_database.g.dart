@@ -113,6 +113,17 @@ class $ProductsTable extends Products
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
+  static const drift.VerificationMeta _itemCodeMeta =
+      const drift.VerificationMeta('itemCode');
+  @override
+  late final drift.GeneratedColumn<String> itemCode =
+      drift.GeneratedColumn<String>(
+        'item_code',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const drift.VerificationMeta _isDeletedMeta =
       const drift.VerificationMeta('isDeleted');
   @override
@@ -139,6 +150,7 @@ class $ProductsTable extends Products
     quantity,
     price,
     imagePaths,
+    itemCode,
     isDeleted,
   ];
   @override
@@ -219,6 +231,12 @@ class $ProductsTable extends Products
         imagePaths.isAcceptableOrUnknown(data['image_paths']!, _imagePathsMeta),
       );
     }
+    if (data.containsKey('item_code')) {
+      context.handle(
+        _itemCodeMeta,
+        itemCode.isAcceptableOrUnknown(data['item_code']!, _itemCodeMeta),
+      );
+    }
     if (data.containsKey('is_deleted')) {
       context.handle(
         _isDeletedMeta,
@@ -270,6 +288,10 @@ class $ProductsTable extends Products
         DriftSqlType.string,
         data['${effectivePrefix}image_paths'],
       ),
+      itemCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}item_code'],
+      ),
       isDeleted: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_deleted'],
@@ -293,6 +315,7 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
   final int quantity;
   final int price;
   final String? imagePaths;
+  final String? itemCode;
   final bool isDeleted;
   const Product({
     required this.id,
@@ -304,6 +327,7 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
     required this.quantity,
     required this.price,
     this.imagePaths,
+    this.itemCode,
     required this.isDeleted,
   });
   @override
@@ -321,6 +345,9 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
     map['price'] = drift.Variable<int>(price);
     if (!nullToAbsent || imagePaths != null) {
       map['image_paths'] = drift.Variable<String>(imagePaths);
+    }
+    if (!nullToAbsent || itemCode != null) {
+      map['item_code'] = drift.Variable<String>(itemCode);
     }
     map['is_deleted'] = drift.Variable<bool>(isDeleted);
     return map;
@@ -341,6 +368,9 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
       imagePaths: imagePaths == null && nullToAbsent
           ? const drift.Value.absent()
           : drift.Value(imagePaths),
+      itemCode: itemCode == null && nullToAbsent
+          ? const drift.Value.absent()
+          : drift.Value(itemCode),
       isDeleted: drift.Value(isDeleted),
     );
   }
@@ -360,6 +390,7 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
       quantity: serializer.fromJson<int>(json['quantity']),
       price: serializer.fromJson<int>(json['price']),
       imagePaths: serializer.fromJson<String?>(json['imagePaths']),
+      itemCode: serializer.fromJson<String?>(json['itemCode']),
       isDeleted: serializer.fromJson<bool>(json['isDeleted']),
     );
   }
@@ -376,6 +407,7 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
       'quantity': serializer.toJson<int>(quantity),
       'price': serializer.toJson<int>(price),
       'imagePaths': serializer.toJson<String?>(imagePaths),
+      'itemCode': serializer.toJson<String?>(itemCode),
       'isDeleted': serializer.toJson<bool>(isDeleted),
     };
   }
@@ -390,6 +422,7 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
     int? quantity,
     int? price,
     drift.Value<String?> imagePaths = const drift.Value.absent(),
+    drift.Value<String?> itemCode = const drift.Value.absent(),
     bool? isDeleted,
   }) => Product(
     id: id ?? this.id,
@@ -401,6 +434,7 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
     quantity: quantity ?? this.quantity,
     price: price ?? this.price,
     imagePaths: imagePaths.present ? imagePaths.value : this.imagePaths,
+    itemCode: itemCode.present ? itemCode.value : this.itemCode,
     isDeleted: isDeleted ?? this.isDeleted,
   );
   Product copyWithCompanion(ProductsCompanion data) {
@@ -418,6 +452,7 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
       imagePaths: data.imagePaths.present
           ? data.imagePaths.value
           : this.imagePaths,
+      itemCode: data.itemCode.present ? data.itemCode.value : this.itemCode,
       isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
     );
   }
@@ -434,6 +469,7 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
           ..write('quantity: $quantity, ')
           ..write('price: $price, ')
           ..write('imagePaths: $imagePaths, ')
+          ..write('itemCode: $itemCode, ')
           ..write('isDeleted: $isDeleted')
           ..write(')'))
         .toString();
@@ -450,6 +486,7 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
     quantity,
     price,
     imagePaths,
+    itemCode,
     isDeleted,
   );
   @override
@@ -465,6 +502,7 @@ class Product extends drift.DataClass implements drift.Insertable<Product> {
           other.quantity == this.quantity &&
           other.price == this.price &&
           other.imagePaths == this.imagePaths &&
+          other.itemCode == this.itemCode &&
           other.isDeleted == this.isDeleted);
 }
 
@@ -478,6 +516,7 @@ class ProductsCompanion extends drift.UpdateCompanion<Product> {
   final drift.Value<int> quantity;
   final drift.Value<int> price;
   final drift.Value<String?> imagePaths;
+  final drift.Value<String?> itemCode;
   final drift.Value<bool> isDeleted;
   const ProductsCompanion({
     this.id = const drift.Value.absent(),
@@ -489,6 +528,7 @@ class ProductsCompanion extends drift.UpdateCompanion<Product> {
     this.quantity = const drift.Value.absent(),
     this.price = const drift.Value.absent(),
     this.imagePaths = const drift.Value.absent(),
+    this.itemCode = const drift.Value.absent(),
     this.isDeleted = const drift.Value.absent(),
   });
   ProductsCompanion.insert({
@@ -501,6 +541,7 @@ class ProductsCompanion extends drift.UpdateCompanion<Product> {
     required int quantity,
     required int price,
     this.imagePaths = const drift.Value.absent(),
+    this.itemCode = const drift.Value.absent(),
     this.isDeleted = const drift.Value.absent(),
   }) : name = drift.Value(name),
        brand = drift.Value(brand),
@@ -518,6 +559,7 @@ class ProductsCompanion extends drift.UpdateCompanion<Product> {
     drift.Expression<int>? quantity,
     drift.Expression<int>? price,
     drift.Expression<String>? imagePaths,
+    drift.Expression<String>? itemCode,
     drift.Expression<bool>? isDeleted,
   }) {
     return drift.RawValuesInsertable({
@@ -530,6 +572,7 @@ class ProductsCompanion extends drift.UpdateCompanion<Product> {
       if (quantity != null) 'quantity': quantity,
       if (price != null) 'price': price,
       if (imagePaths != null) 'image_paths': imagePaths,
+      if (itemCode != null) 'item_code': itemCode,
       if (isDeleted != null) 'is_deleted': isDeleted,
     });
   }
@@ -544,6 +587,7 @@ class ProductsCompanion extends drift.UpdateCompanion<Product> {
     drift.Value<int>? quantity,
     drift.Value<int>? price,
     drift.Value<String?>? imagePaths,
+    drift.Value<String?>? itemCode,
     drift.Value<bool>? isDeleted,
   }) {
     return ProductsCompanion(
@@ -556,6 +600,7 @@ class ProductsCompanion extends drift.UpdateCompanion<Product> {
       quantity: quantity ?? this.quantity,
       price: price ?? this.price,
       imagePaths: imagePaths ?? this.imagePaths,
+      itemCode: itemCode ?? this.itemCode,
       isDeleted: isDeleted ?? this.isDeleted,
     );
   }
@@ -590,6 +635,9 @@ class ProductsCompanion extends drift.UpdateCompanion<Product> {
     if (imagePaths.present) {
       map['image_paths'] = drift.Variable<String>(imagePaths.value);
     }
+    if (itemCode.present) {
+      map['item_code'] = drift.Variable<String>(itemCode.value);
+    }
     if (isDeleted.present) {
       map['is_deleted'] = drift.Variable<bool>(isDeleted.value);
     }
@@ -608,6 +656,7 @@ class ProductsCompanion extends drift.UpdateCompanion<Product> {
           ..write('quantity: $quantity, ')
           ..write('price: $price, ')
           ..write('imagePaths: $imagePaths, ')
+          ..write('itemCode: $itemCode, ')
           ..write('isDeleted: $isDeleted')
           ..write(')'))
         .toString();
@@ -2089,6 +2138,7 @@ typedef $$ProductsTableCreateCompanionBuilder =
       required int quantity,
       required int price,
       drift.Value<String?> imagePaths,
+      drift.Value<String?> itemCode,
       drift.Value<bool> isDeleted,
     });
 typedef $$ProductsTableUpdateCompanionBuilder =
@@ -2102,6 +2152,7 @@ typedef $$ProductsTableUpdateCompanionBuilder =
       drift.Value<int> quantity,
       drift.Value<int> price,
       drift.Value<String?> imagePaths,
+      drift.Value<String?> itemCode,
       drift.Value<bool> isDeleted,
     });
 
@@ -2156,6 +2207,11 @@ class $$ProductsTableFilterComposer
 
   drift.ColumnFilters<String> get imagePaths => $composableBuilder(
     column: $table.imagePaths,
+    builder: (column) => drift.ColumnFilters(column),
+  );
+
+  drift.ColumnFilters<String> get itemCode => $composableBuilder(
+    column: $table.itemCode,
     builder: (column) => drift.ColumnFilters(column),
   );
 
@@ -2219,6 +2275,11 @@ class $$ProductsTableOrderingComposer
     builder: (column) => drift.ColumnOrderings(column),
   );
 
+  drift.ColumnOrderings<String> get itemCode => $composableBuilder(
+    column: $table.itemCode,
+    builder: (column) => drift.ColumnOrderings(column),
+  );
+
   drift.ColumnOrderings<bool> get isDeleted => $composableBuilder(
     column: $table.isDeleted,
     builder: (column) => drift.ColumnOrderings(column),
@@ -2265,6 +2326,9 @@ class $$ProductsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  drift.GeneratedColumn<String> get itemCode =>
+      $composableBuilder(column: $table.itemCode, builder: (column) => column);
+
   drift.GeneratedColumn<bool> get isDeleted =>
       $composableBuilder(column: $table.isDeleted, builder: (column) => column);
 }
@@ -2309,6 +2373,7 @@ class $$ProductsTableTableManager
                 drift.Value<int> quantity = const drift.Value.absent(),
                 drift.Value<int> price = const drift.Value.absent(),
                 drift.Value<String?> imagePaths = const drift.Value.absent(),
+                drift.Value<String?> itemCode = const drift.Value.absent(),
                 drift.Value<bool> isDeleted = const drift.Value.absent(),
               }) => ProductsCompanion(
                 id: id,
@@ -2320,6 +2385,7 @@ class $$ProductsTableTableManager
                 quantity: quantity,
                 price: price,
                 imagePaths: imagePaths,
+                itemCode: itemCode,
                 isDeleted: isDeleted,
               ),
           createCompanionCallback:
@@ -2333,6 +2399,7 @@ class $$ProductsTableTableManager
                 required int quantity,
                 required int price,
                 drift.Value<String?> imagePaths = const drift.Value.absent(),
+                drift.Value<String?> itemCode = const drift.Value.absent(),
                 drift.Value<bool> isDeleted = const drift.Value.absent(),
               }) => ProductsCompanion.insert(
                 id: id,
@@ -2344,6 +2411,7 @@ class $$ProductsTableTableManager
                 quantity: quantity,
                 price: price,
                 imagePaths: imagePaths,
+                itemCode: itemCode,
                 isDeleted: isDeleted,
               ),
           withReferenceMapper: (p0) => p0

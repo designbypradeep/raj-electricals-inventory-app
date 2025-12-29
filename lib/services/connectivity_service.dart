@@ -50,8 +50,9 @@ class ConnectivityService {
     // RELAXED MODE: Trust the interface status primarily to avoid blocking valid users.
     // We update isOnline to true immediately if we have a network.
     if (!isOnline.value) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('Connectivity: Interface detected, marking online.');
+      }
       isOnline.value = true;
     }
 
@@ -63,8 +64,9 @@ class ConnectivityService {
         if (kDebugMode) print('Connectivity: DNS verified.');
       }
     } catch (_) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('Connectivity: DNS check failed, but keeping online status.');
+      }
     }
   }
 

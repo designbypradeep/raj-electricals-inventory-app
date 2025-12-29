@@ -327,8 +327,9 @@ class _SupplierReturnsPageState extends State<SupplierReturnsPage> {
                                 _refundType = 'credit';
                               });
                               await Future.delayed(const Duration(seconds: 2));
-                              if (mounted)
+                              if (mounted) {
                                 setState(() => _successMessage = null);
+                              }
                             } catch (e) {
                               setState(
                                 () => _errorMessage = 'Error saving return: $e',

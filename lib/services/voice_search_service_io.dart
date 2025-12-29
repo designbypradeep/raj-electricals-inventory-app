@@ -1,5 +1,6 @@
 /// Platform-specific implementation for dart:io platforms.
 /// Uses speech_to_text on mobile (Android/iOS), disabled on desktop.
+library;
 
 import 'dart:io' show Platform;
 import 'package:speech_to_text/speech_to_text.dart' as stt;

@@ -1,5 +1,6 @@
 /// Stub implementation for platforms without speech-to-text support (Web).
 /// This provides disabled voice search functionality.
+library;
 
 /// Callback type for when speech results are received.
 typedef VoiceSearchResultCallback = void Function(String text);
