@@ -20,10 +20,10 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 
 import 'dart:io';
 
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'smart_scan_page.dart';
 import '../services/connectivity_service.dart';
+import '../services/voice_search_service.dart';
 
 class ShopPage extends StatefulWidget {
   final AppDatabase db;
@@ -75,8 +75,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   // Collapsible filters (mobile compact)
   bool _filtersExpanded = false;
 
-  // Voice Search
-  final stt.SpeechToText _speech = stt.SpeechToText();
+  // Voice Search - Platform-specific implementation
+  final VoiceSearchService _voiceSearchService = VoiceSearchService();
   bool _isListening = false;
   bool _speechAvailable = false;
   // Price range (text controllers so user can type)
@@ -112,77 +112,49 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   Future<void> _initSpeech() async {
-    // Voice Search plugins often have issues on Windows.
-    // Explicitly disable it to prevent startup errors.
-    if (!kIsWeb && Platform.isWindows) {
-      debugPrint("Voice search disabled on Windows to prevent startup errors.");
-      return;
-    }
-
-    try {
-      _speechAvailable = await _speech.initialize(
-        onError: (val) {
-          debugPrint('Speech error: $val');
-          setState(() {});
-        },
-        onStatus: (val) {
-          debugPrint('Speech status: $val');
-          if (val == 'done' || val == 'notListening') {
-            setState(() => _isListening = false);
-          }
-        },
-      );
-    } catch (e) {
-      debugPrint('Speech init failed: $e');
+    // Initialize platform-specific voice search service
+    final available = await _voiceSearchService.initialize();
+    if (mounted) {
+      setState(() {
+        _speechAvailable = available;
+      });
     }
   }
 
   Future<void> _listen(BuildContext context) async {
     if (!_speechAvailable) {
-      await _initSpeech();
-      if (!_speechAvailable) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Speech recognition not available')),
-          );
-        }
-        return;
-      }
-    }
-    if (_isListening) {
-      await _speech.stop();
-      setState(() => _isListening = false);
-    } else {
-      setState(() => _isListening = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Listening... Say product name'),
-          duration: const Duration(seconds: 2),
-          backgroundColor: Theme.of(context).primaryColor,
+        const SnackBar(
+          content: Text('Voice search not available on this device'),
         ),
       );
-      await _speech.listen(
-        onResult: (val) {
-          setState(() {
-            _searchQuery = val.recognizedWords;
-            _searchController.text = _searchQuery;
-            if (val.finalResult) {
-              _isListening = false;
-            }
-          });
-          _onSearchChanged(_searchQuery);
-        },
-        listenFor: const Duration(seconds: 10),
-        pauseFor: const Duration(seconds: 3),
-        partialResults: true,
-        localeId: 'en_IN', // Prefer Indian English
-        cancelOnError: true,
-        listenMode: stt.ListenMode.search,
-      );
-      // Auto-stop listening handling is tricky without status listener,
-      // but UI will update via _isListening flag if we toggle it manually or on specific events.
-      // Ideally, we'd use a status listener in initSpeech, but valid for now.
+      return;
     }
+
+    if (_isListening) {
+      await _voiceSearchService.stopListening();
+      if (mounted) {
+        setState(() => _isListening = false);
+      }
+      return;
+    }
+
+    await _voiceSearchService.startListening(
+      onResult: (text) {
+        if (mounted && text.isNotEmpty) {
+          setState(() {
+            _searchController.text = text;
+          });
+          _onSearchChanged(text);
+        }
+      },
+      onStatusChange: (isListening) {
+        if (mounted) {
+          setState(() => _isListening = isListening);
+        }
+      },
+      localeId: 'en_IN', // English (India) for better local recognition
+    );
   }
 
   Future<void> _openCameraLabelScan(BuildContext context) async {
@@ -466,7 +438,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   height: 260,
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.7),
+                      color: Colors.white.withValues(alpha: 0.7),
                       width: 2,
                     ),
                     borderRadius: BorderRadius.circular(16),
@@ -631,8 +603,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             ),
                             prefixIcon: const Icon(Icons.search, size: 20),
                             filled: true,
-                            fillColor: cs.surfaceContainerHighest.withOpacity(
-                              0.3,
+                            fillColor: cs.surfaceContainerHighest.withValues(
+                              alpha: 0.3,
                             ),
                             contentPadding: const EdgeInsets.symmetric(
                               vertical: 0,
@@ -3175,6 +3147,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           finalTotal: total,
           paymentMethod: 'upi',
           saleDate: DateTime.now(),
+          status: 'pending',
         );
 
         // Share receipt (might take time/switch apps)
@@ -3271,6 +3244,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           finalTotal: total,
           paymentMethod: 'upi',
           saleDate: DateTime.now(),
+          status: 'pending',
         );
 
         // Share receipt

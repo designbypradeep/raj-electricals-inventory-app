@@ -78,6 +78,7 @@ dependencies:
 
   permission_handler: ^12.0.1
   font_awesome_flutter: ^10.12.0
+  # speech_to_text: enabled for mobile platforms via conditional import
   speech_to_text: ^7.3.0
 
 dev_dependencies:
@@ -94,6 +95,13 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+
+# Override speech_to_text_windows to prevent Windows build issues
+# The native Windows implementation has C++ compatibility issues with this project
+# Using a local stub plugin that returns unavailable state on Windows
+dependency_overrides:
+  speech_to_text_windows:
+    path: plugins/speech_to_text_windows
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

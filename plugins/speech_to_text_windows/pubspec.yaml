@@ -1,0 +1,20 @@
+name: speech_to_text_windows
+description: A stub implementation of speech_to_text_windows to avoid Windows build errors.
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.8.1
+  flutter: ">=3.0.0"
+
+flutter:
+  plugin:
+    implements: speech_to_text
+    platforms:
+      windows:
+        dartPluginClass: SpeechToTextWindowsStub
+
+dependencies:
+  flutter:
+    sdk: flutter
+  speech_to_text_platform_interface: ^2.3.0
