@@ -290,6 +290,9 @@ class _ProductPickerSheetState extends State<_ProductPickerSheet> {
                                 [
                                   if ((p.category ?? '').isNotEmpty)
                                     p.category!,
+                                  if (p.itemCode != null &&
+                                      p.itemCode!.isNotEmpty)
+                                    'Code: ${p.itemCode}',
                                   'Stock: ${p.currentStock}',
                                   if (p.sellingPrice != null)
                                     '₹${p.sellingPrice!.toStringAsFixed(2)}',

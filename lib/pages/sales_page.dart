@@ -21,6 +21,7 @@ class SaleItem {
   final int quantity;
   final double pricePerUnit;
   final String unit;
+  final String? itemCode;
 
   SaleItem({
     required this.productId,
@@ -28,6 +29,7 @@ class SaleItem {
     required this.quantity,
     required this.pricePerUnit,
     required this.unit,
+    this.itemCode,
   });
 
   Map<String, dynamic> toJson() => {
@@ -36,6 +38,7 @@ class SaleItem {
     'quantity': quantity,
     'price_per_unit': pricePerUnit,
     'unit': unit,
+    'item_code': itemCode,
   };
 }
 
@@ -272,6 +275,7 @@ class _SalesPageState extends State<SalesPage> {
           quantity: _quantity,
           pricePerUnit: _pricePerUnit,
           unit: _selectedUnit,
+          itemCode: selectedProduct.itemCode,
         ),
       );
 
@@ -526,6 +530,7 @@ class _SalesPageState extends State<SalesPage> {
               name: it.name,
               quantity: it.quantity,
               pricePerUnit: it.pricePerUnit,
+              itemCode: it.itemCode,
             ),
           )
           .toList(),

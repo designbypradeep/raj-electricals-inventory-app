@@ -249,6 +249,8 @@ class _InventoryPageState extends State<InventoryPage> {
               (product.brand?.toLowerCase().contains(query.toLowerCase()) ??
                   false) ||
               (product.category?.toLowerCase().contains(query.toLowerCase()) ??
+                  false) ||
+              (product.itemCode?.toLowerCase().contains(query.toLowerCase()) ??
                   false);
         }).toList();
       }
@@ -741,6 +743,18 @@ class _InventoryPageState extends State<InventoryPage> {
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
+                              if (product.itemCode != null &&
+                                  product.itemCode!.isNotEmpty)
+                                Text(
+                                  'Code: ${product.itemCode}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                               if (product.sizeOrSpec != null)
                                 Text(
                                   product.sizeOrSpec!,

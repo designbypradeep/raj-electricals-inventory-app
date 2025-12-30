@@ -8,10 +8,12 @@ class ReceiptItem {
   final String name;
   final int quantity;
   final double pricePerUnit;
+  final String? itemCode;
   const ReceiptItem({
     required this.name,
     required this.quantity,
     required this.pricePerUnit,
+    this.itemCode,
   });
 }
 
@@ -85,7 +87,9 @@ class ReceiptService {
       final it = e.value;
       return [
         '${i + 1}',
-        it.name,
+        it.itemCode != null && it.itemCode!.isNotEmpty
+            ? '${it.name} (${it.itemCode})'
+            : it.name,
         '${it.quantity}',
         it.pricePerUnit.toStringAsFixed(2),
         (it.quantity * it.pricePerUnit).toStringAsFixed(2),

@@ -2636,7 +2636,7 @@ class SupabaseService {
           .where((t) => t.isNotEmpty)
           .toList();
       final selectCols =
-          'id, name, brand, business_id, category, description, current_stock, product_image_url, purchase_price, selling_price, size_or_spec, status, unit_type_single, unit_type_wholesale, items_per_wholesale_unit, created_at';
+          'id, name, brand, business_id, category, description, current_stock, product_image_url, purchase_price, selling_price, size_or_spec, status, unit_type_single, unit_type_wholesale, items_per_wholesale_unit, created_at, item_code';
 
       Future<List<dynamic>> run({
         required String column,
@@ -2678,7 +2678,13 @@ class SupabaseService {
       // then filter in Dart to ensure all tokens are present in any order.
       final firstToken = tokens.isNotEmpty ? tokens.first : q.toLowerCase();
       final pool = <int, supabase_models.Product>{};
-      for (final col in ['name', 'brand', 'category', 'size_or_spec']) {
+      for (final col in [
+        'name',
+        'brand',
+        'category',
+        'size_or_spec',
+        'item_code',
+      ]) {
         try {
           final data = await run(column: col, token: firstToken);
           for (final row in data) {
@@ -2715,6 +2721,7 @@ class SupabaseService {
           p.name,
           p.category ?? '',
           p.sizeOrSpec ?? '',
+          p.itemCode ?? '',
           p.description ?? '',
         ].join(' ').toLowerCase();
         return tokens.every((t) => hay.contains(t));

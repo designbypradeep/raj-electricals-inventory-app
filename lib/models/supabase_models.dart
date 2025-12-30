@@ -20,6 +20,7 @@ class Product {
   final String? unitTypeWholesale;
   final int? itemsPerWholesaleUnit;
   final DateTime? createdAt;
+  final String? itemCode;
 
   // Local image paths (not stored in Supabase)
   final List<String>? localImagePaths;
@@ -42,6 +43,7 @@ class Product {
     this.unitTypeWholesale,
     this.itemsPerWholesaleUnit = 1,
     this.createdAt,
+    this.itemCode,
     this.localImagePaths,
   });
 
@@ -83,6 +85,7 @@ class Product {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
+      itemCode: json['item_code'] as String?,
     );
   }
 
@@ -105,6 +108,7 @@ class Product {
       'unit_type_wholesale': unitTypeWholesale,
       'items_per_wholesale_unit': itemsPerWholesaleUnit,
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+      'item_code': itemCode,
     };
   }
 
@@ -126,6 +130,7 @@ class Product {
     String? unitTypeWholesale,
     int? itemsPerWholesaleUnit,
     DateTime? createdAt,
+    String? itemCode,
     List<String>? localImagePaths,
   }) {
     return Product(
@@ -147,6 +152,7 @@ class Product {
       itemsPerWholesaleUnit:
           itemsPerWholesaleUnit ?? this.itemsPerWholesaleUnit,
       createdAt: createdAt ?? this.createdAt,
+      itemCode: itemCode ?? this.itemCode,
       localImagePaths: localImagePaths ?? this.localImagePaths,
     );
   }

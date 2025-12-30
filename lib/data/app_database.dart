@@ -3,7 +3,6 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:drift/drift.dart' as drift;
-import 'package:raj_electricals_inventory_app/pages/requests_page.dart';
 import 'tables/products.dart';
 import 'tables/purchases.dart';
 import 'tables/request_items.dart';
