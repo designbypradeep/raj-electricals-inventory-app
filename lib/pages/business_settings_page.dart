@@ -136,11 +136,9 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   Widget _buildShopAccessSection() {
     final slug = _loadedSlug;
     final hasSlug = slug != null && slug.isNotEmpty;
-    // Link to the GitHub Pages hosted redirect file
-    // Assumes the project is hosted at 'https://designbypradeep.github.io/raj-electricals-inventory-app/'
-    // and the 'docs' folder is published as the pages source.
-    const storageUrl =
-        'https://designbypradeep.github.io/raj-electricals-inventory-app/redirect/';
+    // Link to the separate public GitHub Pages repo
+    // Repo: https://github.com/designbypradeep/inventory-shop-page
+    const storageUrl = 'https://designbypradeep.github.io/inventory-shop-page/';
 
     // The clickable link for WhatsApp
     final shopLink = hasSlug ? '$storageUrl?id=$slug' : 'Not set';
