@@ -46,6 +46,23 @@ class SupabaseService {
   }
 
   // =====================
+  // Shop Access by Slug
+  // =====================
+  static Future<Map<String, dynamic>?> getBusinessBySlug(String slug) async {
+    try {
+      final response = await _client.rpc(
+        'get_public_business_by_slug',
+        params: {'p_slug': slug},
+      );
+      if (response == null) return null;
+      return Map<String, dynamic>.from(response as Map);
+    } catch (e) {
+      if (kDebugMode) print('Error resolving slug: $e');
+      return null;
+    }
+  }
+
+  // =====================
   // System Health: Stock reconciliation (preview and apply)
   // =====================
   static Future<List<Map<String, dynamic>>> healthStockReconcilePreview({

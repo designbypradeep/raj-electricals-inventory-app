@@ -24,6 +24,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'smart_scan_page.dart';
 import '../services/connectivity_service.dart';
 import '../services/voice_search_service.dart';
+import 'package:app_links/app_links.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ShopPage extends StatefulWidget {
   final AppDatabase db;
@@ -100,6 +102,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   List<Map<String, dynamic>> _products = [];
   List<String> _categories = ['all'];
 
+  // App Links
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -109,6 +115,72 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     _loadProductsAndCategories();
     _loadBusinessProfile();
     _initSpeech();
+    _initDeepLinks();
+  }
+
+  Future<void> _initDeepLinks() async {
+    _appLinks = AppLinks();
+
+    // Check initial link
+    try {
+      final initialUri = await _appLinks.getInitialLink();
+      if (initialUri != null) {
+        _handleDeepLink(initialUri);
+      }
+    } catch (_) {}
+
+    // Listen to changes
+    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    });
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    // Expected format: https://rajelectricals.com/store/<slug> or myshop://store/<slug>
+    if (uri.pathSegments.contains('store')) {
+      final index = uri.pathSegments.indexOf('store');
+      if (index + 1 < uri.pathSegments.length) {
+        final slug = uri.pathSegments[index + 1];
+        await _switchShop(slug);
+      }
+    }
+  }
+
+  Future<void> _switchShop(String slug) async {
+    if (!mounted) return;
+
+    // Show loading indicator or toast
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Loading shop details...')));
+
+    final profile = await SupabaseService.getBusinessBySlug(slug);
+    if (profile != null) {
+      final businessId = profile['id'] as String;
+      final businessName = profile['business_name'] as String;
+
+      // Update Service
+      SupabaseService.setDefaultBusinessId(businessId);
+
+      // Persist
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('DEFAULT_BUSINESS_ID', businessId);
+
+      // Refresh Page
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Welcome to $businessName')));
+        _loadBusinessProfile();
+        _loadProductsAndCategories(); // Reload products for new business
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Shop not found')));
+      }
+    }
   }
 
   Future<void> _initSpeech() async {
@@ -1503,6 +1575,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _linkSubscription?.cancel();
     _scrollController.dispose();
     _searchDebounce?.cancel();
     _searchController.dispose();
@@ -1513,9 +1586,33 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
   void _onSearchChanged(String value) {
     _searchDebounce?.cancel();
+
+    // Check if value is a redirect link or deep link
+    // Format 1: https://.../shop_redirect.html?id=slug
+    // Format 2: myshop://store/slug
+    final trimmed = value.trim();
+    if (trimmed.contains('shop_redirect.html') && trimmed.contains('id=')) {
+      try {
+        final uri = Uri.parse(trimmed);
+        final slug = uri.queryParameters['id'];
+        if (slug != null && slug.isNotEmpty) {
+          _searchController.clear();
+          _switchShop(slug);
+          return;
+        }
+      } catch (_) {}
+    } else if (trimmed.startsWith('myshop://store/')) {
+      final slug = trimmed.replaceFirst('myshop://store/', '');
+      if (slug.isNotEmpty) {
+        _searchController.clear();
+        _switchShop(slug);
+        return;
+      }
+    }
+
     _searchDebounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      setState(() => _searchQuery = value.trim());
+      setState(() => _searchQuery = _searchController.text.trim());
       // Bring products into view when searching
       _scrollToProducts();
     });

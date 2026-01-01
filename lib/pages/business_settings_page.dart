@@ -135,8 +135,17 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   Widget _buildShopAccessSection() {
     final slug = _loadedSlug;
     final hasSlug = slug != null && slug.isNotEmpty;
-    // Using the custom scheme as defined in AndroidManifest/Runner
-    final shopLink = hasSlug ? 'myshop://store/$slug' : 'Not set';
+    // Link to the Supabase Storage hosted redirect file
+    // Ideally this URL should be dynamic or configurable, but for this "Free" solution
+    // we assume the user uploads 'shop_redirect.html' to a 'public' folder.
+    // Replace [PROJECT_REF] with actual or load dynamically if possible.
+    // Using hardcoded project ref from main_shop.dart for now: oyilhssweqpicnmagmmn
+    const projectRef = 'oyilhssweqpicnmagmmn';
+    const storageUrl =
+        'https://$projectRef.supabase.co/storage/v1/object/public/common/shop_redirect.html';
+
+    // The clickable link for WhatsApp
+    final shopLink = hasSlug ? '$storageUrl?id=$slug' : 'Not set';
 
     return Container(
       decoration: BoxDecoration(
@@ -234,6 +243,11 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'TIP: Customers can paste this code directly in the app.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                   const SizedBox(height: 24),
 
                   // QR & Link Row
@@ -255,7 +269,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                               border: Border.all(color: Colors.grey.shade300),
                             ),
                             child: QrImageView(
-                              data: 'myshop://store/$slug',
+                              data: shopLink,
                               version: QrVersions.auto,
                               size: 140.0,
                               backgroundColor: Colors.white,
