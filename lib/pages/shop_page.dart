@@ -137,12 +137,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
   Future<void> _handleDeepLink(Uri uri) async {
     // Expected format: https://rajelectricals.com/store/<slug> or myshop://store/<slug>
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Received Deep Link: $uri'),
-        duration: const Duration(seconds: 5),
-      ),
-    );
     if (uri.pathSegments.contains('store')) {
       final index = uri.pathSegments.indexOf('store');
       if (index + 1 < uri.pathSegments.length) {

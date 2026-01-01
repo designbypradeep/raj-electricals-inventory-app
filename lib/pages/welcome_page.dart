@@ -54,13 +54,6 @@ class _WelcomePageState extends State<WelcomePage> {
   }
 
   Future<void> _handleDeepLink(Uri uri) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Received Deep Link: $uri'),
-        duration: const Duration(seconds: 5),
-      ),
-    );
-
     String? slug;
     // 1. Standard Path: https://domain.com/store/slug or myshop://store/slug
     if (uri.pathSegments.contains('store')) {
