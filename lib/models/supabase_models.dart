@@ -256,7 +256,7 @@ class BusinessProfile {
       logoUrl: json['logo_url'] as String?,
       currency: json['currency'] as String?,
       timezone: json['timezone'] as String?,
-      userId: json['user_id'] as String,
+      userId: json['user_id'] as String? ?? '',
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
