@@ -137,8 +137,9 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
     final slug = _loadedSlug;
     final hasSlug = slug != null && slug.isNotEmpty;
     // Link to the separate public GitHub Pages repo
-    // Repo: https://github.com/designbypradeep/inventory-shop-page
-    const storageUrl = 'https://designbypradeep.github.io/inventory-shop-page/';
+    // Repo: https://github.com/designbypradeep/inventory-shop-redirect
+    const storageUrl =
+        'https://designbypradeep.github.io/inventory-shop-redirect/';
 
     // The clickable link for WhatsApp
     final shopLink = hasSlug ? '$storageUrl?id=$slug' : 'Not set';
