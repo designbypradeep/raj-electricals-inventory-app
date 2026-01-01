@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Opening Shop...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #C1441E;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        p {
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+    <script>
+        function openApp() {
+            // Get slug from URL query param ?id=SLUG
+            const params = new URLSearchParams(window.location.search);
+            const slug = params.get('id');
+
+            if (slug) {
+                // Determine platform (simple check)
+                const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+                const isAndroid = /android/i.test(userAgent);
+
+                // Construct App URI: myshop://store/slug
+                const appUri = 'myshop://store/' + slug;
+
+                // 1. Try to open the app
+                window.location.href = appUri;
+
+                // 2. Fallback UI will remain visible if app doesn't open
+                document.getElementById('status').innerText = 'Opening Shop App...';
+                document.getElementById('manual-link').href = appUri;
+                document.getElementById('slug-display').innerText = slug;
+            } else {
+                document.getElementById('status').innerText = 'No shop ID provided.';
+                document.getElementById('content').style.display = 'none';
+            }
+        }
+
+        window.onload = openApp;
+    </script>
+</head>
+
+<body>
+    <div id="content">
+        <h2 id="status">Redirecting...</h2>
+        <p>If the app doesn't open automatically, click the button below:</p>
+        <a id="manual-link" href="#" class="btn">Open Shop App</a>
+
+        <br><br>
+        <hr><br>
+
+        <p>Don't have the app yet? <a href="#">Download it here</a> (Coming Soon)</p>
+        <p style="font-size: 10px; color: #999;">Shop ID: <span id="slug-display"></span></p>
+    </div>
+</body>
+
+</html>

@@ -136,14 +136,11 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   Widget _buildShopAccessSection() {
     final slug = _loadedSlug;
     final hasSlug = slug != null && slug.isNotEmpty;
-    // Link to the Supabase Storage hosted redirect file
-    // Ideally this URL should be dynamic or configurable, but for this "Free" solution
-    // we assume the user uploads 'shop_redirect.html' to a 'public' folder.
-    // Replace [PROJECT_REF] with actual or load dynamically if possible.
-    // Using hardcoded project ref from main_shop.dart for now: oyilhssweqpicnmagmmn
-    const projectRef = 'oyilhssweqpicnmagmmn';
+    // Link to the GitHub Pages hosted redirect file
+    // Assumes the project is hosted at 'https://designbypradeep.github.io/raj-electricals-inventory-app/'
+    // and the 'docs' folder is published as the pages source.
     const storageUrl =
-        'https://$projectRef.supabase.co/storage/v1/object/public/common/shop_redirect.html';
+        'https://designbypradeep.github.io/raj-electricals-inventory-app/redirect/';
 
     // The clickable link for WhatsApp
     final shopLink = hasSlug ? '$storageUrl?id=$slug' : 'Not set';
