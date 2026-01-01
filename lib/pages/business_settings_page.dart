@@ -43,6 +43,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   bool _isSaving = false;
   String? _errorMessage;
   String? _successMessage;
+  bool _isLinkCopied = false; // New state for feedback
 
   // Brand color drafts for live preview (null = use defaults)
   Color? _primaryDraft;
@@ -329,20 +330,42 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                                   children: [
                                     Expanded(
                                       child: OutlinedButton.icon(
+                                        label: Text(
+                                          _isLinkCopied
+                                              ? 'Copied!'
+                                              : 'Copy Link',
+                                        ),
+                                        icon: Icon(
+                                          _isLinkCopied
+                                              ? Icons.check
+                                              : Icons.copy,
+                                          size: 18,
+                                        ),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: _isLinkCopied
+                                              ? Colors.green
+                                              : null,
+                                          side: _isLinkCopied
+                                              ? const BorderSide(
+                                                  color: Colors.green,
+                                                )
+                                              : null,
+                                        ),
                                         onPressed: () {
                                           Clipboard.setData(
                                             ClipboardData(text: shopLink),
                                           );
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Link copied'),
-                                            ),
+                                          setState(() => _isLinkCopied = true);
+                                          Future.delayed(
+                                            const Duration(seconds: 2),
+                                            () {
+                                              if (mounted)
+                                                setState(
+                                                  () => _isLinkCopied = false,
+                                                );
+                                            },
                                           );
                                         },
-                                        icon: const Icon(Icons.copy, size: 18),
-                                        label: const Text('Copy Link'),
                                       ),
                                     ),
                                     const SizedBox(width: 12),
