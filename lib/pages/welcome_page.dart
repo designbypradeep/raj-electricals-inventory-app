@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:app_links/app_links.dart';
+import 'dart:async';
 import '../services/slug_resolver.dart';
 import '../services/supabase_service.dart';
 import 'shop_page.dart';
@@ -16,13 +18,72 @@ class WelcomePage extends StatefulWidget {
 class _WelcomePageState extends State<WelcomePage> {
   final TextEditingController _slugController = TextEditingController();
   final SlugResolver _slugResolver = SlugResolver();
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
   bool _isLoading = false;
   String? _errorMessage;
 
   @override
+  void initState() {
+    super.initState();
+    _initDeepLinks();
+  }
+
+  @override
   void dispose() {
+    _linkSubscription?.cancel();
     _slugController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initDeepLinks() async {
+    _appLinks = AppLinks();
+
+    // Check initial link
+    try {
+      final initialUri = await _appLinks.getInitialLink();
+      if (initialUri != null) {
+        _handleDeepLink(initialUri);
+      }
+    } catch (_) {}
+
+    // Listen to changes
+    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    });
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Received Deep Link: $uri'),
+        duration: const Duration(seconds: 5),
+      ),
+    );
+
+    String? slug;
+    // 1. Standard Path: https://domain.com/store/slug or myshop://store/slug
+    if (uri.pathSegments.contains('store')) {
+      final idx = uri.pathSegments.indexOf('store');
+      if (idx + 1 < uri.pathSegments.length) {
+        slug = uri.pathSegments[idx + 1];
+      }
+    }
+    // 2. Custom Scheme: myshop://store/slug (host might be 'store')
+    else if (uri.scheme == 'myshop' &&
+        uri.host == 'store' &&
+        uri.pathSegments.isNotEmpty) {
+      slug = uri.pathSegments.first;
+    }
+    // 3. Fallback for query param ?id=slug (if using web redirect link directly)
+    else if (uri.queryParameters.containsKey('id')) {
+      slug = uri.queryParameters['id'];
+    }
+
+    if (slug != null && slug.isNotEmpty) {
+      _slugController.text = slug;
+      await _handleSlugSubmission(slug);
+    }
   }
 
   Future<void> _handleSlugSubmission(String slug) async {
