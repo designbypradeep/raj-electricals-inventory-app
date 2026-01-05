@@ -35,6 +35,7 @@ import '../models/supabase_models.dart' as supabase_models;
 import '../models/sales_purchase_models.dart' as models;
 import '../widgets/page_header.dart';
 import 'archived_products_page.dart';
+import 'order_history_page.dart';
 import '../theme/status_colors.dart';
 // import '../theme/brand_accents.dart'; // no longer needed after semantic color mapping
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -3677,6 +3678,11 @@ class _DashboardPageState extends State<DashboardPage> {
                   _twColor('cyan'),
                 ),
                 _buildSecondaryActionCard(
+                  'Order History',
+                  Icons.history,
+                  _twColor('orange'),
+                ),
+                _buildSecondaryActionCard(
                   'Purchase History',
                   Icons.receipt_long,
                   _twColor('blue'),
@@ -3984,6 +3990,11 @@ class _DashboardPageState extends State<DashboardPage> {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const SalesHistoryPage()),
+            );
+          } else if (title == 'Order History') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const OrderHistoryPage()),
             );
           } else if (title == 'Purchase History') {
             Navigator.push(

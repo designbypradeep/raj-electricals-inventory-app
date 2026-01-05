@@ -232,34 +232,8 @@ class SupabaseService {
         },
       );
     } else if (status.toLowerCase() == 'rejected') {
-      final proofUrl = await _client.rpc<String?>(
-        'reject_shop_order',
-        params: {'p_order_id': saleId},
-      );
-
-      // If a proof URL was returned, attempt to delete it
-      if (proofUrl != null && proofUrl.isNotEmpty) {
-        try {
-          // Extract path from URL (after bucket name)
-          // URL format: .../storage/v1/object/public/payment-proofs/filename.jpg
-          final uri = Uri.parse(proofUrl);
-          final segments = uri.pathSegments;
-          final bucketIndex = segments.indexOf('payment-proofs');
-
-          if (bucketIndex != -1 && bucketIndex + 1 < segments.length) {
-            final path = segments.sublist(bucketIndex + 1).join('/');
-            await _client.storage.from('payment-proofs').remove([path]);
-            if (kDebugMode) {
-              print('Deleted rejected proof: $path');
-            }
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print('Error deleting rejected proof: $e');
-          }
-          // Don't block rejection on deletion failure
-        }
-      }
+      await _client.rpc('reject_shop_order', params: {'p_order_id': saleId});
+      // No longer deleting proof images; they are preserved for audit.
     } else {
       throw Exception('Unsupported status update: $status');
     }
@@ -279,7 +253,8 @@ class SupabaseService {
           .select(
             '*, shop_order_items(quantity, price_per_unit, products(name, product_images(image_url)))',
           )
-          .eq('business_id', businessId);
+          .eq('business_id', businessId)
+          .eq('status', 'payment_pending'); // Explicitly only pending
 
       if (createdBefore != null && createdBefore.isNotEmpty) {
         query = query.lt('created_at', createdBefore);
@@ -292,6 +267,39 @@ class SupabaseService {
           .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
           .toList();
     } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getShopOrderHistory({
+    int limit = 20,
+    String? createdBefore,
+  }) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) return [];
+
+    try {
+      var query = _client
+          .from('shop_orders')
+          .select(
+            '*, shop_order_items(quantity, price_per_unit, products(name, product_images(image_url)))',
+          )
+          .eq('business_id', businessId)
+          .neq('status', 'payment_pending'); // Everything NOT pending
+
+      if (createdBefore != null && createdBefore.isNotEmpty) {
+        query = query.lt('created_at', createdBefore);
+      }
+      final resp = await query
+          .order('created_at', ascending: false)
+          .limit(limit);
+
+      return (resp as List)
+          .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (e) {
+      if (kDebugMode) print('History fetch error: $e');
       return [];
     }
   }

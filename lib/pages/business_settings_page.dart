@@ -355,10 +355,11 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                                           Future.delayed(
                                             const Duration(seconds: 2),
                                             () {
-                                              if (mounted)
+                                              if (mounted) {
                                                 setState(
                                                   () => _isLinkCopied = false,
                                                 );
+                                              }
                                             },
                                           );
                                         },

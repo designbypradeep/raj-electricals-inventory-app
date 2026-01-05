@@ -190,6 +190,46 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
     );
   }
 
+  Future<void> _confirmRejectDialog(
+    int saleId,
+    Map<String, dynamic> row,
+  ) async {
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reject Order?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text('This action will mark the order as Rejected.'),
+            SizedBox(height: 8),
+            Text(
+              'It will be hidden from active views (never deleted).',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text('Stock will be restored automatically.'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(context);
+              _markStatus(saleId, 'rejected', data: row);
+            },
+            child: const Text('Confirm Reject'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openUrl(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
@@ -477,7 +517,7 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
                             Expanded(
                               child: OutlinedButton.icon(
                                 onPressed: () =>
-                                    _markStatus(saleId, 'rejected', data: row),
+                                    _confirmRejectDialog(saleId, row),
                                 icon: const Icon(Icons.close),
                                 label: const Text('Reject'),
                               ),
