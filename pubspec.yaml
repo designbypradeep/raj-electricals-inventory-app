@@ -159,13 +159,13 @@ flutter_launcher_icons:
   remove_alpha_ios: true
   min_sdk_android: 23
   adaptive_icon_background: "#C1441E"
-  adaptive_icon_foreground: assets/icons/app_icon_transparent.png
+  adaptive_icon_foreground: assets/icons/app_icon_foreground.png
   flavors:
     admin:
       image_path: assets/icons/app_icon.png
       adaptive_icon_background: "#C1441E"
-      adaptive_icon_foreground: assets/icons/app_icon_transparent.png
+      adaptive_icon_foreground: assets/icons/app_icon_foreground.png
     shop:
       image_path: assets/icons/app_icon_shop.png
       adaptive_icon_background: "#C1441E"
-      adaptive_icon_foreground: assets/icons/app_icon_shop_transparent.png
+      adaptive_icon_foreground: assets/icons/app_icon_shop_foreground.png
