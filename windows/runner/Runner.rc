@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "Smart Inventory System" "\0"
+            VALUE "FileDescription", "Inventoza" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "Smart Inventory System" "\0"
+            VALUE "InternalName", "Inventoza" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "SmartInventorySystem.exe" "\0"
-            VALUE "ProductName", "Smart Inventory System" "\0"
+            VALUE "OriginalFilename", "Inventoza.exe" "\0"
+            VALUE "ProductName", "Inventoza" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
