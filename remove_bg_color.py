@@ -37,10 +37,10 @@ def remove_background(input_path, output_path, target_color_hex):
     print(f"Processed {input_path} -> {output_path}")
 
 try:
-    # Process main icon
-    remove_background("assets/icons/app_icon.png", "assets/icons/app_icon_transparent.png", None)
-    # Process shop icon
-    remove_background("assets/icons/app_icon_shop.png", "assets/icons/app_icon_shop_transparent.png", None)
+    # Use the brand color found in app_theme.dart: 0xFFC1441E -> #C1441E
+    brand_color = "C1441E" 
+    remove_background("assets/icons/app_icon.png", "assets/icons/app_icon_transparent.png", brand_color)
+    remove_background("assets/icons/app_icon_shop.png", "assets/icons/app_icon_shop_transparent.png", brand_color)
     print("Success")
 except Exception as e:
     print(f"Error: {e}")
