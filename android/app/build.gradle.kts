@@ -50,14 +50,14 @@ android {
         create("admin") {
             dimension = "app"
             // Default app name for admin build
-            resValue("string", "app_name", "Smart Inventory")
+            resValue("string", "app_name", "Inventoza")
         }
         create("shop") {
             dimension = "app"
             // Use a different applicationId suffix to install alongside admin
             applicationIdSuffix = ".shop"
             // App name for customer-facing build
-            resValue("string", "app_name", "Raj Electricals Shop")
+            resValue("string", "app_name", "Inventoza Shop")
         }
     }
 }

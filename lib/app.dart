@@ -76,7 +76,7 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Smart Inventory',
+      title: 'Inventoza',
       debugShowCheckedModeBanner: false,
       themeMode: _themeMode,
       theme: _buildLightTheme(),

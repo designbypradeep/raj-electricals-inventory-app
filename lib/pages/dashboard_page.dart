@@ -1158,7 +1158,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 ),
                 Text(
-                  'Smart Inventory System',
+                  'Run your business with clarity',
                   style: TextStyle(
                     fontSize: 12,
                     color: Theme.of(
@@ -1693,7 +1693,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _businessProfile?.businessName ?? 'Smart Inventory',
+                      _businessProfile?.businessName ?? 'Inventoza',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

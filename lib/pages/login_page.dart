@@ -350,7 +350,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                               ),
                               const SizedBox(height: 24),
                               Text(
-                                'Smart Inventory',
+                                'Inventoza',
                                 style: TextStyle(
                                   fontSize: 28,
                                   fontWeight: FontWeight.bold,
@@ -363,7 +363,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                               Text(
                                 _isOTPMode
                                     ? 'Enter verification code'
-                                    : 'Welcome back',
+                                    : 'Business operations made simple',
                                 style: TextStyle(
                                   fontSize: 16,
                                   color: Theme.of(
