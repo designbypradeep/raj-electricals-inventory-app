@@ -333,19 +333,21 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                     end: Alignment.bottomRight,
                                     colors: [
                                       const Color(
-                                        0xFFE07B39,
-                                      ), // Terracotta Orange - Primary
+                                        0xFFC1441E,
+                                      ), // Brand Orange - Primary
                                       const Color(
-                                        0xFFD86A28,
-                                      ), // Darker Terracotta
+                                        0xFF9F3819,
+                                      ), // Darker Brand Orange
                                     ],
                                   ),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
-                                child: const Icon(
-                                  Icons.inventory_2,
-                                  size: 40,
-                                  color: Colors.white,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Image.asset(
+                                    'assets/icons/app_icon_transparent.png',
+                                    fit: BoxFit.contain,
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 24),
@@ -451,9 +453,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                       context,
                                     ).colorScheme.onSurface,
                                   ),
-                                  cursorColor: Theme.of(
-                                    context,
-                                  ).colorScheme.primary,
+                                  cursorColor: const Color(0xFFC1441E),
                                   decoration: InputDecoration(
                                     labelText: 'Email',
                                     hintText: 'Enter your email address',
@@ -488,10 +488,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.primary,
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFFC1441E),
                                         width: 2,
                                       ),
                                     ),
@@ -524,8 +522,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                         : _sendOTP,
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: const Color(
-                                        0xFFE07B39,
-                                      ), // Terracotta Orange
+                                        0xFFC1441E,
+                                      ), // Brand Orange
                                       foregroundColor: Colors.white,
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 16,
@@ -607,9 +605,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                             context,
                                           ).colorScheme.onSurface,
                                         ),
-                                        cursorColor: Theme.of(
-                                          context,
-                                        ).colorScheme.primary,
+                                        cursorColor: const Color(
+                                          0xFFC1441E,
+                                        ), // Brand Orange
                                         decoration: InputDecoration(
                                           counterText: '',
                                           border: OutlineInputBorder(
@@ -632,10 +630,10 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                             borderRadius: BorderRadius.circular(
                                               12,
                                             ),
-                                            borderSide: BorderSide(
-                                              color: Theme.of(
-                                                context,
-                                              ).colorScheme.primary,
+                                            borderSide: const BorderSide(
+                                              color: Color(
+                                                0xFFC1441E,
+                                              ), // Brand Orange
                                               width: 2,
                                             ),
                                           ),
@@ -663,8 +661,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                     onPressed: _isLoading ? null : _verifyOTP,
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: const Color(
-                                        0xFFE07B39,
-                                      ), // Terracotta Orange
+                                        0xFFC1441E,
+                                      ), // Brand Orange
                                       foregroundColor: Colors.white,
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 16,
@@ -706,8 +704,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                         : 'Resend code',
                                     style: TextStyle(
                                       color: const Color(
-                                        0xFFE07B39,
-                                      ), // Terracotta Orange
+                                        0xFFC1441E,
+                                      ), // Brand Orange
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
