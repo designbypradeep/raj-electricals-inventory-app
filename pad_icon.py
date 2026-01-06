@@ -30,5 +30,5 @@ def add_padding(input_path, output_path, scale_factor=0.65):
 
 if __name__ == "__main__":
     # Pad the transparent icons we generated earlier
-    add_padding("assets/icons/app_icon_transparent.png", "assets/icons/app_icon_foreground.png", 0.65)
-    add_padding("assets/icons/app_icon_shop_transparent.png", "assets/icons/app_icon_shop_foreground.png", 0.65)
+    add_padding("assets/icons/app_icon_transparent.png", "assets/icons/app_icon_foreground.png", 0.70)
+    add_padding("assets/icons/app_icon_shop_transparent.png", "assets/icons/app_icon_shop_foreground.png", 0.70)
