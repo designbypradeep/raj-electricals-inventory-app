@@ -2826,9 +2826,7 @@ class _DashboardPageState extends State<DashboardPage> {
       description: 'Real-time business overview and key performance metrics',
       icon: '🏠',
       showBackButton: false,
-      breadcrumbs: [
-        PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', current: true),
-      ],
+      breadcrumbs: [],
       stats: [
         PageHeaderStat(
           label: 'Smart Inventory',
