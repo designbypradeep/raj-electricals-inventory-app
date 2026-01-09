@@ -207,6 +207,9 @@ class BusinessProfile {
   final bool isActive;
   final String? primaryColor;
   final String? secondaryColor;
+  final String? status;
+  final DateTime? trialStart;
+  final DateTime? trialEnd;
 
   BusinessProfile({
     required this.id,
@@ -235,6 +238,9 @@ class BusinessProfile {
     this.isActive = true,
     this.primaryColor,
     this.secondaryColor,
+    this.status,
+    this.trialStart,
+    this.trialEnd,
   });
 
   factory BusinessProfile.fromJson(Map<String, dynamic> json) {
@@ -269,6 +275,13 @@ class BusinessProfile {
       isActive: json['is_active'] as bool? ?? true,
       primaryColor: json['primary_color'] as String?,
       secondaryColor: json['secondary_color'] as String?,
+      status: json['status'] as String?,
+      trialStart: json['trial_start'] != null
+          ? DateTime.parse(json['trial_start'] as String)
+          : null,
+      trialEnd: json['trial_end'] != null
+          ? DateTime.parse(json['trial_end'] as String)
+          : null,
     );
   }
 
@@ -300,6 +313,9 @@ class BusinessProfile {
       'is_active': isActive,
       if (primaryColor != null) 'primary_color': primaryColor,
       if (secondaryColor != null) 'secondary_color': secondaryColor,
+      if (status != null) 'status': status,
+      if (trialStart != null) 'trial_start': trialStart!.toIso8601String(),
+      if (trialEnd != null) 'trial_end': trialEnd!.toIso8601String(),
     };
   }
 }

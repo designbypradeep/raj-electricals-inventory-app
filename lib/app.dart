@@ -15,6 +15,7 @@ import 'pages/returns_page.dart';
 import 'pages/process_replacement_page.dart';
 import 'pages/shop_page.dart';
 import 'pages/payment_verification_page.dart';
+import 'pages/status_blocked_page.dart';
 import 'services/supabase_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/theme_service.dart';
@@ -428,6 +429,13 @@ class DashboardWrapper extends StatelessWidget {
           // Only treat as setup-needed when request succeeded but profile is actually null.
           return const BusinessSettingsPage();
         }
+
+        // Enforce Business Lifecycle
+        final status = businessProfile.status?.toUpperCase();
+        if (status == 'PENDING' || status == 'SUSPENDED') {
+          return StatusBlockedPage(status: status ?? 'UNKNOWN');
+        }
+
         return DashboardPage(db: database, onThemeChanged: onThemeChanged);
       },
     );
