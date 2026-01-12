@@ -5,6 +5,7 @@ import '../services/supabase_service.dart';
 import '../services/connectivity_service.dart';
 import '../models/sales_purchase_models.dart' as models;
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SalesHistoryPage extends StatefulWidget {
   const SalesHistoryPage({super.key});
@@ -277,6 +278,94 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                     : Theme.of(context).colorScheme.error),
         ),
       );
+    }
+  }
+
+  Future<void> _shareOnWhatsApp(models.Sale sale) async {
+    final profile = await SupabaseService.getCurrentBusinessProfile();
+    final String businessName = profile?.businessName ?? 'Inventoza';
+
+    if (sale.customerPhone == null || sale.customerPhone!.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No phone number available for this customer.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    final dateStr = DateFormat(
+      'dd/MM/yyyy',
+    ).format(sale.createdAt ?? DateTime.now());
+
+    // Build the receipt text
+    final StringBuffer sb = StringBuffer();
+    sb.writeln('*Receipt from $businessName*');
+    sb.writeln('--------------------------------');
+    sb.writeln('Inv: ${sale.id} | Date: $dateStr');
+    sb.writeln('--------------------------------');
+
+    final items = _safeSalesItems(sale);
+    for (final item in items) {
+      final name = item.product?.name ?? 'Unknown Product';
+      final qty = item.quantity;
+      final price = item.pricePerUnit;
+      final total = qty * price;
+      // Using toStringAsFixed(2) roughly matches logic, ignoring potential int/double precision nuances for display
+      sb.writeln('$name x $qty = ₹${total.toStringAsFixed(2)}');
+    }
+
+    sb.writeln('--------------------------------');
+
+    // Calculate totals locally
+    final subTotal = items.fold<double>(
+      0.0,
+      (sum, item) => sum + (item.quantity * item.pricePerUnit),
+    );
+    final discount = sale.discountAmount ?? 0.0;
+    final finalTotal = sale.totalAmount;
+
+    sb.writeln('*Subtotal: ₹${subTotal.toStringAsFixed(2)}*');
+    if (discount > 0) {
+      sb.writeln('Discount: - ₹${discount.toStringAsFixed(2)}');
+    }
+    sb.writeln('*Final Total: ₹${finalTotal.toStringAsFixed(2)}*');
+    sb.writeln('--------------------------------');
+    sb.writeln('Thank you for your business!');
+
+    final text = Uri.encodeComponent(sb.toString());
+    String phone = sale.customerPhone!.replaceAll(RegExp(r'\D'), '');
+    if (phone.length == 10) {
+      phone = '91$phone'; // Prepend 91 if likely Indian mobile
+    }
+
+    final url = Uri.parse('https://wa.me/$phone?text=$text');
+
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not launch WhatsApp.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error launching WhatsApp: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1408,6 +1497,15 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                                     isExpanded
                                         ? 'Hide Details'
                                         : 'View Details',
+                                  ),
+                                ),
+                                ElevatedButton.icon(
+                                  onPressed: () => _shareOnWhatsApp(sale),
+                                  icon: const Icon(Icons.share, size: 16),
+                                  label: const Text('Share'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
                                   ),
                                 ),
                                 ElevatedButton.icon(

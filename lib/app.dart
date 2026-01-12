@@ -14,8 +14,8 @@ import 'pages/replacements_history_page.dart';
 import 'pages/returns_page.dart';
 import 'pages/process_replacement_page.dart';
 import 'pages/shop_page.dart';
+import 'pages/customers_page.dart';
 import 'pages/payment_verification_page.dart';
-import 'pages/status_blocked_page.dart';
 import 'services/supabase_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/theme_service.dart';
@@ -145,6 +145,7 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
         '/replacements-history': (context) => const ReplacementsHistoryPage(),
         '/history/replacements': (context) => const ReplacementsHistoryPage(),
         '/payments/verification': (context) => const PaymentVerificationPage(),
+        '/customers': (context) => const CustomersPage(),
       },
     );
   }
@@ -428,12 +429,6 @@ class DashboardWrapper extends StatelessWidget {
         if (businessProfile == null) {
           // Only treat as setup-needed when request succeeded but profile is actually null.
           return const BusinessSettingsPage();
-        }
-
-        // Enforce Business Lifecycle
-        final status = businessProfile.status?.toUpperCase();
-        if (status == 'PENDING' || status == 'SUSPENDED') {
-          return StatusBlockedPage(status: status ?? 'UNKNOWN');
         }
 
         return DashboardPage(db: database, onThemeChanged: onThemeChanged);

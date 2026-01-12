@@ -40,6 +40,8 @@ class _CatalogPageState extends State<CatalogPage> {
   final ScrollController _scrollController = ScrollController();
   StreamSubscription<List<Map<String, dynamic>>>? _productsSub;
 
+  supabase_models.BusinessProfile? _businessProfile;
+
   // Bulk operations state
   Set<int> _selectedProducts = <int>{};
   bool _bulkOperationMode = false;
@@ -109,6 +111,15 @@ class _CatalogPageState extends State<CatalogPage> {
       }
       return;
     }
+
+    // Load profile for status check
+    final profile = await SupabaseService.getBusinessProfile();
+    if (mounted) {
+      setState(() {
+        _businessProfile = profile;
+      });
+    }
+
     await _loadProducts();
   }
 
@@ -804,6 +815,9 @@ class _CatalogPageState extends State<CatalogPage> {
   }
 
   Widget _buildSearchAndActionRow() {
+    final status = _businessProfile?.status?.toUpperCase();
+    final isRestricted = ['PENDING', 'SUSPENDED', 'EXPIRED'].contains(status);
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = constraints.maxWidth < 480;
@@ -819,13 +833,14 @@ class _CatalogPageState extends State<CatalogPage> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _buildActionButton(
-                    icon: Icons.add,
-                    label: 'Add Product',
-                    onPressed: () =>
-                        Navigator.pushNamed(context, '/add-product'),
-                    isPrimary: true,
-                  ),
+                  if (!isRestricted)
+                    _buildActionButton(
+                      icon: Icons.add,
+                      label: 'Add Product',
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/add-product'),
+                      isPrimary: true,
+                    ),
                   _buildActionButton(
                     icon: Icons.select_all,
                     label: _bulkOperationMode ? 'Exit Bulk' : 'Bulk Select',
@@ -860,13 +875,15 @@ class _CatalogPageState extends State<CatalogPage> {
           children: [
             Expanded(flex: 3, child: _buildSearchInput()),
             const SizedBox(width: 16),
-            _buildActionButton(
-              icon: Icons.add,
-              label: 'Add Product',
-              onPressed: () => Navigator.pushNamed(context, '/add-product'),
-              isPrimary: true,
-            ),
-            const SizedBox(width: 12),
+            if (!isRestricted) ...[
+              _buildActionButton(
+                icon: Icons.add,
+                label: 'Add Product',
+                onPressed: () => Navigator.pushNamed(context, '/add-product'),
+                isPrimary: true,
+              ),
+              const SizedBox(width: 12),
+            ],
             _buildActionButton(
               icon: Icons.select_all,
               label: _bulkOperationMode ? 'Exit Bulk' : 'Bulk Select',

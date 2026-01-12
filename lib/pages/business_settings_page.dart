@@ -1113,7 +1113,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
         setState(() {
           _successMessage = existingProfile != null
               ? 'Business profile updated successfully!'
-              : 'Business profile created successfully!';
+              : 'Profile Created. Status: PENDING. Trial starts after approval.';
         });
 
         // Clear success message after 3 seconds

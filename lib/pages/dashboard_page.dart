@@ -2591,6 +2591,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                       _buildMobileMoreItem('Archive', Icons.archive),
                       _buildMobileMoreItem('Settings', Icons.settings),
+                      _buildMobileMoreItem('Customers', Icons.people_outline),
                     ],
                   ),
                 ],
@@ -2667,6 +2668,11 @@ class _DashboardPageState extends State<DashboardPage> {
             );
           } else if (label == 'Verify Payments') {
             Navigator.pushNamed(context, '/payments/verification');
+          } else if (label == 'Customers') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const CustomersPage()),
+            );
           } else {
             // No-op for unknown labels to avoid disruptive snackbars
           }
@@ -2739,6 +2745,69 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Read-Only Status Banner
+            if (_businessProfile != null &&
+                [
+                  'PENDING',
+                  'SUSPENDED',
+                  'EXPIRED',
+                ].contains(_businessProfile!.status?.toUpperCase()))
+              Container(
+                width: double.infinity,
+                margin: EdgeInsets.only(bottom: isMobile ? 12 : 16),
+                padding: EdgeInsets.all(isMobile ? 12 : 16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.error,
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.lock_outline,
+                      color: Theme.of(context).colorScheme.error,
+                      size: isMobile ? 20 : 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _businessProfile!.status?.toUpperCase() == 'PENDING'
+                                ? 'Account Pending Approval'
+                                : _businessProfile!.status?.toUpperCase() ==
+                                      'EXPIRED'
+                                ? 'Trial Expired'
+                                : 'Account Suspended',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onErrorContainer,
+                              fontSize: isMobile ? 14 : 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Read-only mode enabled. You cannot add or edit data.',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onErrorContainer.withOpacity(0.8),
+                              fontSize: isMobile ? 12 : 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
             if (_offline)
               Container(
                 margin: EdgeInsets.only(bottom: isMobile ? 8 : 12),
@@ -3563,6 +3632,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildQuickActions() {
     final isMobile = MediaQuery.of(context).size.width < 480;
+    // Check restriction
+    final status = _businessProfile?.status?.toUpperCase();
+    final isRestricted = ['PENDING', 'SUSPENDED', 'EXPIRED'].contains(status);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3593,36 +3666,37 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         SizedBox(height: isMobile ? 12 : 16),
 
-        // Primary Actions - Most Important
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final isMobile = constraints.maxWidth < 640;
-            return GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: isMobile ? 1 : 2,
-              crossAxisSpacing: isMobile ? 10 : 12,
-              mainAxisSpacing: isMobile ? 10 : 12,
-              childAspectRatio: isMobile ? 4.0 : 4.0,
-              children: [
-                _buildPrimaryActionCard(
-                  'Record Sale',
-                  'Log new transaction quickly',
-                  Icons.currency_rupee,
-                  _statusColors(context).success,
-                ),
-                _buildPrimaryActionCard(
-                  'Record Purchase',
-                  'Add new stock items',
-                  Icons.shopping_cart,
-                  _statusColors(context).info,
-                ),
-              ],
-            );
-          },
-        ),
+        // Primary Actions - Most Important (Hide if restricted)
+        if (!isRestricted)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 640;
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: isMobile ? 1 : 2,
+                crossAxisSpacing: isMobile ? 10 : 12,
+                mainAxisSpacing: isMobile ? 10 : 12,
+                childAspectRatio: isMobile ? 4.0 : 4.0,
+                children: [
+                  _buildPrimaryActionCard(
+                    'Record Sale',
+                    'Log new transaction quickly',
+                    Icons.currency_rupee,
+                    _statusColors(context).success,
+                  ),
+                  _buildPrimaryActionCard(
+                    'Record Purchase',
+                    'Add new stock items',
+                    Icons.shopping_cart,
+                    _statusColors(context).info,
+                  ),
+                ],
+              );
+            },
+          ),
 
-        SizedBox(height: isMobile ? 12 : 24),
+        if (!isRestricted) SizedBox(height: isMobile ? 12 : 24),
 
         // Secondary Actions Grid
         LayoutBuilder(
@@ -3650,26 +3724,30 @@ class _DashboardPageState extends State<DashboardPage> {
                   Icons.business,
                   Theme.of(context).colorScheme.secondary,
                 ),
-                _buildSecondaryActionCard(
-                  'Create Request',
-                  Icons.people,
-                  _statusColors(context).warning,
-                ),
-                _buildSecondaryActionCard(
-                  'Manage Requests',
-                  Icons.settings,
-                  _twColor('purple'),
-                ),
-                _buildSecondaryActionCard(
-                  'Process Returns',
-                  Icons.undo,
-                  _twColor('orange'),
-                ),
-                _buildSecondaryActionCard(
-                  'Process Replacements',
-                  Icons.swap_horiz,
-                  _twColor('blue'),
-                ),
+                if (!isRestricted)
+                  _buildSecondaryActionCard(
+                    'Create Request',
+                    Icons.people,
+                    _statusColors(context).warning,
+                  ),
+                if (!isRestricted)
+                  _buildSecondaryActionCard(
+                    'Manage Requests',
+                    Icons.settings,
+                    _twColor('purple'),
+                  ),
+                if (!isRestricted)
+                  _buildSecondaryActionCard(
+                    'Process Returns',
+                    Icons.undo,
+                    _twColor('orange'),
+                  ),
+                if (!isRestricted)
+                  _buildSecondaryActionCard(
+                    'Process Replacements',
+                    Icons.swap_horiz,
+                    _twColor('blue'),
+                  ),
                 _buildSecondaryActionCard(
                   'Sales History',
                   Icons.trending_up,
