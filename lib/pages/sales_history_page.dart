@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/page_header.dart';
 import '../widgets/search_bar_widget.dart';
 import '../services/supabase_service.dart';
+import '../services/receipt_service.dart';
 import '../services/connectivity_service.dart';
 import '../models/sales_purchase_models.dart' as models;
 import 'package:intl/intl.dart';
@@ -362,6 +363,52 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error launching WhatsApp: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _generatePdf(models.Sale sale) async {
+    try {
+      final items = _safeSalesItems(sale)
+          .map(
+            (i) => ReceiptItem(
+              name: i.product?.name ?? 'Unknown',
+              quantity: i.quantity,
+              pricePerUnit: i.pricePerUnit,
+              itemCode: null,
+            ),
+          )
+          .toList();
+
+      // Calculate subtotal from items to ensure consistency
+      final subTotal = items.fold<double>(
+        0,
+        (sum, i) => sum + (i.quantity * i.pricePerUnit),
+      );
+
+      final data = ReceiptData(
+        saleId: sale.id.toString(),
+        customerName: sale.customerName ?? 'Walk-in Customer',
+        customerPhone: sale.customerPhone,
+        transactionId: null,
+        items: items,
+        subTotal: subTotal,
+        discount: sale.discountAmount ?? 0.0,
+        finalTotal: sale.totalAmount,
+        paymentMethod: sale.paymentMethod,
+        saleDate: sale.createdAt ?? DateTime.now(),
+        status: sale.status,
+      );
+
+      await ReceiptService.shareReceiptPdf(data);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate PDF: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1505,6 +1552,18 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                                   label: const Text('Share'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
+                                ElevatedButton.icon(
+                                  onPressed: () => _generatePdf(sale),
+                                  icon: const Icon(
+                                    Icons.picture_as_pdf,
+                                    size: 16,
+                                  ),
+                                  label: const Text('PDF'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue,
                                     foregroundColor: Colors.white,
                                   ),
                                 ),
