@@ -294,11 +294,23 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
   }
 
   double _calculateTotalValue() {
-    return _purchases.fold(0.0, (sum, purchase) => sum + purchase.totalAmount);
+    return _filteredPurchases.fold(
+      0.0,
+      (sum, purchase) => sum + purchase.totalAmount,
+    );
   }
 
   int _getUniqueDealersCount() {
     return _purchases.map((p) => p.supplierName ?? 'Unknown').toSet().length;
+  }
+
+  List<String> _getUniqueDealers() {
+    return _purchases
+        .map((p) => p.supplierName)
+        .where((name) => name != null && name.trim().isNotEmpty)
+        .map((name) => name!)
+        .toSet()
+        .toList();
   }
 
   @override
@@ -721,11 +733,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
                 children: [
-                  _buildFilterField(
-                    'Dealer Name',
-                    _dealerFilter,
-                    (value) => setState(() => _dealerFilter = value),
-                  ),
+                  _buildDealerFilterField(),
                   _buildFilterField(
                     'Min Amount',
                     _minAmount,
@@ -777,6 +785,92 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDealerFilterField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Dealer Name',
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 4),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return Autocomplete<String>(
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                if (textEditingValue.text.isEmpty) {
+                  return const Iterable<String>.empty();
+                }
+                return _getUniqueDealers().where((String option) {
+                  return option.toLowerCase().contains(
+                    textEditingValue.text.toLowerCase(),
+                  );
+                });
+              },
+              onSelected: (String selection) {
+                setState(() {
+                  _dealerFilter = selection;
+                });
+                _filterAndSortPurchases();
+              },
+              fieldViewBuilder:
+                  (
+                    context,
+                    textEditingController,
+                    focusNode,
+                    onFieldSubmitted,
+                  ) {
+                    // Keep controller in sync if filter is cleared externally
+                    if (textEditingController.text != _dealerFilter) {
+                      // Only update if they differ significantly (avoid cursor jump issues if we were editing)
+                      // But here, _dealerFilter is the source of truth when cleared.
+                      // If user types, _dealerFilter updates via onChanged.
+                      // If we clear filter, _dealerFilter becomes empty.
+                      // So we should safe sync.
+                      if (_dealerFilter.isEmpty &&
+                          textEditingController.text.isNotEmpty) {
+                        textEditingController.text = '';
+                      }
+                    }
+
+                    return TextField(
+                      controller: textEditingController,
+                      focusNode: focusNode,
+                      onChanged: (val) {
+                        setState(() => _dealerFilter = val);
+                        _filterAndSortPurchases();
+                      },
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        suffixIcon: _dealerFilter.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () {
+                                  setState(() => _dealerFilter = '');
+                                  textEditingController.clear();
+                                  _filterAndSortPurchases();
+                                },
+                              )
+                            : null,
+                      ),
+                    );
+                  },
+            );
+          },
+        ),
+      ],
     );
   }
 
