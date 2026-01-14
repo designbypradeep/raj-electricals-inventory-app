@@ -1143,9 +1143,9 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                           ],
                         ),
                         Text(
-                          DateFormat(
-                            'd/M/yyyy, h:mm:ss a',
-                          ).format(purchase.createdAt ?? DateTime.now()),
+                          DateFormat('d/M/yyyy, h:mm:ss a').format(
+                            (purchase.createdAt ?? DateTime.now()).toLocal(),
+                          ),
                           style: TextStyle(
                             color: Theme.of(
                               context,

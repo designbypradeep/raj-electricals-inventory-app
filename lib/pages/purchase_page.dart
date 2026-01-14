@@ -35,7 +35,11 @@ class _PurchasePageState extends State<PurchasePage> {
   );
   final TextEditingController _purchasePriceController =
       TextEditingController();
+  final TextEditingController _totalCostController = TextEditingController();
   final TextEditingController _creditApplyController = TextEditingController();
+
+  // Pricing mode state
+  String _pricingMode = 'rate'; // 'rate' | 'total'
 
   // Supplier credit state
   double _availableCredit = 0.0;
@@ -126,8 +130,59 @@ class _PurchasePageState extends State<PurchasePage> {
     _billNumberController.dispose();
     _quantityController.dispose();
     _purchasePriceController.dispose();
+    _totalCostController.dispose();
     _creditApplyController.dispose();
     super.dispose();
+  }
+
+  void _onQuantityChanged(String value) {
+    _calculatePricing();
+  }
+
+  void _onRateChanged(String value) {
+    if (_pricingMode == 'rate') {
+      _calculatePricing();
+    }
+  }
+
+  void _onTotalChanged(String value) {
+    if (_pricingMode == 'total') {
+      _calculatePricing();
+    }
+  }
+
+  void _calculatePricing() {
+    final qty = double.tryParse(_quantityController.text) ?? 0.0;
+    if (qty <= 0) return;
+
+    if (_pricingMode == 'rate') {
+      // Calculate Total based on Rate
+      final rate = double.tryParse(_purchasePriceController.text) ?? 0.0;
+      final total = rate * qty;
+      final currentTotal = double.tryParse(_totalCostController.text) ?? 0.0;
+      if (total != currentTotal) {
+        _totalCostController.text = total == 0 ? '' : total.toStringAsFixed(2);
+      }
+    } else {
+      // Calculate Rate based on Total
+      final total = double.tryParse(_totalCostController.text) ?? 0.0;
+      final rate = total / qty;
+      final currentRate = double.tryParse(_purchasePriceController.text) ?? 0.0;
+      // Avoid infinite loop / precision jitter
+      if ((rate - currentRate).abs() > 0.01) {
+        _purchasePriceController.text = rate == 0
+            ? ''
+            : rate.toStringAsFixed(2);
+      }
+    }
+  }
+
+  void _togglePricingMode(String mode) {
+    setState(() {
+      _pricingMode = mode;
+    });
+    // Re-calculate based on new mode dominance
+    _calculatePricing();
   }
 
   Future<void> _loadProducts() async {
@@ -205,9 +260,11 @@ class _PurchasePageState extends State<PurchasePage> {
 
       // Reset form
       _selectedProduct = null;
+      _selectedProduct = null;
       _selectedUnit = '';
       _quantityController.text = '1';
       _purchasePriceController.clear();
+      _totalCostController.clear();
       _errorMessage = null;
     });
   }
@@ -258,7 +315,7 @@ class _PurchasePageState extends State<PurchasePage> {
         billNumber: _billNumberController.text.trim().isNotEmpty
             ? _billNumberController.text.trim()
             : null,
-        purchaseDate: _customDate,
+        purchaseDate: _customDate?.toUtc(),
         purchaseItems: _purchaseItems,
       );
 
@@ -978,6 +1035,7 @@ class _PurchasePageState extends State<PurchasePage> {
                                           TextField(
                                             controller: _quantityController,
                                             keyboardType: TextInputType.number,
+                                            onChanged: _onQuantityChanged,
                                             inputFormatters: [
                                               FilteringTextInputFormatter
                                                   .digitsOnly,
@@ -1087,12 +1145,20 @@ class _PurchasePageState extends State<PurchasePage> {
                                                 const TextInputType.numberWithOptions(
                                                   decimal: true,
                                                 ),
+                                            enabled: _pricingMode == 'rate',
+                                            onChanged: _onRateChanged,
                                             inputFormatters: [
                                               FilteringTextInputFormatter.allow(
                                                 RegExp(r'^\d*\.?\d*'),
                                               ),
                                             ],
                                             decoration: InputDecoration(
+                                              filled: _pricingMode != 'rate',
+                                              fillColor: _pricingMode != 'rate'
+                                                  ? Theme.of(context)
+                                                        .disabledColor
+                                                        .withOpacity(0.1)
+                                                  : null,
                                               border: OutlineInputBorder(
                                                 borderRadius:
                                                     BorderRadius.circular(8),
@@ -1107,17 +1173,153 @@ class _PurchasePageState extends State<PurchasePage> {
                                         ],
                                       );
 
+                                      Widget totalField = Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Total Amount (₹)',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          TextField(
+                                            controller: _totalCostController,
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                            enabled: _pricingMode == 'total',
+                                            onChanged: _onTotalChanged,
+                                            inputFormatters: [
+                                              FilteringTextInputFormatter.allow(
+                                                RegExp(r'^\d*\.?\d*'),
+                                              ),
+                                            ],
+                                            decoration: InputDecoration(
+                                              filled: _pricingMode != 'total',
+                                              fillColor: _pricingMode != 'total'
+                                                  ? Theme.of(context)
+                                                        .disabledColor
+                                                        .withOpacity(0.1)
+                                                  : null,
+                                              border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 12,
+                                                  ),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+
+                                      Widget
+                                      modeToggle = SegmentedButton<String>(
+                                        segments: const [
+                                          ButtonSegment<String>(
+                                            value: 'rate',
+                                            label: Text('Rate'),
+                                            icon: Icon(Icons.sell_outlined),
+                                          ),
+                                          ButtonSegment<String>(
+                                            value: 'total',
+                                            label: Text('Total'),
+                                            icon: Icon(Icons.attach_money),
+                                          ),
+                                        ],
+                                        selected: {_pricingMode},
+                                        onSelectionChanged:
+                                            (Set<String> newSelection) {
+                                              _togglePricingMode(
+                                                newSelection.first,
+                                              );
+                                            },
+                                        style: ButtonStyle(
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          visualDensity: VisualDensity.compact,
+                                        ),
+                                      );
+
                                       if (constraints.maxWidth > 900) {
                                         return Row(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
                                           children: [
                                             Expanded(child: quantityField),
                                             const SizedBox(width: 12),
                                             Expanded(child: unitField),
                                             const SizedBox(width: 12),
-                                            Expanded(child: priceField),
+                                            // Pricing Block
+                                            Expanded(
+                                              flex: 2,
+                                              child: Container(
+                                                padding: const EdgeInsets.all(
+                                                  12,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  border: Border.all(
+                                                    color: Theme.of(
+                                                      context,
+                                                    ).dividerColor,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Row(
+                                                      children: [
+                                                        Text(
+                                                          'Pricing Mode',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color:
+                                                                Theme.of(
+                                                                      context,
+                                                                    )
+                                                                    .colorScheme
+                                                                    .primary,
+                                                          ),
+                                                        ),
+                                                        const Spacer(),
+                                                        SizedBox(
+                                                          height: 32,
+                                                          child: modeToggle,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 12),
+                                                    Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: priceField,
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 12,
+                                                        ),
+                                                        Expanded(
+                                                          child: totalField,
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
                                           ],
                                         );
-                                      } else if (constraints.maxWidth > 480) {
+                                      } else {
                                         return Column(
                                           children: [
                                             Row(
@@ -1127,18 +1329,57 @@ class _PurchasePageState extends State<PurchasePage> {
                                                 Expanded(child: unitField),
                                               ],
                                             ),
-                                            const SizedBox(height: 12),
-                                            priceField,
-                                          ],
-                                        );
-                                      } else {
-                                        return Column(
-                                          children: [
-                                            quantityField,
-                                            const SizedBox(height: 12),
-                                            unitField,
-                                            const SizedBox(height: 12),
-                                            priceField,
+                                            const SizedBox(height: 16),
+                                            Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                border: Border.all(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).dividerColor,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        'Pricing Mode',
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: Theme.of(
+                                                            context,
+                                                          ).colorScheme.primary,
+                                                        ),
+                                                      ),
+                                                      const Spacer(),
+                                                      SizedBox(
+                                                        height: 32,
+                                                        child: modeToggle,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: priceField,
+                                                      ),
+                                                      const SizedBox(width: 12),
+                                                      Expanded(
+                                                        child: totalField,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
                                           ],
                                         );
                                       }
