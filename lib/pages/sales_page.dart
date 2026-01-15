@@ -1508,7 +1508,32 @@ class _SalesPageState extends State<SalesPage> {
               onChanged: selectedProduct != null
                   ? (value) {
                       setState(() {
+                        final oldUnit = _selectedUnit;
                         _selectedUnit = value ?? '';
+
+                        // Smart Pricing Logic
+                        if (_selectedUnit != oldUnit &&
+                            selectedProduct != null) {
+                          double basePrice =
+                              selectedProduct.sellingPrice ?? 0.0;
+                          double multiplier =
+                              (selectedProduct.itemsPerWholesaleUnit ?? 1)
+                                  .toDouble();
+
+                          if (_selectedUnit ==
+                              selectedProduct.unitTypeWholesale) {
+                            // Wholesale: Price = Base * Multiplier
+                            _pricePerUnit = basePrice * multiplier;
+                          } else {
+                            // Single/Default: Price = Base
+                            _pricePerUnit = basePrice;
+                          }
+
+                          // Update controller text
+                          _priceController.text = _pricePerUnit.toStringAsFixed(
+                            (_pricePerUnit % 1 == 0) ? 0 : 2,
+                          );
+                        }
                       });
                     }
                   : null,

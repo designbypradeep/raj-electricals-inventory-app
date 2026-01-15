@@ -1116,9 +1116,69 @@ class _PurchasePageState extends State<PurchasePage> {
                                                 : [],
                                             onChanged: _selectedProduct != null
                                                 ? (value) {
+                                                    final oldUnit =
+                                                        _selectedUnit;
+                                                    final newUnit = value ?? '';
+
+                                                    // Smart Scaling Logic
+                                                    double currentPrice =
+                                                        double.tryParse(
+                                                          _purchasePriceController
+                                                              .text,
+                                                        ) ??
+                                                        0.0;
+
+                                                    if (oldUnit.isNotEmpty &&
+                                                        newUnit.isNotEmpty &&
+                                                        oldUnit != newUnit &&
+                                                        currentPrice > 0) {
+                                                      final single =
+                                                          _selectedProduct!
+                                                              .unitTypeSingle;
+                                                      final wholesale =
+                                                          _selectedProduct!
+                                                              .unitTypeWholesale;
+                                                      final multiplier =
+                                                          (_selectedProduct!
+                                                                      .itemsPerWholesaleUnit ??
+                                                                  1)
+                                                              .toDouble();
+
+                                                      if (oldUnit == single &&
+                                                          newUnit ==
+                                                              wholesale) {
+                                                        // Scale Up
+                                                        currentPrice =
+                                                            currentPrice *
+                                                            multiplier;
+                                                        _purchasePriceController
+                                                            .text = currentPrice
+                                                            .toStringAsFixed(2);
+                                                        // Trigger recalc manually since controller update doesn't fire listeners
+                                                        _onRateChanged(
+                                                          _purchasePriceController
+                                                              .text,
+                                                        );
+                                                      } else if (oldUnit ==
+                                                              wholesale &&
+                                                          newUnit == single) {
+                                                        // Scale Down
+                                                        currentPrice =
+                                                            currentPrice /
+                                                            multiplier;
+                                                        _purchasePriceController
+                                                            .text = currentPrice
+                                                            .toStringAsFixed(2);
+                                                        // Trigger recalc
+                                                        _onRateChanged(
+                                                          _purchasePriceController
+                                                              .text,
+                                                        );
+                                                      }
+                                                    }
+
                                                     setState(() {
-                                                      _selectedUnit =
-                                                          value ?? '';
+                                                      _selectedUnit = newUnit;
                                                     });
                                                   }
                                                 : null,
