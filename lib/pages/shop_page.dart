@@ -332,22 +332,35 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   };
 
   List<String> _normalizeAndExpandTokens(String query) {
-    final base = query
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9\- ]+'), ' ')
+    // Phase 1: Aggressive pre-splitting of number+unit combos
+    // e.g. "0.5w" -> "0.5 w", "6amp" -> "6 amp"
+    String processed = query.toLowerCase();
+    processed = processed.replaceAllMapped(
+      RegExp(r'(\d+(\.\d+)?)([a-z]+)'),
+      (match) => '${match.group(1)} ${match.group(3)}',
+    );
+
+    final base = processed
+        .replaceAll(RegExp(r'[^a-z0-9\-\. ]+'), ' ') // Allow dots
         .split(RegExp(r'\s+'))
         .where((t) => t.isNotEmpty && !_stopWords.contains(t))
         .toList();
 
     final expanded = <String>{};
     for (final t in base) {
-      final k = t.replaceAll('-', '');
       expanded.add(t);
+
+      // Handle "type-c" -> "typec"
+      if (t.contains('-')) {
+        expanded.add(t.replaceAll('-', ''));
+      }
+
+      // Synonyms
+      final k = t.replaceAll('-', '');
       final syns = _synonyms[k];
       if (syns != null) expanded.addAll(syns);
-      final m = RegExp(r'^(\d+)[\s-]*w$').firstMatch(t);
-      if (m != null) expanded.add(m.group(1)!);
     }
+
     return expanded
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
