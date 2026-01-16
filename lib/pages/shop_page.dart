@@ -1868,6 +1868,85 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         }
       }
 
+      // Group products by Brand + BaseName to find variants (Local Logic)
+      try {
+        final Map<String, List<Map<String, dynamic>>> grouped = {};
+
+        // Helper to strip color from name
+        String getBaseName(String name, String color) {
+          String baseName = name;
+          if (color.isNotEmpty) {
+            // Case-insensitive removal of color keyword
+            final pattern = RegExp(
+              '(^|\\s)${RegExp.escape(color)}(\$|\\s)',
+              caseSensitive: false,
+            );
+            baseName = baseName.replaceAll(pattern, ' ');
+          }
+
+          // Post-process:
+          // 1. Remove empty parentheses/brackets (e.g. "Name (Red)" -> "Name ()")
+          baseName = baseName
+              .replaceAll(RegExp(r'\(\s*\)'), '')
+              .replaceAll(RegExp(r'\[\s*\]'), '');
+
+          // 2. Normalize units (e.g. "0.5w" -> "0.5 W")
+          baseName = baseName.replaceAllMapped(
+            RegExp(r'(\d+(\.\d+)?)\s*[wW]\b'),
+            (match) => '${match.group(1)} W',
+          );
+
+          // 3. Clean whitespace
+          return baseName.replaceAll(RegExp(r'\s+'), ' ').trim();
+        }
+
+        for (var p in mapped) {
+          final name = p['name'] as String;
+          final brand = (p['brand'] as String? ?? '').trim();
+          final color = (p['color'] as String? ?? '').trim();
+
+          final baseName = getBaseName(name, color);
+          // Key: "BRAND::BASENAME"
+          final key = '${brand.toLowerCase()}::${baseName.toLowerCase()}';
+
+          grouped.putIfAbsent(key, () => []).add(p);
+        }
+
+        // Assign variants list to each product
+        for (var p in mapped) {
+          final name = p['name'] as String;
+          final brand = (p['brand'] as String? ?? '').trim();
+          final color = (p['color'] as String? ?? '').trim();
+          final baseName = getBaseName(name, color);
+          final key = '${brand.toLowerCase()}::${baseName.toLowerCase()}';
+
+          final group = grouped[key] ?? [];
+          if (group.length > 1) {
+            final List<Map<String, dynamic>> variants = group
+                .map(
+                  (v) => {
+                    'id': v['id'],
+                    'color': v['color'] ?? '',
+                    'image': v['image'],
+                  },
+                )
+                .where((v) => (v['color'] as String).isNotEmpty)
+                .toList();
+
+            // Sort variants (e.g. alphabetical by color)
+            variants.sort(
+              (a, b) => (a['color'] as String).compareTo(b['color'] as String),
+            );
+
+            p['variants'] = variants;
+          } else {
+            p['variants'] = <Map<String, dynamic>>[];
+          }
+        }
+      } catch (e) {
+        debugPrint('[Shop] Variant grouping error: $e');
+      }
+
       // Extract unique categories/brands/specs/colors
       final Set<String> categorySet = {};
       final Set<String> brandSet = {};
@@ -4503,8 +4582,50 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         final PageController pageController = PageController();
         int currentImage = 0;
 
+        // Clone initial product to local state for switching variants
+        Map<String, dynamic> currentProduct = Map<String, dynamic>.from(
+          product,
+        );
+
         return StatefulBuilder(
           builder: (context, setSheetState) {
+            // Re-bind current product data
+            final int pId = currentProduct['id'];
+            final int stock = (currentProduct['stock'] as int?) ?? 0;
+            final double price =
+                (currentProduct['price'] as num?)?.toDouble() ?? 0.0;
+            final String name = currentProduct['name'] ?? 'Product';
+            final String desc =
+                (currentProduct['description'] as String?)?.trim() ?? '';
+            final specs = _parseSpecs(desc);
+            final List<String> images =
+                (currentProduct['images'] as List<dynamic>? ?? [])
+                    .cast<String>();
+
+            final List<dynamic> variants =
+                (currentProduct['variants'] as List<dynamic>?) ?? [];
+
+            // Function to switch variant
+            void switchVariant(int variantId) {
+              final newP = _products.firstWhere(
+                (p) => p['id'] == variantId,
+                orElse: () => <String, dynamic>{},
+              );
+              if (newP.isNotEmpty) {
+                setSheetState(() {
+                  currentProduct = Map<String, dynamic>.from(newP);
+                  currentImage = 0;
+                  qty = 1;
+                  // Reset page controller if needed, or jump to 0
+                  if (pageController.hasClients) {
+                    pageController.jumpToPage(0);
+                  }
+                });
+                // Determine if we should update global recently viewed?
+                // Maybe not necessary for just a variant switch, but could be nice.
+              }
+            }
+
             return SafeArea(
               child: FractionallySizedBox(
                 heightFactor: 0.9,
@@ -4600,7 +4721,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
                       // Title, price & stock
                       Text(
-                        product['name'] ?? 'Product',
+                        name,
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
@@ -4610,7 +4731,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       Row(
                         children: [
                           Text(
-                            _currencyFormat.format(product['price'] ?? 0),
+                            _currencyFormat.format(price),
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
@@ -4640,15 +4761,88 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ],
                       ),
                       const SizedBox(height: 8),
+                      const SizedBox(height: 8),
+                      // Variant Selector
+                      if (variants.length > 1) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Available Colors',
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: Theme.of(context).disabledColor,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            for (final v in variants)
+                              InkWell(
+                                onTap: () => switchVariant(v['id'] as int),
+                                borderRadius: BorderRadius.circular(24),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: (v['id'] == pId)
+                                          ? Theme.of(context).primaryColor
+                                          : Colors.transparent,
+                                      width: 2,
+                                    ),
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 24,
+                                        height: 24,
+                                        decoration: BoxDecoration(
+                                          color: _stringToColor(v['color']),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.grey.withValues(
+                                              alpha: 0.3,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        v['color'],
+                                        style: TextStyle(
+                                          fontWeight: (v['id'] == pId)
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          if ((product['brand'] as String?)?.isNotEmpty == true)
+                          if ((currentProduct['brand'] as String?)
+                                  ?.isNotEmpty ==
+                              true)
                             Builder(
                               builder: (context) {
                                 final color = _stringToColor(
-                                  product['brand'] as String,
+                                  currentProduct['brand'] as String,
                                 );
                                 return Container(
                                   padding: const EdgeInsets.symmetric(
@@ -4663,7 +4857,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                     ),
                                   ),
                                   child: Text(
-                                    (product['brand'] as String).toUpperCase(),
+                                    (currentProduct['brand'] as String)
+                                        .toUpperCase(),
                                     style: TextStyle(
                                       color: color,
                                       fontSize: 10,
@@ -4674,12 +4869,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                 );
                               },
                             ),
-                          if ((product['category'] as String?)?.isNotEmpty ==
+                          if ((currentProduct['category'] as String?)
+                                  ?.isNotEmpty ==
                               true)
                             Builder(
                               builder: (context) {
                                 final color = _stringToColor(
-                                  product['category'] as String,
+                                  currentProduct['category'] as String,
                                 );
                                 return Container(
                                   padding: const EdgeInsets.symmetric(
@@ -4694,7 +4890,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                     ),
                                   ),
                                   child: Text(
-                                    product['category'] as String,
+                                    currentProduct['category'] as String,
                                     style: TextStyle(
                                       color: color,
                                       fontSize: 11,
@@ -4777,7 +4973,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           ),
                           const Spacer(),
                           Text(
-                            'Total: ${_currencyFormat.format((product['price'] ?? 0) * qty)}',
+                            'Total: ${_currencyFormat.format(price * qty)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 16,
@@ -4798,7 +4994,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               onPressed: (stock == 0)
                                   ? null
                                   : () {
-                                      _addToCart(context, product, qty: qty);
+                                      _addToCart(
+                                        context,
+                                        currentProduct,
+                                        qty: qty,
+                                      );
                                       Navigator.of(context).pop();
                                     },
                               icon: const Icon(Icons.add_shopping_cart),
@@ -4814,7 +5014,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                   ? null
                                   : () {
                                       Navigator.of(context).pop();
-                                      _buyNow(context, product, qty);
+                                      _buyNow(context, currentProduct, qty);
                                     },
                               icon: const Icon(Icons.flash_on),
                               label: const Text('Buy Now'),
