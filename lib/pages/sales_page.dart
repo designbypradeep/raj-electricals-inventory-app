@@ -1512,8 +1512,7 @@ class _SalesPageState extends State<SalesPage> {
                         _selectedUnit = value ?? '';
 
                         // Smart Pricing Logic
-                        if (_selectedUnit != oldUnit &&
-                            selectedProduct != null) {
+                        if (_selectedUnit != oldUnit) {
                           double basePrice =
                               selectedProduct.sellingPrice ?? 0.0;
                           double multiplier =
