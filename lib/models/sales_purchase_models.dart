@@ -151,6 +151,7 @@ class SupplierLedgerEntry {
   final String? refTable;
   final int? refId;
   final DateTime? createdAt;
+  final String? notes;
 
   const SupplierLedgerEntry({
     this.id,
@@ -161,6 +162,7 @@ class SupplierLedgerEntry {
     this.refTable,
     this.refId,
     this.createdAt,
+    this.notes,
   });
 
   factory SupplierLedgerEntry.fromJson(Map<String, dynamic> json) {
@@ -175,6 +177,7 @@ class SupplierLedgerEntry {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
+      notes: json['notes'] as String?,
     );
   }
 }

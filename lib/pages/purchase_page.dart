@@ -37,6 +37,7 @@ class _PurchasePageState extends State<PurchasePage> {
       TextEditingController();
   final TextEditingController _totalCostController = TextEditingController();
   final TextEditingController _creditApplyController = TextEditingController();
+  final TextEditingController _paidAmountController = TextEditingController();
 
   // Pricing mode state
   String _pricingMode = 'rate'; // 'rate' | 'total'
@@ -132,6 +133,7 @@ class _PurchasePageState extends State<PurchasePage> {
     _purchasePriceController.dispose();
     _totalCostController.dispose();
     _creditApplyController.dispose();
+    _paidAmountController.dispose();
     super.dispose();
   }
 
@@ -317,6 +319,7 @@ class _PurchasePageState extends State<PurchasePage> {
             : null,
         purchaseDate: _customDate?.toUtc(),
         purchaseItems: _purchaseItems,
+        paidAmount: double.tryParse(_paidAmountController.text) ?? 0.0,
       );
 
       // Apply supplier credit if any
@@ -343,7 +346,9 @@ class _PurchasePageState extends State<PurchasePage> {
         _isProcessing = false;
         _availableCredit = 0.0;
         _appliedCredit = 0.0;
+        _appliedCredit = 0.0;
         _creditApplyController.text = '';
+        _paidAmountController.clear();
       });
 
       // Clear success message after 3 seconds
@@ -1650,6 +1655,97 @@ class _PurchasePageState extends State<PurchasePage> {
                           ),
                           const SizedBox(height: 12),
                           const Divider(),
+                        ],
+
+                        if (_purchaseItems.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.05),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Payment & Balance Details',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Previous Balance:'),
+                                    Text(
+                                      '₹${_availableCredit.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: _availableCredit > 0
+                                            ? Colors.red
+                                            : Colors.green,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Current Bill:'),
+                                    Text(
+                                      '₹${_computeTotalAmount().toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const Divider(),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Net Payable:',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      '₹${(_availableCredit + _computeTotalAmount()).toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: _paidAmountController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Amount Paid Now (₹)',
+                                    border: OutlineInputBorder(),
+                                    prefixText: '₹',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
 
                         const SizedBox(height: 24),

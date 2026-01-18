@@ -5227,6 +5227,7 @@ class SupabaseService {
     String? billNumber,
     DateTime? purchaseDate,
     required List<Map<String, dynamic>> purchaseItems,
+    double paidAmount = 0.0,
   }) async {
     await getCurrentBusinessProfile();
 
@@ -5308,6 +5309,42 @@ class SupabaseService {
           'unit': unit, // Save the unit type used
           'price_per_unit': pricePerUnit,
         });
+      }
+
+      // Ledger entry: Record Purchase as 'credit' (Liability)
+      try {
+        await _client.from('supplier_ledger').insert({
+          'business_id': businessId,
+          'supplier_name': dealerName,
+          'entry_type': 'purchase', // Explicit type for Purchase (Liability)
+          'amount': totalAmount,
+          'ref_table': 'purchases',
+          'ref_id': purchaseId,
+        });
+      } catch (e) {
+        if (kDebugMode) {
+          print('Error creating ledger entry: $e');
+        }
+        // Proceeding anyway as purchase is valid
+      }
+
+      // Ledger entry: Record Payment (Asset) if amount paid > 0
+      if (paidAmount > 0) {
+        try {
+          await _client.from('supplier_ledger').insert({
+            'business_id': businessId,
+            'supplier_name': dealerName,
+            'entry_type': 'payment',
+            'amount': paidAmount,
+            'ref_table': 'purchases',
+            'ref_id': purchaseId,
+            'notes': 'Payment for Purchase #$purchaseId',
+          });
+        } catch (e) {
+          if (kDebugMode) {
+            print('Error creating payment ledger entry: $e');
+          }
+        }
       }
 
       // Fetch and return the complete purchase with items
@@ -5967,88 +6004,86 @@ class SupabaseService {
       throw Exception('Return must have at least one item');
     }
 
-    // Compute total amount
-    final double totalAmount = items.fold<double>(
-      0.0,
-      (sum, it) => sum + (it.quantity * it.pricePerUnit),
-    );
+    // Prepare items for RPC (Requires fetching product names and converting units to singles)
+    final List<Map<String, dynamic>> rpcItems = [];
 
-    // Insert return header
-    final headerResp = await _client
-        .from('purchase_returns')
-        .insert({
-          'business_id': businessId,
-          'supplier_name': supplierName,
-          if (originalPurchaseId != null)
-            'original_purchase_id': originalPurchaseId,
-          'return_date': returnDate.toIso8601String(),
-          'refund_type': refundType,
-          'total_amount': totalAmount,
-          if (notes != null && notes.trim().isNotEmpty) 'notes': notes,
-        })
-        .select('id')
-        .single();
-
-    final int returnId = (headerResp['id'] as num).toInt();
-
-    // Insert items and adjust stock
+    // Optimize: Fetch all products involved once
+    // (For now, linear fetch is acceptable as return items are usually few)
     for (final it in items) {
-      // Resolve delta in single units if unit may be wholesale
-      int deltaSingles = it.quantity;
+      // 1. Fetch Product Details
+      String productName = 'Unknown Product';
+      int itemsPerWholesale = 1;
+      bool isWholesale = false;
+
       try {
         final prod = await _client
             .from('products')
             .select(
-              'id, current_stock, unit_type_single, unit_type_wholesale, items_per_wholesale_unit',
+              'name, unit_type_single, unit_type_wholesale, items_per_wholesale_unit',
             )
             .eq('id', it.productId)
             .single();
-        final String? unitSingle = prod['unit_type_single'] as String?;
-        final String? unitWhole = prod['unit_type_wholesale'] as String?;
-        final int itemsPerWholesale =
-            (prod['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
-        final String? unit = it.unit;
-        bool isWholesale = false;
-        if (unit != null && unitWhole != null) {
-          isWholesale =
-              unit.trim().toLowerCase() == unitWhole.trim().toLowerCase();
-        }
-        deltaSingles = isWholesale
-            ? it.quantity * itemsPerWholesale
-            : it.quantity;
 
-        final int currentStock = (prod['current_stock'] as num?)?.toInt() ?? 0;
-        int newStock = currentStock - deltaSingles;
-        if (newStock < 0) newStock = 0;
-        await _client
-            .from('products')
-            .update({'current_stock': newStock})
-            .eq('id', it.productId)
-            .eq('business_id', businessId);
+        productName = prod['name'] as String? ?? 'Unknown Product';
+        final String? unitWhole = prod['unit_type_wholesale'] as String?;
+        itemsPerWholesale =
+            (prod['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
+
+        if (it.unit != null && unitWhole != null) {
+          isWholesale =
+              it.unit!.trim().toLowerCase() == unitWhole.trim().toLowerCase();
+        }
       } catch (_) {
-        // If product fetch fails, still insert item; skip stock update
+        // Fallback if product deleted or fetch fails
       }
 
-      await _client.from('purchase_return_items').insert({
-        'purchase_return_id': returnId,
-        'product_id': it.productId,
-        'quantity': it.quantity,
-        'price_per_unit': it.pricePerUnit,
-        if (it.unit != null) 'unit': it.unit,
+      // 2. Convert to Standard Units (Pieces) for Stock Accuracy
+      // RPC logic: stock = stock - quantity.
+      // If user returns 1 Box (10 pcs), we must send 10 to RPC.
+      final int qtyPieces = isWholesale
+          ? (it.quantity * itemsPerWholesale)
+          : it.quantity;
+      final double pricePerPiece = isWholesale
+          ? (it.pricePerUnit / itemsPerWholesale)
+          : it.pricePerUnit;
+
+      rpcItems.add({
+        'productId': it.productId,
+        'productName': productName,
+        'quantity': qtyPieces,
+        'pricePerUnit': pricePerPiece,
       });
     }
 
-    // Ledger entry
-    await _client.from('supplier_ledger').insert({
-      'business_id': businessId,
-      'supplier_name': supplierName,
-      'entry_type': refundType == 'cash' ? 'refund' : 'credit',
-      'amount': totalAmount,
-      'ref_table': 'purchase_returns',
-      'ref_id': returnId,
-    });
+    try {
+      // 3. Call RPC
+      final response = await _client.rpc(
+        'process_supplier_return',
+        params: {
+          'p_business_id': businessId,
+          'p_supplier_name': supplierName,
+          'p_return_date': returnDate.toIso8601String(),
+          'p_refund_type': refundType == 'cash' ? 'cash' : 'credit',
+          'p_items': rpcItems,
+        },
+      );
 
-    return {'id': returnId, 'total_amount': totalAmount};
+      final returnId = (response as num).toInt();
+
+      // Calculate total for return value (legacy support)
+      final double totalAmount = rpcItems.fold<double>(
+        0.0,
+        (sum, it) =>
+            sum + ((it['quantity'] as int) * (it['pricePerUnit'] as double)),
+      );
+
+      return {'id': returnId, 'total_amount': totalAmount};
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error processing supplier return: $e');
+      }
+      rethrow;
+    }
   }
 
   static Future<double> getSupplierCreditBalance(String supplierName) async {
@@ -6062,19 +6097,53 @@ class SupabaseService {
         .eq('business_id', businessId)
         .eq('supplier_name', supplierName);
 
-    double credits = 0, applies = 0, refunds = 0;
+    double credits = 0, debits = 0;
     for (final r in rows as List) {
       final m = Map<String, dynamic>.from(r as Map);
       final type = (m['entry_type'] as String?)?.toLowerCase() ?? '';
       final amt = (m['amount'] as num?)?.toDouble() ?? 0.0;
-      if (type == 'credit') {
+
+      // Liability View (Standardized with Web App):
+      // Positive (+) = Money We Owe (Liability) -> Purchase
+      // Negative (-) = Money We Have/Paid (Asset) -> Return, Payment
+
+      if (type == 'purchase' || type == 'credit') {
+        // 'purchase': New Standard Liability
+        // 'credit': Legacy Liability (if any) or Manual Credit
         credits += amt;
-      } else if (type == 'apply')
-        applies += amt;
-      else if (type == 'refund')
-        refunds += amt;
+      } else if (type == 'debit' ||
+          type == 'return' ||
+          type == 'payment' ||
+          type == 'apply' ||
+          type == 'refund') {
+        // 'debit': New Standard Asset (Return)
+        // 'return': Semantic alias
+        // 'payment': Semantic alias
+        debits += amt;
+      }
     }
-    return credits - applies - refunds;
+    // Result: Net Liability (How much we owe)
+    return credits - debits;
+  }
+
+  static Future<void> addSupplierPayment({
+    required String supplierName,
+    required double amount,
+    required DateTime date,
+    String? notes,
+  }) async {
+    await getCurrentBusinessProfile();
+    final businessId = getCurrentBusinessId();
+    if (businessId == null) throw Exception('No business selected');
+
+    await _client.from('supplier_ledger').insert({
+      'business_id': businessId,
+      'supplier_name': supplierName,
+      'entry_type': 'payment',
+      'amount': amount,
+      'created_at': date.toIso8601String(),
+      'notes': notes,
+    });
   }
 
   static Future<bool> applySupplierCredit({

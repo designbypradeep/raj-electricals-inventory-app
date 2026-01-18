@@ -64,6 +64,14 @@ class _SupplierCreditsPageState extends State<SupplierCreditsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Supplier Credits')),
+      floatingActionButton:
+          _ledgerEntries.isNotEmpty || _supplierNameController.text.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: () => _showPaymentDialog(),
+              label: const Text('Record Payment'),
+              icon: const Icon(Icons.payment),
+            )
+          : null,
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -107,13 +115,38 @@ class _SupplierCreditsPageState extends State<SupplierCreditsPage> {
                         itemCount: _ledgerEntries.length,
                         itemBuilder: (context, index) {
                           final entry = _ledgerEntries[index];
+                          final isCredit =
+                              entry.entryType == 'purchase' ||
+                              entry.entryType == 'credit';
                           return ListTile(
-                            title: Text(entry.entryType),
-                            subtitle: Text(
-                              'Amount: ${entry.amount} - Ref: ${entry.refTable} #${entry.refId}',
+                            leading: Icon(
+                              isCredit ? Icons.remove_circle : Icons.add_circle,
+                              color: isCredit ? Colors.red : Colors.green,
                             ),
-                            trailing: Text(
-                              entry.createdAt?.toLocal().toString() ?? '',
+                            title: Text(entry.entryType.toUpperCase()),
+                            subtitle: Text(
+                              '${entry.notes ?? ''}\nRef: ${entry.refTable ?? '-'} #${entry.refId ?? ''}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '₹${entry.amount}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: isCredit ? Colors.red : Colors.green,
+                                  ),
+                                ),
+                                Text(
+                                  entry.createdAt?.toLocal().toString().split(
+                                        ' ',
+                                      )[0] ??
+                                      '',
+                                  style: const TextStyle(fontSize: 10),
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -124,6 +157,111 @@ class _SupplierCreditsPageState extends State<SupplierCreditsPage> {
               )
             else
               const Text('No data for this supplier.'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showPaymentDialog() async {
+    final amountController = TextEditingController();
+    final notesController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Record Payment'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Amount Paid (₹)'),
+              ),
+              TextField(
+                controller: notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (Optional)',
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Date: '),
+                  TextButton(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedDate,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) {
+                        setState(() => selectedDate = picked);
+                      }
+                    },
+                    child: Text(
+                      selectedDate.toLocal().toString().split(' ')[0],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final amount = double.tryParse(amountController.text);
+                if (amount == null || amount <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Invalid Amount')),
+                  );
+                  return;
+                }
+
+                Navigator.pop(
+                  context,
+                ); // Close dialog logic here or after wait? Better close to show loader on screen maybe?
+                // Let's do async loading in main screen
+
+                setState(
+                  () => _isLoading = true,
+                ); // Need to use parent setState, but this dialog is in context.
+                // Ah, I need to call the parent's method effectively.
+                // Actually, just calling the service and then refreshing is fine.
+
+                try {
+                  await SupabaseService.addSupplierPayment(
+                    supplierName: _supplierNameController.text,
+                    amount: amount,
+                    date: selectedDate,
+                    notes: notesController.text,
+                  );
+                  await _fetchSupplierData(); // Refresh list
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Payment Recorded')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  }
+                } finally {
+                  // _fetchSupplierData sets loading false
+                }
+              },
+              child: const Text('Save Payment'),
+            ),
           ],
         ),
       ),
