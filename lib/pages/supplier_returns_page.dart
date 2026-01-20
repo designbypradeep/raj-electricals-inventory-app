@@ -567,31 +567,35 @@ class __AddReturnItemDialogState extends State<_AddReturnItemDialog> {
             ),
             const SizedBox(height: 16),
 
-            // Pricing Mode Toggle using standard flutter widgets instead of SegmentedButton
-            // to avoid import issues if Material 3 isn't fully set up or just for simplicity
-            Row(
-              children: [
-                const Text(
-                  'Pricing Mode:',
-                  style: TextStyle(fontWeight: FontWeight.w500),
+            // Pricing Mode Toggle (Segmented Button)
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment<String>(
+                    value: 'rate',
+                    label: Text('Rate'),
+                    icon: Icon(Icons.sell_outlined, size: 16),
+                  ),
+                  ButtonSegment<String>(
+                    value: 'total',
+                    label: Text('Total'),
+                    icon: Icon(Icons.attach_money, size: 16),
+                  ),
+                ],
+                selected: {_pricingMode},
+                onSelectionChanged: (Set<String> newSelection) {
+                  setState(() {
+                    _pricingMode = newSelection.first;
+                    // Recalculate driven by new mode if needed,
+                    // but usually values stay same, just input enablement changes.
+                  });
+                },
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-                const SizedBox(width: 12),
-                ChoiceChip(
-                  label: const Text('Rate'),
-                  selected: _pricingMode == 'rate',
-                  onSelected: (selected) {
-                    if (selected) setState(() => _pricingMode = 'rate');
-                  },
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('Total'),
-                  selected: _pricingMode == 'total',
-                  onSelected: (selected) {
-                    if (selected) setState(() => _pricingMode = 'total');
-                  },
-                ),
-              ],
+              ),
             ),
             const SizedBox(height: 16),
 
