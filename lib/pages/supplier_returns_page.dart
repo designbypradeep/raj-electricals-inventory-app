@@ -387,6 +387,10 @@ class __AddReturnItemDialogState extends State<_AddReturnItemDialog> {
   supabase_models.Product? _selectedProduct;
   final _quantityController = TextEditingController();
   final _priceController = TextEditingController();
+  final _totalController = TextEditingController();
+
+  String _pricingMode = 'rate'; // 'rate' | 'total'
+  String _selectedUnit = '';
 
   @override
   void initState() {
@@ -400,6 +404,7 @@ class __AddReturnItemDialogState extends State<_AddReturnItemDialog> {
     _searchController.dispose();
     _quantityController.dispose();
     _priceController.dispose();
+    _totalController.dispose();
     super.dispose();
   }
 
@@ -413,72 +418,243 @@ class __AddReturnItemDialogState extends State<_AddReturnItemDialog> {
     SupabaseService.searchProductsQuick(_searchController.text).then((
       products,
     ) {
-      setState(() {
-        _searchResults = products;
-      });
+      if (mounted) {
+        setState(() {
+          _searchResults = products;
+        });
+      }
+    });
+  }
+
+  void _onProductSelected(supabase_models.Product product) {
+    setState(() {
+      _selectedProduct = product;
+      _searchController.text = product.name;
+      _searchResults = [];
+      _selectedUnit = product.unitTypeSingle ?? 'Piece';
+      // Default to purchase price
+      _priceController.text = (product.purchasePrice ?? 0.0).toStringAsFixed(2);
+      _quantityController.text = '1';
+      _calculateTotal();
+    });
+  }
+
+  void _calculateTotal() {
+    final qty = double.tryParse(_quantityController.text) ?? 0.0;
+    final rate = double.tryParse(_priceController.text) ?? 0.0;
+    _totalController.text = (qty * rate).toStringAsFixed(2);
+  }
+
+  void _calculateRate() {
+    final qty = double.tryParse(_quantityController.text) ?? 0.0;
+    final total = double.tryParse(_totalController.text) ?? 0.0;
+    if (qty > 0) {
+      _priceController.text = (total / qty).toStringAsFixed(2);
+    }
+  }
+
+  void _handleUnitChange(String? newUnit) {
+    if (newUnit == null || newUnit == _selectedUnit) return;
+    if (_selectedProduct == null) return;
+
+    final oldUnit = _selectedUnit;
+    double currentRate = double.tryParse(_priceController.text) ?? 0.0;
+
+    final single = _selectedProduct!.unitTypeSingle ?? 'Piece';
+    final wholesale = _selectedProduct!.unitTypeWholesale;
+    final multiplier = (_selectedProduct!.itemsPerWholesaleUnit ?? 1)
+        .toDouble();
+
+    if (multiplier > 1 && wholesale != null) {
+      if (oldUnit == single && newUnit == wholesale) {
+        // Switch to Wholesale: Scale Rate UP
+        currentRate = currentRate * multiplier;
+      } else if (oldUnit == wholesale && newUnit == single) {
+        // Switch to Single: Scale Rate DOWN
+        currentRate = currentRate / multiplier;
+      }
+    }
+
+    setState(() {
+      _selectedUnit = newUnit;
+      _priceController.text = currentRate.toStringAsFixed(2);
+      // Recalculate based on current mode
+      if (_pricingMode == 'rate') {
+        _calculateTotal();
+      } else {
+        // If total mode, total stays same, rate implies quantity change?
+        // No, typically in 'Total' mode, if we change unit, we probably want to keep Total fixed
+        // and adjust Rate? Or keep Scale Rate and adjust Total?
+        // purchase_page.dart scales rate and re-calcs total implicitly via controller update.
+        // Let's stick to standard behavior: Unit change affects Rate. Total gets re-calc'd.
+        _calculateTotal();
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final isProductSelected = _selectedProduct != null;
+
     return AlertDialog(
       title: const Text('Add Return Item'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _searchController,
-              decoration: const InputDecoration(
-                labelText: 'Search Product',
-                border: OutlineInputBorder(),
+      scrollable: true,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _searchController,
+            decoration: const InputDecoration(
+              labelText: 'Search Product',
+              border: OutlineInputBorder(),
+              suffixIcon: Icon(Icons.search),
+            ),
+          ),
+          if (_searchResults.isNotEmpty)
+            Container(
+              height: 150,
+              margin: const EdgeInsets.only(top: 8),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _searchResults.length,
+                itemBuilder: (context, index) {
+                  final p = _searchResults[index];
+                  return ListTile(
+                    title: Text(p.name),
+                    subtitle: Text('${p.brand ?? ''} (${p.currentStock})'),
+                    onTap: () => _onProductSelected(p),
+                    dense: true,
+                  );
+                },
               ),
             ),
-            if (_searchResults.isNotEmpty)
-              SizedBox(
-                height: 200,
-                width: double.maxFinite,
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _searchResults.length,
-                  itemBuilder: (context, index) {
-                    final product = _searchResults[index];
-                    return ListTile(
-                      title: Text(product.name),
-                      subtitle: Text(product.brand ?? ''),
-                      onTap: () {
-                        setState(() {
-                          _selectedProduct = product;
-                          _searchController.text = product.name;
-                          _searchResults = [];
-                        });
-                      },
-                    );
+
+          if (isProductSelected) ...[
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+
+            // Unit Selection
+            DropdownButtonFormField<String>(
+              value: _selectedUnit.isNotEmpty ? _selectedUnit : null,
+              decoration: const InputDecoration(
+                labelText: 'Unit',
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+              ),
+              items: [
+                if (_selectedProduct?.unitTypeSingle != null)
+                  DropdownMenuItem(
+                    value: _selectedProduct!.unitTypeSingle,
+                    child: Text(_selectedProduct!.unitTypeSingle!),
+                  ),
+                if (_selectedProduct?.unitTypeWholesale != null &&
+                    _selectedProduct!.unitTypeWholesale !=
+                        _selectedProduct!.unitTypeSingle)
+                  DropdownMenuItem(
+                    value: _selectedProduct!.unitTypeWholesale,
+                    child: Text(_selectedProduct!.unitTypeWholesale!),
+                  ),
+              ],
+              onChanged: _handleUnitChange,
+            ),
+            const SizedBox(height: 16),
+
+            // Pricing Mode Toggle using standard flutter widgets instead of SegmentedButton
+            // to avoid import issues if Material 3 isn't fully set up or just for simplicity
+            Row(
+              children: [
+                const Text(
+                  'Pricing Mode:',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(width: 12),
+                ChoiceChip(
+                  label: const Text('Rate'),
+                  selected: _pricingMode == 'rate',
+                  onSelected: (selected) {
+                    if (selected) setState(() => _pricingMode = 'rate');
                   },
                 ),
-              ),
-            if (_selectedProduct != null) ...[
-              const SizedBox(height: 16),
-              TextField(
-                controller: _quantityController,
-                decoration: const InputDecoration(
-                  labelText: 'Quantity',
-                  border: OutlineInputBorder(),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('Total'),
+                  selected: _pricingMode == 'total',
+                  onSelected: (selected) {
+                    if (selected) setState(() => _pricingMode = 'total');
+                  },
                 ),
-                keyboardType: TextInputType.number,
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Quantity
+            TextField(
+              controller: _quantityController,
+              decoration: const InputDecoration(
+                labelText: 'Quantity',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _priceController,
-                decoration: const InputDecoration(
-                  labelText: 'Price per Unit',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
               ),
-            ],
+              onChanged: (_) {
+                if (_pricingMode == 'rate') {
+                  _calculateTotal();
+                } else {
+                  _calculateRate();
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Rate Input
+            TextField(
+              controller: _priceController,
+              decoration: InputDecoration(
+                labelText: 'Rate per Unit',
+                border: const OutlineInputBorder(),
+                filled: _pricingMode == 'total',
+                fillColor: _pricingMode == 'total'
+                    ? Colors.grey.shade100
+                    : null,
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              readOnly: _pricingMode == 'total',
+              onChanged: (_) {
+                if (_pricingMode == 'rate') _calculateTotal();
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Total Input
+            TextField(
+              controller: _totalController,
+              decoration: InputDecoration(
+                labelText: 'Total Amount',
+                border: const OutlineInputBorder(),
+                filled: _pricingMode == 'rate',
+                fillColor: _pricingMode == 'rate' ? Colors.grey.shade100 : null,
+              ),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              readOnly: _pricingMode == 'rate',
+              onChanged: (_) {
+                if (_pricingMode == 'total') _calculateRate();
+              },
+            ),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(
@@ -490,10 +666,29 @@ class __AddReturnItemDialogState extends State<_AddReturnItemDialog> {
             if (_selectedProduct != null &&
                 _quantityController.text.isNotEmpty &&
                 _priceController.text.isNotEmpty) {
+              // Conversion Logic
+              double qty = double.parse(_quantityController.text);
+              double price = double.parse(_priceController.text);
+
+              // If wholesale unit selected, convert to single units for backend
+              final wholesale = _selectedProduct!.unitTypeWholesale;
+              final multiplier = (_selectedProduct!.itemsPerWholesaleUnit ?? 1)
+                  .toDouble();
+
+              if (wholesale != null &&
+                  _selectedUnit == wholesale &&
+                  multiplier > 1) {
+                // Return = Box. Backend = Piece.
+                // Qty 1 Box = 10 Pieces.
+                qty = qty * multiplier;
+                // Price 100/Box = 10/Piece.
+                price = price / multiplier;
+              }
+
               Navigator.of(context).pop({
                 'product': _selectedProduct,
-                'quantity': int.parse(_quantityController.text),
-                'price': double.parse(_priceController.text),
+                'quantity': qty.toInt(), // Backend expects int
+                'price': price,
               });
             }
           },

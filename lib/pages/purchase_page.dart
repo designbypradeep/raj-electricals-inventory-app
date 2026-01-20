@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart'; // for kDebugMode
+import 'package:supabase_flutter/supabase_flutter.dart'; // for Supabase.instance
 import 'dart:async';
 import '../services/supabase_service.dart';
 import '../services/connectivity_service.dart';
@@ -312,6 +314,40 @@ class _PurchasePageState extends State<PurchasePage> {
     });
 
     try {
+      // 1. Auto-Create Supplier if not exists
+      final dealerName = _dealerNameController.text.trim();
+      if (dealerName.isNotEmpty) {
+        // Check for existing supplier (case-insensitive)
+        final existingSupplier = await SupabaseService.searchSuppliers(
+          dealerName,
+        );
+
+        // Exact match check (searchSuppliers uses ilike %query%)
+        // We need to be careful not to match "Test" with "Test Ref"
+        final exactMatch = existingSupplier.any(
+          (s) => s.name.toLowerCase() == dealerName.toLowerCase(),
+        );
+
+        if (!exactMatch) {
+          if (kDebugMode) {
+            print('Auto-creating new supplier: $dealerName');
+          }
+          try {
+            // Create new supplier
+            await Supabase.instance.client.from('suppliers').insert({
+              'business_id':
+                  SupabaseService.getCurrentBusinessId(), // ensure we get ID
+              'name': dealerName,
+            });
+            // We don't need the ID for the purchase record itself as it stores dealer_name text,
+            // but creating it ensures it appears in future autocompletes.
+          } catch (e) {
+            print('Error auto-creating supplier: $e');
+            // Proceed anyway, don't block purchase save
+          }
+        }
+      }
+
       final created = await SupabaseService.createPurchase(
         dealerName: _dealerNameController.text.trim(),
         billNumber: _billNumberController.text.trim().isNotEmpty
