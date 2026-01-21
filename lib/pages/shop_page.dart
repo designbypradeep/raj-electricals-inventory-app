@@ -26,6 +26,7 @@ import '../services/connectivity_service.dart';
 import '../services/voice_search_service.dart';
 import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
 
 class ShopPage extends StatefulWidget {
   final AppDatabase db;
@@ -4568,6 +4569,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     });
   }
 
+  Future<void> _shareProduct(Map<String, dynamic> product) async {
+    final id = product['id'];
+    final name = product['name'];
+    final price = (product['price'] as num?)?.toDouble() ?? 0.0;
+    final url = 'https://rajelectricals.com/shop?product=$id';
+    await Share.share(
+      'Check out $name for ${_currencyFormat.format(price)} on Raj Electricals!\n$url',
+      subject: 'Check out $name',
+    );
+  }
+
   void _viewProduct(BuildContext context, Map<String, dynamic> product) {
     if (!_recentlyViewed.contains(product['id'])) {
       setState(() {
@@ -4733,12 +4745,25 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       ],
 
                       // Title, price & stock
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _shareProduct(currentProduct),
+                            icon: const Icon(Icons.share),
+                            tooltip: 'Share Product',
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       Row(
