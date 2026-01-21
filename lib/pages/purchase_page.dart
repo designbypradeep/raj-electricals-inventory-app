@@ -348,7 +348,7 @@ class _PurchasePageState extends State<PurchasePage> {
         }
       }
 
-      final created = await SupabaseService.createPurchase(
+      await SupabaseService.createPurchase(
         dealerName: _dealerNameController.text.trim(),
         billNumber: _billNumberController.text.trim().isNotEmpty
             ? _billNumberController.text.trim()
@@ -358,20 +358,10 @@ class _PurchasePageState extends State<PurchasePage> {
         paidAmount: double.tryParse(_paidAmountController.text) ?? 0.0,
       );
 
-      // Apply supplier credit if any
-      if (_appliedCredit > 0) {
-        final name = _dealerNameController.text.trim();
-        if (name.isNotEmpty) {
-          try {
-            await SupabaseService.applySupplierCredit(
-              supplierName: name,
-              amount: _appliedCredit,
-              refTable: 'purchases',
-              refId: created.id,
-            );
-          } catch (_) {}
-        }
-      }
+      // Note: We do NOT need to "apply" supplier credit explicitly.
+      // The Ledger is a running balance.
+      // Returns (Debit) and Purchases (Credit) naturally net out.
+      // Inserting an 'apply' record would double-count the deduction.
 
       setState(() {
         _successMessage = 'Purchase saved successfully!';
