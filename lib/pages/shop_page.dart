@@ -107,16 +107,110 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   late AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
 
+  // Pagination State
+  int _page = 1;
+  static const int _limit = 24;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+
   @override
   void initState() {
     super.initState();
     _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
-    _searchController.addListener(() => setState(() {}));
+    _searchController.addListener(() {
+      // Debounce handled by listener in build or manual calls?
+      // Actually the text field calls onChanged: _onSearchChanged
+    });
     _scrollController.addListener(_onScroll);
-    _loadProductsAndCategories();
-    _loadBusinessProfile();
+    _loadBusinessProfile().then((_) => _loadProductsAndCategories(reset: true));
     _initSpeech();
     _initDeepLinks();
+  }
+
+  // Reloads products (Reset = true for fresh list, false for load more)
+  Future<void> _loadProductsAndCategories({bool reset = false}) async {
+    if (!mounted) return;
+    if (reset) {
+      setState(() {
+        _page = 1;
+        _products = [];
+        _hasMore = true;
+        _isLoadingProducts = true;
+        _loadErrorMessage = null;
+      });
+    } else {
+      if (_isLoadingMore || !_hasMore) return;
+      setState(() => _isLoadingMore = true);
+    }
+
+    try {
+      final bid = _currentBusinessId ?? SupabaseService.getCurrentBusinessId();
+      if (bid == null) {
+        // Wait for profile if not ready
+        await _loadBusinessProfile();
+      }
+
+      final result = await SupabaseService.getShopProductsV2(
+        page: _page,
+        limit: _limit,
+        search: _searchQuery, // Use current UI search query
+        category: _selectedCategory,
+        // TODO: Pass advanced filters if needed (minPrice, maxPrice, brands)
+      );
+
+      if (!mounted) return;
+
+      final newProducts = (result['products'] as List)
+          .cast<Map<String, dynamic>>();
+      final total = result['total'] as int;
+
+      // Extract categories from *loaded* products?
+      // With pagination, we might miss categories if we only check loaded ones.
+      // Ideally, categories should be a separate fetch or fixed list.
+      // For now, we'll append unique categories from the new batch to existing list if desired,
+      // or just keep 'all' + explicit ones if we have a separate API.
+      // The RPC V2 doesn't return all categories. We might need a separate call for that.
+      // Preserving existing category logic (append unique from batch):
+      final newCats = <String>{};
+      for (var p in newProducts) {
+        final c = p['category']?.toString();
+        if (c != null && c.isNotEmpty) newCats.add(c);
+      }
+
+      setState(() {
+        if (reset) {
+          _products = newProducts;
+          // Reset categories only on full reset? Or accumulate?
+          // If we reset, we might lose categories from other pages.
+          // Better to keep accumulating or fetch global categories separately.
+          // For now adding to existing _categories logic:
+          final currentCats = Set<String>.from(_categories);
+          currentCats.addAll(newCats);
+          _categories = currentCats.toList()..sort();
+          if (!_categories.contains('all')) _categories.insert(0, 'all');
+        } else {
+          _products.addAll(newProducts);
+          final currentCats = Set<String>.from(_categories);
+          currentCats.addAll(newCats);
+          _categories = currentCats.toList()..sort();
+          if (!_categories.contains('all')) _categories.insert(0, 'all');
+        }
+
+        _hasMore = _products.length < total;
+        if (!reset) _page++;
+
+        _isLoadingProducts = false;
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingProducts = false;
+          _isLoadingMore = false;
+          if (reset) _loadErrorMessage = 'Failed to load products: $e';
+        });
+      }
+    }
   }
 
   Future<void> _initDeepLinks() async {
@@ -239,6 +333,18 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         _scrollController.hasClients && _scrollController.offset > 4;
     if (scrolled != _isScrolled) {
       setState(() => _isScrolled = scrolled);
+    }
+
+    // Infinite Scroll
+    if (_scrollController.hasClients) {
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      final currentScroll = _scrollController.position.pixels;
+      // Trigger if close to bottom (e.g. 200px) and not already loading / exhausted
+      if (maxScroll - currentScroll <= 200) {
+        if (_hasMore && !_isLoadingMore && !_isLoadingProducts) {
+          _loadProductsAndCategories(reset: false);
+        }
+      }
     }
   }
 
@@ -784,6 +890,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               if (selected) {
                                 setState(() {
                                   _selectedCategory = cat;
+                                  // Server-side filter reset
+                                  _loadProductsAndCategories(reset: true);
                                   _scrollToProducts();
                                 });
                               }
@@ -1627,6 +1735,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     _searchDebounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       setState(() => _searchQuery = _searchController.text.trim());
+      // Reset to page 1 for new search
+      _loadProductsAndCategories(reset: true);
       // Bring products into view when searching
       _scrollToProducts();
     });
@@ -1655,461 +1765,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   void _scrollToProducts() => _scrollToKey(_filterBarKey);
-
-  Future<void> _loadProductsAndCategories() async {
-    if (!mounted) return;
-
-    setState(() {
-      _isLoadingProducts = true;
-      _loadErrorMessage = null;
-    });
-
-    try {
-      // Load business profile
-      final profile = await SupabaseService.getCurrentBusinessProfile();
-      final bid = SupabaseService.getCurrentBusinessId();
-      if (profile != null && mounted) {
-        setState(() {
-          _currentBusinessId = bid;
-          _businessName = profile.businessName.isNotEmpty
-              ? profile.businessName
-              : 'Raj Electricals';
-          String? l = profile.logoUrl?.trim();
-          _rawLogoUrl = l;
-          if (kDebugMode) {
-            debugPrint('[Shop] Profile loaded for businessId=$bid');
-            debugPrint('[Shop] Raw logoUrl from profile: "$l"');
-          }
-          if (l != null && l.isNotEmpty) {
-            // Protocol-relative
-            if (l.startsWith('//')) l = 'https:$l';
-            if (l.startsWith('http://') || l.startsWith('https://')) {
-              _businessLogoUrl = l;
-              if (kDebugMode) {
-                debugPrint('[Shop] Using HTTP(S) logo URL: $_businessLogoUrl');
-              }
-            } else {
-              // Resolve using Supabase storage
-              final client = Supabase.instance.client;
-              String? bucket;
-              String? path;
-              const pubPrefix1 = '/storage/v1/object/public/';
-              const pubPrefix2 =
-                  'storage/v1/object/public/'; // without leading slash
-              if (l.startsWith(pubPrefix1)) {
-                final rest = l.substring(pubPrefix1.length);
-                final slash = rest.indexOf('/');
-                if (slash > 0) {
-                  bucket = rest.substring(0, slash);
-                  path = rest.substring(slash + 1);
-                }
-              } else if (l.startsWith(pubPrefix2)) {
-                final rest = l.substring(pubPrefix2.length);
-                final slash = rest.indexOf('/');
-                if (slash > 0) {
-                  bucket = rest.substring(0, slash);
-                  path = rest.substring(slash + 1);
-                }
-              } else if (l.startsWith('/storage/')) {
-                // Another storage path variant; try to extract after '/object/public/'
-                final idx = l.indexOf('/object/public/');
-                if (idx != -1) {
-                  final rest = l.substring(idx + '/object/public/'.length);
-                  final slash = rest.indexOf('/');
-                  if (slash > 0) {
-                    bucket = rest.substring(0, slash);
-                    path = rest.substring(slash + 1);
-                  }
-                }
-              } else {
-                // Assume bucket/path format e.g. `bucket/folder/file.png`
-                final slash = l.indexOf('/');
-                if (slash > 0) {
-                  bucket = l.substring(0, slash);
-                  path = l.substring(slash + 1);
-                }
-              }
-
-              if (bucket != null && path != null) {
-                try {
-                  final resolved = client.storage
-                      .from(bucket)
-                      .getPublicUrl(path);
-                  _businessLogoUrl = resolved;
-                } catch (e) {
-                  if (kDebugMode) {
-                    debugPrint('[Shop] Failed to resolve storage logo URL: $e');
-                  }
-                  _businessLogoUrl = null;
-                }
-              } else {
-                _businessLogoUrl = null;
-              }
-            }
-          } else {
-            _businessLogoUrl = null;
-          }
-        });
-      } else if (mounted) {
-        // Profile could be null due to RLS or missing record in public mode; keep going with businessId
-        setState(() {
-          _currentBusinessId = bid;
-          _rawLogoUrl = null;
-          _businessLogoUrl = null;
-        });
-        if (kDebugMode) {
-          debugPrint('[Shop] No business profile loaded. businessId=$bid');
-        }
-      }
-
-      // Final fallback: compile-time environment overrides
-      // You can pass these via: --dart-define=BUSINESS_NAME=... --dart-define=BUSINESS_LOGO_URL=...
-      if (mounted && (_businessLogoUrl == null || _businessName.isEmpty)) {
-        const String envName = String.fromEnvironment(
-          'BUSINESS_NAME',
-          defaultValue: '',
-        );
-        const String envLogo = String.fromEnvironment(
-          'BUSINESS_LOGO_URL',
-          defaultValue: '',
-        );
-        if (envName.isNotEmpty || envLogo.isNotEmpty) {
-          setState(() {
-            if (envName.isNotEmpty) {
-              _businessName = envName;
-            }
-            if (envLogo.isNotEmpty) {
-              String l = envLogo.trim();
-              _rawLogoUrl = l;
-
-              if (l.startsWith('//')) l = 'https:$l';
-              if (l.startsWith('http://') || l.startsWith('https://')) {
-                _businessLogoUrl = l;
-              } else {
-                final client = Supabase.instance.client;
-                String? bucket;
-                String? path;
-                const pubPrefix1 = '/storage/v1/object/public/';
-                const pubPrefix2 = 'storage/v1/object/public/';
-                if (l.startsWith(pubPrefix1)) {
-                  final rest = l.substring(pubPrefix1.length);
-                  final slash = rest.indexOf('/');
-                  if (slash > 0) {
-                    bucket = rest.substring(0, slash);
-                    path = rest.substring(slash + 1);
-                  }
-                } else if (l.startsWith(pubPrefix2)) {
-                  final rest = l.substring(pubPrefix2.length);
-                  final slash = rest.indexOf('/');
-                  if (slash > 0) {
-                    bucket = rest.substring(0, slash);
-                    path = rest.substring(slash + 1);
-                  }
-                } else if (l.startsWith('/storage/')) {
-                  final idx = l.indexOf('/object/public/');
-                  if (idx != -1) {
-                    final rest = l.substring(idx + '/object/public/'.length);
-                    final slash = rest.indexOf('/');
-                    if (slash > 0) {
-                      bucket = rest.substring(0, slash);
-                      path = rest.substring(slash + 1);
-                    }
-                  }
-                } else {
-                  final slash = l.indexOf('/');
-                  if (slash > 0) {
-                    bucket = l.substring(0, slash);
-                    path = l.substring(slash + 1);
-                  }
-                }
-                if (bucket != null && path != null) {
-                  try {
-                    _businessLogoUrl = client.storage
-                        .from(bucket)
-                        .getPublicUrl(path);
-                  } catch (_) {
-                    _businessLogoUrl = null;
-                  }
-                }
-              }
-            }
-          });
-        }
-      }
-
-      // Load products from Supabase
-      final supaProducts = await SupabaseService.getProducts();
-
-      // Map products to shop format
-      final mapped = supaProducts.map((p) => _mapProduct(p)).toList();
-
-      // Merge image URLs from product_images table (batch fetch)
-      try {
-        final ids = supaProducts.map((p) => p.id).whereType<int>().toList();
-        if (ids.isNotEmpty) {
-          final imagesMap =
-              await SupabaseService.getProductImageUrlsForProducts(ids);
-          for (var i = 0; i < mapped.length; i++) {
-            final id = mapped[i]['id'] as int?;
-            if (id == null) continue;
-            final urls = imagesMap[id];
-            if (urls == null || urls.isEmpty) continue;
-            // Merge (dedupe) with existing images, keep http(s) only
-            final merged = <String>[];
-            final existing =
-                (mapped[i]['images'] as List?)?.cast<String>() ?? [];
-            for (final u in existing) {
-              if ((u.startsWith('http://') || u.startsWith('https://')) &&
-                  !merged.contains(u)) {
-                merged.add(u);
-              }
-            }
-            for (final u in urls) {
-              if ((u.startsWith('http://') || u.startsWith('https://')) &&
-                  !merged.contains(u)) {
-                merged.add(u);
-              }
-            }
-            mapped[i]['images'] = merged;
-            if (merged.isNotEmpty) {
-              mapped[i]['image'] = merged.first; // set cover from list
-            }
-          }
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('[Shop] Failed merging product_images: $e');
-        }
-      }
-
-      // Group products by Brand + BaseName to find variants (Local Logic)
-      try {
-        final Map<String, List<Map<String, dynamic>>> grouped = {};
-
-        // Helper to strip color from name
-        String getBaseName(String name, String color) {
-          String baseName = name;
-          if (color.isNotEmpty) {
-            // Case-insensitive removal of color keyword
-            final pattern = RegExp(
-              '(^|\\s)${RegExp.escape(color)}(\$|\\s)',
-              caseSensitive: false,
-            );
-            baseName = baseName.replaceAll(pattern, ' ');
-          }
-
-          // Post-process:
-          // 1. Remove empty parentheses/brackets (e.g. "Name (Red)" -> "Name ()")
-          baseName = baseName
-              .replaceAll(RegExp(r'\(\s*\)'), '')
-              .replaceAll(RegExp(r'\[\s*\]'), '');
-
-          // 2. Normalize units (e.g. "0.5w" -> "0.5 W")
-          baseName = baseName.replaceAllMapped(
-            RegExp(r'(\d+(\.\d+)?)\s*[wW]\b'),
-            (match) => '${match.group(1)} W',
-          );
-
-          // 3. Clean whitespace
-          return baseName.replaceAll(RegExp(r'\s+'), ' ').trim();
-        }
-
-        for (var p in mapped) {
-          final name = p['name'] as String;
-          final brand = (p['brand'] as String? ?? '').trim();
-          final color = (p['color'] as String? ?? '').trim();
-
-          final baseName = getBaseName(name, color);
-          // Key: "BRAND::BASENAME"
-          final key = '${brand.toLowerCase()}::${baseName.toLowerCase()}';
-
-          grouped.putIfAbsent(key, () => []).add(p);
-        }
-
-        // Assign variants list to each product
-        for (var p in mapped) {
-          final name = p['name'] as String;
-          final brand = (p['brand'] as String? ?? '').trim();
-          final color = (p['color'] as String? ?? '').trim();
-          final baseName = getBaseName(name, color);
-          final key = '${brand.toLowerCase()}::${baseName.toLowerCase()}';
-
-          final group = grouped[key] ?? [];
-          if (group.length > 1) {
-            final List<Map<String, dynamic>> variants = group
-                .map(
-                  (v) => {
-                    'id': v['id'],
-                    'color': v['color'] ?? '',
-                    'image': v['image'],
-                  },
-                )
-                .where((v) => (v['color'] as String).isNotEmpty)
-                .toList();
-
-            // Sort variants (e.g. alphabetical by color)
-            variants.sort(
-              (a, b) => (a['color'] as String).compareTo(b['color'] as String),
-            );
-
-            p['variants'] = variants;
-          } else {
-            p['variants'] = <Map<String, dynamic>>[];
-          }
-        }
-      } catch (e) {
-        debugPrint('[Shop] Variant grouping error: $e');
-      }
-
-      // Extract unique categories/brands/specs/colors
-      final Set<String> categorySet = {};
-      final Set<String> brandSet = {};
-      final Set<String> specSet = {};
-      final Set<String> colorSet = {};
-      for (var p in mapped) {
-        if (p['category'] != null && p['category'].toString().isNotEmpty) {
-          categorySet.add(p['category']);
-        }
-        final br = (p['brand'] ?? '').toString().trim();
-        if (br.isNotEmpty) brandSet.add(br);
-        final sp = (p['spec'] ?? '').toString().trim();
-        if (sp.isNotEmpty) specSet.add(sp);
-        final cl = (p['color'] ?? '').toString().trim();
-        if (cl.isNotEmpty) colorSet.add(cl);
-      }
-
-      // Compute price bounds for slider initialization
-      double minP = double.infinity;
-      double maxP = 0.0;
-      for (final p in mapped) {
-        final pr = (p['price'] as num?)?.toDouble() ?? 0.0;
-        if (pr < minP) minP = pr;
-        if (pr > maxP) maxP = pr;
-      }
-      if (minP == double.infinity) minP = 0.0;
-      if (maxP < minP) maxP = minP;
-
-      if (mounted) {
-        setState(() {
-          _products = mapped;
-          _categories = ['all', ...categorySet.toList()..sort()];
-          _brands = ['all', ...brandSet.toList()..sort()];
-          _specs = ['all', ...specSet.toList()..sort()];
-          _colors = ['all', ...colorSet.toList()..sort()];
-          _priceRange = RangeValues(minP, maxP);
-          _isLoadingProducts = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _products = [];
-          _categories = ['all'];
-          _isLoadingProducts = false;
-          _loadErrorMessage = 'Failed to load products: $e';
-        });
-      }
-    }
-  }
-
-  Map<String, dynamic> _mapProduct(supabase_models.Product p) {
-    // Collect multiple image URLs (URLs only; local images are device-specific)
-    final List<String> images = [];
-    // Add cover image first if valid URL
-    final cover = p.productImageUrl;
-    if (cover != null &&
-        (cover.startsWith('http://') || cover.startsWith('https://'))) {
-      images.add(cover);
-    }
-    // Add list entries (filter to http/https and dedupe)
-    if (p.productImages != null) {
-      for (final u in p.productImages!) {
-        if (u.startsWith('http://') || u.startsWith('https://')) {
-          if (!images.contains(u)) images.add(u);
-        }
-      }
-    }
-    // Select a cover image from list if any
-    String? img = images.isNotEmpty ? images.first : null;
-
-    return {
-      'id': p.id,
-      'name': p.name,
-      'brand': p.brand ?? '',
-      'category': p.category ?? 'General',
-      'price': p.sellingPrice ?? 0.0,
-      'stock': p.currentStock,
-      'description': p.description ?? '',
-      'spec': _extractSpec(p) ?? '',
-      'color': _detectColorFromText('${p.name} ${p.description ?? ''}') ?? '',
-      'image': img,
-      'images': images,
-      'inStock': p.currentStock > 0,
-      'createdAt': p.createdAt,
-    };
-  }
-
-  // Extracts a single normalized spec value (e.g., '6A', '16A', '1.5sqmm')
-  String? _extractSpec(supabase_models.Product p) {
-    final src = (p.sizeOrSpec?.trim().isNotEmpty ?? false)
-        ? p.sizeOrSpec!
-        : (p.description ?? '');
-    if (src.isEmpty) return null;
-    final text = src.toLowerCase();
-    final amp = RegExp(r'(\d+(?:\.\d+)?)\s*(a|amp|amps)');
-    final mm2 = RegExp(r'(\d+(?:\.\d+)?)\s*(sqmm|mm2)');
-    final m1 = amp.firstMatch(text);
-    if (m1 != null) {
-      return '${m1.group(1)}A';
-    }
-    final m2 = mm2.firstMatch(text);
-    if (m2 != null) {
-      return '${m2.group(1)}sqmm';
-    }
-    // fallback to first token of sizeOrSpec
-    if ((p.sizeOrSpec?.trim().isNotEmpty ?? false)) {
-      return p.sizeOrSpec!.trim();
-    }
-    return null;
-  }
-
-  // Guess color from name/description keywords
-  String? _detectColorFromText(String text) {
-    final colors = <String>{
-      'black',
-      'white',
-      'red',
-      'blue',
-      'green',
-      'yellow',
-      'orange',
-      'pink',
-      'purple',
-      'grey',
-      'gray',
-      'brown',
-      'gold',
-      'silver',
-      'violet',
-      'indigo',
-      'beige',
-      'maroon',
-      'cyan',
-      'magenta',
-    };
-    final t = text.toLowerCase();
-    for (final c in colors) {
-      if (RegExp(
-        '(^|[^a-z])${RegExp.escape(c)}([^a-z]| )',
-        caseSensitive: false,
-      ).hasMatch('$t\u0000')) {
-        // Normalize grey/gray
-        if (c == 'gray') return 'Grey';
-        return c[0].toUpperCase() + c.substring(1);
-      }
-    }
-    return null;
-  }
 
   void _openCart(BuildContext context) {
     showModalBottomSheet(
@@ -4623,10 +4278,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             final String desc =
                 (currentProduct['description'] as String?)?.trim() ?? '';
             final specs = _parseSpecs(desc);
-            final List<String> images =
-                (currentProduct['images'] as List<dynamic>? ?? [])
-                    .cast<String>();
-
             final List<dynamic> variants =
                 (currentProduct['variants'] as List<dynamic>?) ?? [];
 

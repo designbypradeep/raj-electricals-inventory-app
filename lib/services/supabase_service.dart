@@ -63,6 +63,52 @@ class SupabaseService {
   }
 
   // =====================
+  // Shop V2 (Pagination)
+  // =====================
+  static Future<Map<String, dynamic>> getShopProductsV2({
+    required int page,
+    int limit = 24,
+    String? search,
+    String? category,
+    double? minPrice,
+    double? maxPrice,
+  }) async {
+    await getCurrentBusinessProfile();
+    final businessId = _defaultBusinessId ?? _currentBusinessProfile?.id;
+    if (businessId == null) return {'products': [], 'total': 0};
+
+    try {
+      final response = await _client.rpc(
+        'get_public_products_v2',
+        params: {
+          'p_business_id': businessId,
+          'p_limit': limit,
+          'p_offset': (page - 1) * limit,
+          'p_search': search,
+          'p_category': category == 'all' ? null : category,
+          'p_min_price': minPrice,
+          'p_max_price': maxPrice,
+        },
+      );
+
+      // Parse response
+      final List<dynamic> raw = (response as List?) ?? [];
+      final List<Map<String, dynamic>> products = raw
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      final int totalCount = products.isNotEmpty
+          ? (products[0]['full_count'] as int? ?? 0)
+          : 0;
+
+      return {'products': products, 'total': totalCount};
+    } catch (e) {
+      if (kDebugMode) print('Error fetching shop V2: $e');
+      return {'products': [], 'total': 0};
+    }
+  }
+
+  // =====================
   // System Health: Stock reconciliation (preview and apply)
   // =====================
   static Future<List<Map<String, dynamic>>> healthStockReconcilePreview({
