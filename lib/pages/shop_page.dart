@@ -63,9 +63,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   String? _mapMyIndiaUrl; // e.g., https://maps.mapmyindia.com/...
 
   // Advanced filter state
-  List<String> _brands = ['all'];
-  List<String> _specs = ['all']; // e.g., 6Amp, 16Amp, 1.5sqmm
-  List<String> _colors = ['all'];
+  final List<String> _brands = ['all'];
+  final List<String> _specs = ['all']; // e.g., 6Amp, 16Amp, 1.5sqmm
+  final List<String> _colors = ['all'];
   String _selectedBrand = 'all';
   String _selectedSpec = 'all';
   String _selectedColor = 'all';

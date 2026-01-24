@@ -540,7 +540,7 @@ class __AddReturnItemDialogState extends State<_AddReturnItemDialog> {
 
             // Unit Selection
             DropdownButtonFormField<String>(
-              value: _selectedUnit.isNotEmpty ? _selectedUnit : null,
+              initialValue: _selectedUnit.isNotEmpty ? _selectedUnit : null,
               decoration: const InputDecoration(
                 labelText: 'Unit',
                 border: OutlineInputBorder(),
