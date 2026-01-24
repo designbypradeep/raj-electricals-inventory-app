@@ -3,12 +3,13 @@ import 'package:raj_electricals_inventory_app/models/supabase_models.dart';
 import 'package:raj_electricals_inventory_app/services/supabase_service.dart';
 import 'package:raj_electricals_inventory_app/services/connectivity_service.dart';
 import 'package:raj_electricals_inventory_app/widgets/page_header.dart';
+import 'package:raj_electricals_inventory_app/pages/supplier_credits_page.dart';
 
 class SuppliersPage extends StatefulWidget {
   const SuppliersPage({super.key});
 
   @override
-  _SuppliersPageState createState() => _SuppliersPageState();
+  State<SuppliersPage> createState() => _SuppliersPageState();
 }
 
 class _SuppliersPageState extends State<SuppliersPage> {
