@@ -198,8 +198,8 @@ class _DashboardPageState extends State<DashboardPage> {
     // Sort sales chronologically
     final sortedSales = [...sales]
       ..sort((a, b) {
-        final ad = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bd = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final ad = a?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bd = b?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         return ad.compareTo(bd);
       });
 
