@@ -573,6 +573,39 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                             ),
                                           ),
                                         ),
+                                        OutlinedButton.icon(
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) =>
+                                                    SupplierCreditsPage(
+                                                      initialSupplierName:
+                                                          supplier.name,
+                                                    ),
+                                              ),
+                                            );
+                                          },
+                                          icon: const Icon(
+                                            Icons.receipt_long,
+                                            size: 18,
+                                            color: Colors.blue,
+                                          ),
+                                          label: const Text(
+                                            'Ledger',
+                                            style: TextStyle(
+                                              color: Colors.blue,
+                                            ),
+                                          ),
+                                          style: OutlinedButton.styleFrom(
+                                            shape: const StadiumBorder(),
+                                            side: BorderSide(
+                                              color: Colors.blue.withValues(
+                                                alpha: 0.5,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ],

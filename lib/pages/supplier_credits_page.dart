@@ -4,7 +4,8 @@ import 'package:raj_electricals_inventory_app/services/supabase_service.dart';
 import 'package:raj_electricals_inventory_app/services/connectivity_service.dart';
 
 class SupplierCreditsPage extends StatefulWidget {
-  const SupplierCreditsPage({super.key});
+  final String? initialSupplierName;
+  const SupplierCreditsPage({super.key, this.initialSupplierName});
 
   @override
   _SupplierCreditsPageState createState() => _SupplierCreditsPageState();
@@ -15,6 +16,20 @@ class _SupplierCreditsPageState extends State<SupplierCreditsPage> {
   List<SupplierLedgerEntry> _ledgerEntries = [];
   double _creditBalance = 0.0;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialSupplierName != null) {
+      _supplierNameController.text = widget.initialSupplierName!;
+      // Use addPostFrameCallback to ensure context is safe if fetch relies on it,
+      // though _fetchSupplierData only uses context for SnackBar.
+      // Standard future call also works in initState but better to schedule.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fetchSupplierData();
+      });
+    }
+  }
 
   Future<void> _fetchSupplierData() async {
     if (!ConnectivityService().isOnline.value) {
