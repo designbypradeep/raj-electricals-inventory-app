@@ -166,6 +166,7 @@ flutter_launcher_icons:
       adaptive_icon_background: "#C1441E"
       adaptive_icon_foreground: assets/icons/app_icon_foreground.png
     shop:
+      android: true
       image_path: assets/icons/app_icon_shop.png
       adaptive_icon_background: "#C1441E"
       adaptive_icon_foreground: assets/icons/app_icon_shop_foreground.png

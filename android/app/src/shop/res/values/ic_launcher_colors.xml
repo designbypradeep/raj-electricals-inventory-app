@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Background color for adaptive launcher icon (shop flavor) -->
-    <color name="ic_launcher_shop_background">#C1441E</color>
-</resources>
