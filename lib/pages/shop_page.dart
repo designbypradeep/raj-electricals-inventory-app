@@ -150,12 +150,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         await _loadBusinessProfile();
       }
 
+      final double? minPrice = double.tryParse(_minPriceCtl.text.trim());
+      final double? maxPrice = double.tryParse(_maxPriceCtl.text.trim());
+
       final result = await SupabaseService.getShopProductsV2(
         page: _page,
         limit: _limit,
         search: _searchQuery, // Use current UI search query
         category: _selectedCategory,
-        // TODO: Pass advanced filters if needed (minPrice, maxPrice, brands)
+        minPrice: minPrice,
+        maxPrice: maxPrice,
       );
 
       if (!mounted) return;
@@ -1470,6 +1474,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             maxScale: 4.0,
                             child: Image.network(
                               url,
+                              headers: const {
+                                'User-Agent':
+                                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                              },
                               fit: BoxFit.contain,
                               errorBuilder: (_, __, ___) => const Icon(
                                 Icons.image_not_supported,
@@ -4341,6 +4349,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                     ).dividerColor.withValues(alpha: 0.08),
                                     child: Image.network(
                                       url,
+                                      headers: const {
+                                        'User-Agent':
+                                            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                      },
                                       fit: BoxFit.cover,
                                       errorBuilder: (_, __, ___) =>
                                           const Center(
@@ -4961,6 +4973,15 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
                 // Footer
                 SliverToBoxAdapter(child: _buildFooter(context, constraints)),
+
+                // Loading More Indicator
+                if (_isLoadingMore)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(24.0),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
               ],
             );
 
@@ -5044,6 +5065,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       child: _businessLogoUrl != null
                           ? Image.network(
                               _businessLogoUrl!,
+                              headers: const {
+                                'User-Agent':
+                                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                              },
                               fit: BoxFit.cover,
                               loadingBuilder: (context, child, progress) {
                                 if (progress == null) return child;
@@ -5352,15 +5377,26 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: (product['image'] != null)
-                        ? CachedNetworkImage(
-                            imageUrl: product['image'],
+                        ? Image.network(
+                            product['image'],
+                            headers: const {
+                              'User-Agent':
+                                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            },
                             fit: BoxFit.cover,
-                            placeholder: (c, _) => const Center(
-                              child: Icon(Icons.image, size: 20),
-                            ),
-                            errorWidget: (c, _, __) => const Center(
-                              child: Icon(Icons.image_not_supported, size: 20),
-                            ),
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return const Center(
+                                child: Icon(Icons.image, size: 20),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Center(
+                                  child: Icon(
+                                    Icons.image_not_supported,
+                                    size: 20,
+                                  ),
+                                ),
                           )
                         : const Center(child: Icon(Icons.image, size: 22)),
                   ),
