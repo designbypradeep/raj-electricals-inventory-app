@@ -51,7 +51,7 @@ class SupabaseService {
   static Future<Map<String, dynamic>?> getBusinessBySlug(String slug) async {
     try {
       final response = await _client.rpc(
-        'get_public_business_by_slug',
+        'get_public_business_by_slug_secure',
         params: {'p_slug': slug},
       );
       if (response == null) return null;
@@ -93,19 +93,216 @@ class SupabaseService {
 
       // Parse response
       final List<dynamic> raw = (response as List?) ?? [];
-      final List<Map<String, dynamic>> products = raw
-          .map((e) => Map<String, dynamic>.from(e as Map))
-          .toList();
+      final List<Map<String, dynamic>> products = raw.map((e) {
+        final map = Map<String, dynamic>.from(e as Map);
+        // Normalize keys for UI compatibility
+        map['active_product_id'] = map['id']; // preserve original id if needed
+        map['name'] = map['product_name'] ?? map['name'];
+        map['price'] = (map['selling_price'] as num?)?.toDouble() ?? 0.0;
+        map['mrp'] = (map['mrp'] as num?)?.toDouble() ?? 0.0;
+        map['stock'] = map['current_stock'] ?? 0;
+        // Image handling: RPC returns product_image_url and images JSON
+        final img = map['product_image_url'];
+        map['image'] = img;
+        map['image_url'] = img;
+
+        // Parse 'images' JSON
+        // It comes as List<dynamic> of Maps {image_url, position}
+        final rawImages = map['images'];
+        List<String> imageList = [];
+
+        if (rawImages is List) {
+          imageList = rawImages
+              .map((e) => (e['image_url'] as String?) ?? '')
+              .where((s) => s.isNotEmpty)
+              .toList();
+        }
+
+        // Ensure main image is in the list (fallback logic)
+        if (imageList.isEmpty && img != null && (img as String).isNotEmpty) {
+          imageList.add(img);
+        }
+
+        map['images'] = imageList; // UI expects List<String>
+        return map;
+      }).toList();
 
       final int totalCount = products.isNotEmpty
           ? (products[0]['full_count'] as int? ?? 0)
           : 0;
 
-      return {'products': products, 'total': totalCount};
+      return {'products': _processVariants(products), 'total': totalCount};
     } catch (e) {
       if (kDebugMode) print('Error fetching shop V2: $e');
       return {'products': [], 'total': 0};
     }
+  }
+
+  // =====================
+  // Single Product Fetch (Fallback for disconnected variants)
+  // =====================
+  static Future<Map<String, dynamic>?> getShopProductById(int id) async {
+    try {
+      await getCurrentBusinessProfile();
+      final businessId = _defaultBusinessId ?? _currentBusinessProfile?.id;
+      if (businessId == null) return null;
+
+      final response = await _client
+          .from('products')
+          .select('*, images:product_images(image_url, position)')
+          .eq('id', id)
+          .eq('business_id', businessId)
+          .maybeSingle();
+
+      if (response == null) return null;
+
+      final map = Map<String, dynamic>.from(response);
+      // Normalize
+      map['active_product_id'] = map['id'];
+      map['name'] = map['product_name'] ?? map['name'];
+      map['price'] = (map['selling_price'] as num?)?.toDouble() ?? 0.0;
+      map['mrp'] = (map['mrp'] as num?)?.toDouble() ?? 0.0;
+      map['stock'] = map['current_stock'] ?? 0;
+
+      final img = map['product_image_url'];
+      map['image'] = img;
+      map['image_url'] = img;
+
+      final rawImages = map['images'];
+      List<String> imageList = [];
+      if (rawImages is List) {
+        imageList = rawImages
+            .map((e) => (e['image_url'] as String?) ?? '')
+            .where((s) => s.isNotEmpty)
+            .toList();
+      }
+      if (imageList.isEmpty && img != null && (img as String).isNotEmpty) {
+        imageList.add(img);
+      }
+      map['images'] = imageList;
+
+      return map;
+    } catch (e) {
+      if (kDebugMode) print('Error fetching product by ID: $e');
+      return null;
+    }
+  }
+
+  // =====================
+  // Variant Logic (Ported from Web)
+  // =====================
+  static final List<String> _colorKeywords = [
+    'White',
+    'Black',
+    'Red',
+    'Blue',
+    'Green',
+    'Yellow',
+    'Orange',
+    'Brown',
+    'Grey',
+    'Gray',
+    'Silver',
+    'Gold',
+    'Pink',
+    'Purple',
+    'Transparent',
+    'Clear',
+    'Beige',
+    'Cream',
+    'Ivory',
+    'Multicolor',
+    // Lighting specific
+    'Warm White',
+    'Cool White',
+    'Daylight',
+    'RGB',
+    'Multi',
+    'Warm',
+    'Cool',
+    'Day Light',
+    'Standard',
+  ];
+
+  static Map<String, dynamic> _getBaseName(String name) {
+    String? detectedColor;
+    String baseName = name;
+    for (final color in _colorKeywords) {
+      final regex = RegExp(
+        '\\b${color.toLowerCase()}\\b',
+        caseSensitive: false,
+      );
+      if (regex.hasMatch(name)) {
+        detectedColor = color;
+        baseName = baseName.replaceAll(regex, '');
+        break; // Only first match
+      }
+    }
+    // Cleanup
+    baseName = baseName
+        .replaceAll(RegExp(r'\(\s*\)'), '')
+        .replaceAll(RegExp(r'\[\s*\]'), '');
+    baseName = baseName.replaceAllMapped(
+      RegExp(r'(\d+(\.\d+)?)\s*[wW]\b', caseSensitive: false),
+      (match) => '${match.group(1)} W',
+    );
+    baseName = baseName.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return {'baseName': baseName, 'detectedColor': detectedColor};
+  }
+
+  static List<Map<String, dynamic>> _processVariants(
+    List<Map<String, dynamic>> rawProducts,
+  ) {
+    final Map<String, List<Map<String, dynamic>>> groups = {};
+
+    // 1. Group
+    for (var p in rawProducts) {
+      final bn = _getBaseName(p['name'] ?? '');
+      final baseName = bn['baseName'];
+      final detectedColor = bn['detectedColor'];
+      final brand = (p['brand'] ?? '').toString().trim();
+
+      final groupKey = '${brand.toLowerCase()}::$baseName'.toLowerCase();
+
+      p['_groupKey'] = groupKey;
+      p['_detectedColor'] = detectedColor;
+
+      groups.putIfAbsent(groupKey, () => []).add(p);
+    }
+
+    // 2. Process
+    return rawProducts.map((p) {
+      final groupKey = p['_groupKey'];
+      final group = groups[groupKey] ?? [];
+
+      List<Map<String, dynamic>> variants = [];
+      if (group.length > 1) {
+        variants = group
+            .map(
+              (v) => {
+                'id': v['id'],
+                'color': v['_detectedColor'] ?? 'Standard',
+                'slug': v['id'],
+                'image': (v['images'] as List?)?.isNotEmpty == true
+                    ? v['images'][0]
+                    : null,
+              },
+            )
+            .toList();
+
+        // Sort by color
+        variants.sort(
+          (a, b) => (a['color'] as String).compareTo(b['color'] as String),
+        );
+      }
+
+      p.remove('_groupKey');
+      p['detected_color'] = p['_detectedColor'];
+      p.remove('_detectedColor');
+
+      p['variants'] = variants;
+      return p;
+    }).toList();
   }
 
   // =====================
