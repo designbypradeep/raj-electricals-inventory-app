@@ -170,6 +170,10 @@ class _WelcomePageState extends State<WelcomePage> {
                           uri.pathSegments.isNotEmpty) {
                         slug = uri.pathSegments.first;
                       }
+                      // 3. Query Parameter: ?id=slug (for redirect links)
+                      else if (uri.queryParameters.containsKey('id')) {
+                        slug = uri.queryParameters['id'];
+                      }
                     }
                   }
 
@@ -242,21 +246,23 @@ class _WelcomePageState extends State<WelcomePage> {
                   children: [
                     // --- App Logo & Branding ---
                     Container(
+                      padding: const EdgeInsets.all(4), // White border effect
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
+                        color: Colors.white,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 30, // Softer, larger shadow
+                            offset: const Offset(0, 15),
                           ),
                         ],
                       ),
                       child: ClipOval(
                         child: Image.asset(
                           'assets/icons/app_icon_shop.png',
-                          height: 100,
-                          width: 100,
+                          height: 120,
+                          width: 120,
                           fit: BoxFit.cover,
                         ),
                       ),
