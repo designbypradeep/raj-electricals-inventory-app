@@ -532,85 +532,82 @@ class _SuppliersPageState extends State<SuppliersPage> {
                                         ],
                                       ),
                                     ),
-                                    Wrap(
-                                      spacing: 8,
-                                      children: [
-                                        ElevatedButton.icon(
-                                          onPressed: () => _showSupplierDialog(
-                                            supplier: supplier,
-                                          ),
-                                          icon: const Icon(
-                                            Icons.edit,
-                                            size: 18,
-                                          ),
-                                          label: const Text('Edit'),
-                                          style: ElevatedButton.styleFrom(
-                                            elevation: 0,
-                                            shape: const StadiumBorder(),
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 14,
-                                              vertical: 10,
-                                            ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                Wrap(
+                                  spacing: 8,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: () => _showSupplierDialog(
+                                        supplier: supplier,
+                                      ),
+                                      icon: const Icon(Icons.edit, size: 18),
+                                      label: const Text('Edit'),
+                                      style: ElevatedButton.styleFrom(
+                                        elevation: 0,
+                                        shape: const StadiumBorder(),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 10,
+                                        ),
+                                      ),
+                                    ),
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _deleteSupplier(supplier),
+                                      icon: const Icon(
+                                        Icons.delete,
+                                        size: 18,
+                                        color: Colors.red,
+                                      ),
+                                      label: const Text(
+                                        'Delete',
+                                        style: TextStyle(color: Colors.red),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        shape: const StadiumBorder(),
+                                        side: BorderSide(
+                                          color: Colors.red.withValues(
+                                            alpha: 0.5,
                                           ),
                                         ),
-                                        OutlinedButton.icon(
-                                          onPressed: () =>
-                                              _deleteSupplier(supplier),
-                                          icon: const Icon(
-                                            Icons.delete,
-                                            size: 18,
-                                            color: Colors.red,
+                                      ),
+                                    ),
+                                    OutlinedButton.icon(
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                SupplierCreditsPage(
+                                                  initialSupplierName:
+                                                      supplier.name,
+                                                ),
                                           ),
-                                          label: const Text(
-                                            'Delete',
-                                            style: TextStyle(color: Colors.red),
-                                          ),
-                                          style: OutlinedButton.styleFrom(
-                                            shape: const StadiumBorder(),
-                                            side: BorderSide(
-                                              color: Colors.red.withValues(
-                                                alpha: 0.5,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        OutlinedButton.icon(
-                                          onPressed: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) =>
-                                                    SupplierCreditsPage(
-                                                      initialSupplierName:
-                                                          supplier.name,
-                                                    ),
-                                              ),
-                                            );
-                                          },
-                                          icon: const Icon(
-                                            Icons.receipt_long,
-                                            size: 18,
-                                            color: Colors.blue,
-                                          ),
-                                          label: const Text(
-                                            'Ledger',
-                                            style: TextStyle(
-                                              color: Colors.blue,
-                                            ),
-                                          ),
-                                          style: OutlinedButton.styleFrom(
-                                            shape: const StadiumBorder(),
-                                            side: BorderSide(
-                                              color: Colors.blue.withValues(
-                                                alpha: 0.5,
-                                              ),
-                                            ),
+                                        );
+                                      },
+                                      icon: const Icon(
+                                        Icons.receipt_long,
+                                        size: 18,
+                                        color: Colors.blue,
+                                      ),
+                                      label: const Text(
+                                        'Ledger',
+                                        style: TextStyle(color: Colors.blue),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        shape: const StadiumBorder(),
+                                        side: BorderSide(
+                                          color: Colors.blue.withValues(
+                                            alpha: 0.5,
                                           ),
                                         ),
-                                      ],
+                                      ),
                                     ),
                                   ],
                                 ),
+
                                 if (hasContact || hasAddress)
                                   const SizedBox(height: 12),
                                 if (hasContact || hasAddress)

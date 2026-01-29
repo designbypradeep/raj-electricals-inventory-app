@@ -198,8 +198,8 @@ class _DashboardPageState extends State<DashboardPage> {
     // Sort sales chronologically
     final sortedSales = [...sales]
       ..sort((a, b) {
-        final ad = a?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bd = b?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final ad = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bd = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
         return ad.compareTo(bd);
       });
 
@@ -1959,36 +1959,6 @@ class _DashboardPageState extends State<DashboardPage> {
                     );
                   },
                 ),
-                _buildModernHistoryTile(
-                  icon: Icons.assignment_return_outlined,
-                  title: 'Supplier Returns',
-                  subtitle: 'Process supplier returns',
-                  color: Colors.teal,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SupplierReturnsPage(),
-                      ),
-                    );
-                  },
-                ),
-                _buildModernHistoryTile(
-                  icon: Icons.credit_card,
-                  title: 'Supplier Credits',
-                  subtitle: 'View supplier credits',
-                  color: Colors.blueGrey,
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const SupplierCreditsPage(),
-                      ),
-                    );
-                  },
-                ),
                 const SizedBox(height: 16),
               ],
             ),
@@ -2544,60 +2514,78 @@ class _DashboardPageState extends State<DashboardPage> {
     final isMobile = MediaQuery.of(context).size.width < 480;
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Theme.of(context).dividerColor,
-                borderRadius: BorderRadius.circular(2),
+      builder: (context) => SingleChildScrollView(
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'More Options',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: isMobile ? 12 : 16),
-                  GridView.count(
-                    shrinkWrap: true,
-                    crossAxisCount: 2,
-                    childAspectRatio: 3,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    children: [
-                      _buildMobileMoreItem('Reports', Icons.bar_chart),
-                      _buildMobileMoreItem('Verify Payments', Icons.verified),
-                      _buildMobileMoreItem('Returns', Icons.undo),
-                      _buildMobileMoreItem('Replacements', Icons.swap_horiz),
-                      _buildMobileMoreItem('Business', Icons.business),
-                      _buildMobileMoreItem('Requests', Icons.people),
-                      _buildMobileMoreItem(
-                        'System Health',
-                        Icons.health_and_safety,
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'More Options',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
-                      _buildMobileMoreItem('Archive', Icons.archive),
-                      _buildMobileMoreItem('Settings', Icons.settings),
-                      _buildMobileMoreItem('Customers', Icons.people_outline),
-                    ],
-                  ),
-                ],
+                    ),
+                    SizedBox(height: isMobile ? 12 : 16),
+                    GridView.count(
+                      shrinkWrap: true,
+                      crossAxisCount: 2,
+                      childAspectRatio: 3,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      children: [
+                        _buildMobileMoreItem('Reports', Icons.bar_chart),
+                        _buildMobileMoreItem('Verify Payments', Icons.verified),
+                        _buildMobileMoreItem(
+                          'Suppliers',
+                          Icons.business_center,
+                        ),
+                        _buildMobileMoreItem(
+                          'Supplier Returns',
+                          Icons.assignment_return_outlined,
+                        ),
+                        _buildMobileMoreItem(
+                          'Supplier Credits',
+                          Icons.credit_card,
+                        ),
+                        _buildMobileMoreItem('Returns', Icons.undo),
+                        _buildMobileMoreItem('Replacements', Icons.swap_horiz),
+                        _buildMobileMoreItem('Business', Icons.business),
+                        _buildMobileMoreItem('Requests', Icons.people),
+                        _buildMobileMoreItem(
+                          'System Health',
+                          Icons.health_and_safety,
+                        ),
+                        _buildMobileMoreItem('Archive', Icons.archive),
+                        _buildMobileMoreItem('Settings', Icons.settings),
+                        _buildMobileMoreItem('Customers', Icons.people_outline),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2664,6 +2652,25 @@ class _DashboardPageState extends State<DashboardPage> {
               context,
               MaterialPageRoute(
                 builder: (context) => DataManagementPage(db: widget.db),
+              ),
+            );
+          } else if (label == 'Suppliers') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const SuppliersPage()),
+            );
+          } else if (label == 'Supplier Returns') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SupplierReturnsPage(),
+              ),
+            );
+          } else if (label == 'Supplier Credits') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SupplierCreditsPage(),
               ),
             );
           } else if (label == 'Verify Payments') {

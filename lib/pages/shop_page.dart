@@ -194,14 +194,57 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           _categories = currentCats.toList()..sort();
           if (!_categories.contains('all')) _categories.insert(0, 'all');
         } else {
-          _products.addAll(newProducts);
+          // Client-side merging to handle split variants from pagination
+          for (var newP in newProducts) {
+            final existingIndex = _products.indexWhere(
+              (p) => p['name'] == newP['name'] && p['brand'] == newP['brand'],
+            ); // Match by Group Key
+
+            if (existingIndex != -1) {
+              // Merge variants
+              final existingP = _products[existingIndex];
+              final existingVariants = List<Map<String, dynamic>>.from(
+                existingP['variants'] ?? [],
+              );
+              final newVariants = List<Map<String, dynamic>>.from(
+                newP['variants'] ?? [],
+              );
+
+              // Add new variants if they don't exist
+              for (var nv in newVariants) {
+                if (!existingVariants.any((ev) => ev['id'] == nv['id'])) {
+                  existingVariants.add(nv);
+                }
+              }
+
+              // Sort variants again
+              existingVariants.sort(
+                (a, b) =>
+                    (a['color'] as String).compareTo(b['color'] as String),
+              );
+
+              // Update existing product with merged variants
+              existingP['variants'] = existingVariants;
+              _products[existingIndex] = existingP;
+            } else {
+              _products.add(newP);
+            }
+          }
+
           final currentCats = Set<String>.from(_categories);
           currentCats.addAll(newCats);
           _categories = currentCats.toList()..sort();
           if (!_categories.contains('all')) _categories.insert(0, 'all');
         }
 
-        _hasMore = _products.length < total;
+        // Logic check: _products.length is collapsed count, total is raw count.
+        // We cannot compare them directly.
+        // Use page count logic:
+        // fetchedSoFar = _page * _limit
+        // hasMore = fetchedSoFar < total
+        final fetchedSoFar = _page * _limit;
+        _hasMore = fetchedSoFar < total;
+
         if (!reset) _page++;
 
         _isLoadingProducts = false;
@@ -215,6 +258,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             if (_scrollController.hasClients) {
               // If valid scroll extent is very small (content fits/barely overflows), load more
               if (_scrollController.position.maxScrollExtent < 200) {
+                // Prevent rapid loops - add small delay if needed or relying on _isLoading logic
                 _loadProductsAndCategories(reset: false);
               }
             }

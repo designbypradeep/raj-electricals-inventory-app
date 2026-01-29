@@ -849,106 +849,102 @@ class _CustomersPageState extends State<CustomersPage> {
                                         ],
                                       ),
                                     ),
-                                    Wrap(
-                                      spacing: 8,
-                                      children: [
-                                        ElevatedButton.icon(
-                                          onPressed: () => _showCustomerDialog(
-                                            customer: customer,
-                                          ),
-                                          icon: const Icon(
-                                            Icons.edit,
-                                            size: 18,
-                                          ),
-                                          label: const Text('Edit'),
-                                          style: ElevatedButton.styleFrom(
-                                            elevation: 0,
-                                            shape: const StadiumBorder(),
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 14,
-                                              vertical: 10,
-                                            ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                Wrap(
+                                  spacing: 8,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: () => _showCustomerDialog(
+                                        customer: customer,
+                                      ),
+                                      icon: const Icon(Icons.edit, size: 18),
+                                      label: const Text('Edit'),
+                                      style: ElevatedButton.styleFrom(
+                                        elevation: 0,
+                                        shape: const StadiumBorder(),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 10,
+                                        ),
+                                      ),
+                                    ),
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _recordCustomerAdvance(customer),
+                                      icon: const Icon(
+                                        Icons.account_balance_wallet,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Advance'),
+                                      style: OutlinedButton.styleFrom(
+                                        shape: const StadiumBorder(),
+                                      ),
+                                    ),
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _recordCustomerPayment(customer),
+                                      icon: const Icon(
+                                        Icons.currency_rupee,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Payment'),
+                                      style: OutlinedButton.styleFrom(
+                                        shape: const StadiumBorder(),
+                                      ),
+                                    ),
+                                    if ((_advanceBalances[customer.name] ?? 0) >
+                                        0)
+                                      OutlinedButton.icon(
+                                        onPressed: () =>
+                                            _refundCustomerAdvance(customer),
+                                        icon: const Icon(
+                                          Icons.arrow_downward,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Refund'),
+                                        style: OutlinedButton.styleFrom(
+                                          shape: const StadiumBorder(),
+                                          foregroundColor: Colors.orange,
+                                        ),
+                                      ),
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _showCustomerLedger(customer),
+                                      icon: const Icon(
+                                        Icons.receipt_long,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Ledger'),
+                                      style: OutlinedButton.styleFrom(
+                                        shape: const StadiumBorder(),
+                                      ),
+                                    ),
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _deleteCustomer(customer),
+                                      icon: const Icon(
+                                        Icons.delete,
+                                        size: 18,
+                                        color: Colors.red,
+                                      ),
+                                      label: const Text(
+                                        'Delete',
+                                        style: TextStyle(color: Colors.red),
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        shape: const StadiumBorder(),
+                                        side: BorderSide(
+                                          color: Colors.red.withValues(
+                                            alpha: 0.5,
                                           ),
                                         ),
-                                        OutlinedButton.icon(
-                                          onPressed: () =>
-                                              _recordCustomerAdvance(customer),
-                                          icon: const Icon(
-                                            Icons.account_balance_wallet,
-                                            size: 18,
-                                          ),
-                                          label: const Text('Advance'),
-                                          style: OutlinedButton.styleFrom(
-                                            shape: const StadiumBorder(),
-                                          ),
-                                        ),
-                                        OutlinedButton.icon(
-                                          onPressed: () =>
-                                              _recordCustomerPayment(customer),
-                                          icon: const Icon(
-                                            Icons.currency_rupee,
-                                            size: 18,
-                                          ),
-                                          label: const Text('Payment'),
-                                          style: OutlinedButton.styleFrom(
-                                            shape: const StadiumBorder(),
-                                          ),
-                                        ),
-                                        if ((_advanceBalances[customer.name] ??
-                                                0) >
-                                            0)
-                                          OutlinedButton.icon(
-                                            onPressed: () =>
-                                                _refundCustomerAdvance(
-                                                  customer,
-                                                ),
-                                            icon: const Icon(
-                                              Icons.arrow_downward,
-                                              size: 18,
-                                            ),
-                                            label: const Text('Refund'),
-                                            style: OutlinedButton.styleFrom(
-                                              shape: const StadiumBorder(),
-                                              foregroundColor: Colors.orange,
-                                            ),
-                                          ),
-                                        OutlinedButton.icon(
-                                          onPressed: () =>
-                                              _showCustomerLedger(customer),
-                                          icon: const Icon(
-                                            Icons.receipt_long,
-                                            size: 18,
-                                          ),
-                                          label: const Text('Ledger'),
-                                          style: OutlinedButton.styleFrom(
-                                            shape: const StadiumBorder(),
-                                          ),
-                                        ),
-                                        OutlinedButton.icon(
-                                          onPressed: () =>
-                                              _deleteCustomer(customer),
-                                          icon: const Icon(
-                                            Icons.delete,
-                                            size: 18,
-                                            color: Colors.red,
-                                          ),
-                                          label: const Text(
-                                            'Delete',
-                                            style: TextStyle(color: Colors.red),
-                                          ),
-                                          style: OutlinedButton.styleFrom(
-                                            shape: const StadiumBorder(),
-                                            side: BorderSide(
-                                              color: Colors.red.withValues(
-                                                alpha: 0.5,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ),
                                   ],
                                 ),
+
                                 if (hasPhone || hasEmail || hasAddress)
                                   const SizedBox(height: 12),
                                 if (hasPhone || hasEmail || hasAddress)
@@ -1020,95 +1016,97 @@ class _CustomersPageState extends State<CustomersPage> {
                                           ),
                                         ),
                                       if (hasEmail)
-                                        Flexible(
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 8,
+                                        Container(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 200,
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .tertiaryContainer
+                                                .withValues(alpha: 0.3),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
                                             ),
-                                            decoration: BoxDecoration(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .tertiaryContainer
-                                                  .withValues(alpha: 0.3),
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  Icons.email,
-                                                  size: 16,
-                                                  color: Theme.of(
-                                                    context,
-                                                  ).colorScheme.tertiary,
-                                                ),
-                                                const SizedBox(width: 6),
-                                                Flexible(
-                                                  child: Text(
-                                                    customer.email!,
-                                                    style: TextStyle(
-                                                      fontSize: 13,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      color: Theme.of(
-                                                        context,
-                                                      ).colorScheme.onSurface,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.email,
+                                                size: 16,
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.tertiary,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Flexible(
+                                                child: Text(
+                                                  customer.email!,
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w500,
+                                                    color: Theme.of(
+                                                      context,
+                                                    ).colorScheme.onSurface,
                                                   ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
-                                              ],
-                                            ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       if (hasAddress)
-                                        Flexible(
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 8,
+                                        Container(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 200,
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .secondaryContainer
+                                                .withValues(alpha: 0.3),
+                                            borderRadius: BorderRadius.circular(
+                                              10,
                                             ),
-                                            decoration: BoxDecoration(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .secondaryContainer
-                                                  .withValues(alpha: 0.3),
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  Icons.location_on,
-                                                  size: 16,
-                                                  color: Theme.of(
-                                                    context,
-                                                  ).colorScheme.secondary,
-                                                ),
-                                                const SizedBox(width: 6),
-                                                Flexible(
-                                                  child: Text(
-                                                    customer.address!,
-                                                    style: TextStyle(
-                                                      fontSize: 13,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                      color: Theme.of(
-                                                        context,
-                                                      ).colorScheme.onSurface,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.location_on,
+                                                size: 16,
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.secondary,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Flexible(
+                                                child: Text(
+                                                  customer.address!,
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w500,
+                                                    color: Theme.of(
+                                                      context,
+                                                    ).colorScheme.onSurface,
                                                   ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
                                                 ),
-                                              ],
-                                            ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                     ],

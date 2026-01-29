@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'dart:async'; // Added for runZonedGuarded
+import 'dart:io';
+import 'dart:async';
 import 'app.dart';
 import 'package:raj_electricals_inventory_app/data/app_database.dart';
 import 'package:raj_electricals_inventory_app/services/supabase_service.dart';
@@ -23,6 +24,9 @@ void main() async {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
 
+      // Fix for HandshakeException (SSL error) on some networks/devices
+      HttpOverrides.global = GlobalHttpOverrides();
+
       // Initialize Supabase (anon key is public by design - security via RLS/RPCs)
       await SupabaseService.initialize(
         url: _supabaseUrl,
@@ -37,4 +41,15 @@ void main() async {
       );
     },
   );
+}
+
+class GlobalHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback =
+          ((X509Certificate cert, String host, int port) => true)
+      ..userAgent =
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  }
 }

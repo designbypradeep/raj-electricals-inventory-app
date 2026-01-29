@@ -827,28 +827,43 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                DropdownButton<ExportMode>(
-                  value: _exportMode,
-                  onChanged: (v) =>
-                      setState(() => _exportMode = v ?? _exportMode),
-                  items: const [
-                    DropdownMenuItem(
-                      value: ExportMode.full,
-                      child: Text('Full backup (all data)'),
-                    ),
-                    DropdownMenuItem(
-                      value: ExportMode.catalogWithBusiness,
-                      child: Text('Catalog (with business)'),
-                    ),
-                    DropdownMenuItem(
-                      value: ExportMode.catalogTemplate,
-                      child: Text('Catalog Template (no business ID)'),
-                    ),
-                    DropdownMenuItem(
-                      value: ExportMode.businessInfo,
-                      child: Text('Business info only'),
-                    ),
-                  ],
+                Expanded(
+                  child: DropdownButton<ExportMode>(
+                    isExpanded: true,
+                    value: _exportMode,
+                    onChanged: (v) =>
+                        setState(() => _exportMode = v ?? _exportMode),
+                    items: const [
+                      DropdownMenuItem(
+                        value: ExportMode.full,
+                        child: Text(
+                          'Full backup (all data)',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: ExportMode.catalogWithBusiness,
+                        child: Text(
+                          'Catalog (with business)',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: ExportMode.catalogTemplate,
+                        child: Text(
+                          'Catalog Template (no business ID)',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: ExportMode.businessInfo,
+                        child: Text(
+                          'Business info only',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1143,28 +1158,43 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                DropdownButton<ImportMode>(
-                  value: _importMode,
-                  onChanged: (v) =>
-                      setState(() => _importMode = v ?? _importMode),
-                  items: const [
-                    DropdownMenuItem(
-                      value: ImportMode.full,
-                      child: Text('Full restore'),
-                    ),
-                    DropdownMenuItem(
-                      value: ImportMode.catalogWithBusiness,
-                      child: Text('Catalog (with business)'),
-                    ),
-                    DropdownMenuItem(
-                      value: ImportMode.catalogTemplate,
-                      child: Text('Catalog Template (no business ID)'),
-                    ),
-                    DropdownMenuItem(
-                      value: ImportMode.businessInfo,
-                      child: Text('Business info only'),
-                    ),
-                  ],
+                Expanded(
+                  child: DropdownButton<ImportMode>(
+                    isExpanded: true,
+                    value: _importMode,
+                    onChanged: (v) =>
+                        setState(() => _importMode = v ?? _importMode),
+                    items: const [
+                      DropdownMenuItem(
+                        value: ImportMode.full,
+                        child: Text(
+                          'Full restore',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: ImportMode.catalogWithBusiness,
+                        child: Text(
+                          'Catalog (with business)',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: ImportMode.catalogTemplate,
+                        child: Text(
+                          'Catalog Template (no business ID)',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: ImportMode.businessInfo,
+                        child: Text(
+                          'Business info only',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
