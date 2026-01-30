@@ -50,7 +50,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   String? _loadErrorMessage;
   final ScrollController _scrollController = ScrollController();
   bool _isScrolled = false;
-  String _businessName = 'Raj Electricals';
+  String _businessName = 'Inventoza Shop';
   String? _businessLogoUrl;
   String? _rawLogoUrl;
   String? _currentBusinessId;
@@ -103,6 +103,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   // Product data
   List<Map<String, dynamic>> _products = [];
   List<String> _categories = ['all'];
+  // Smart Search Filters
+  List<String> _availableCategories = [];
+  List<String> _availableBrands = [];
 
   // App Links
   late AppLinks _appLinks;
@@ -123,14 +126,32 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       // Actually the text field calls onChanged: _onSearchChanged
     });
     _scrollController.addListener(_onScroll);
-    _loadBusinessProfile().then((_) => _loadProductsAndCategories(reset: true));
+    _loadBusinessProfile().then((_) {
+      _loadProductsAndCategories(reset: true);
+      _loadFilters(); // Fetch distinct categories/brands for suggestions
+    });
     _initSpeech();
     _initDeepLinks();
   }
 
+  Future<void> _loadFilters() async {
+    final filters = await SupabaseService.getShopFilters();
+    if (mounted) {
+      setState(() {
+        _availableCategories = filters['categories'] ?? [];
+        _availableBrands = filters['brands'] ?? [];
+      });
+    }
+  }
+
   // Reloads products (Reset = true for fresh list, false for load more)
-  Future<void> _loadProductsAndCategories({bool reset = false}) async {
+  Future<void> _loadProductsAndCategories({
+    bool reset = false,
+    int recursionDepth = 0,
+  }) async {
     if (!mounted) return;
+    if (recursionDepth > 5) return; // Recursion Guard
+
     if (reset) {
       setState(() {
         _page = 1;
@@ -141,7 +162,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       });
     } else {
       if (_isLoadingMore || !_hasMore) return;
-      setState(() => _isLoadingMore = true);
+      // Only show loading indicator if it's the first call (depth 0)
+      if (recursionDepth == 0) setState(() => _isLoadingMore = true);
     }
 
     try {
@@ -194,39 +216,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           _categories = currentCats.toList()..sort();
           if (!_categories.contains('all')) _categories.insert(0, 'all');
         } else {
-          // Client-side merging to handle split variants from pagination
+          // Append new products (Deduped by ID)
           for (var newP in newProducts) {
-            final existingIndex = _products.indexWhere(
-              (p) => p['name'] == newP['name'] && p['brand'] == newP['brand'],
-            ); // Match by Group Key
-
-            if (existingIndex != -1) {
-              // Merge variants
-              final existingP = _products[existingIndex];
-              final existingVariants = List<Map<String, dynamic>>.from(
-                existingP['variants'] ?? [],
-              );
-              final newVariants = List<Map<String, dynamic>>.from(
-                newP['variants'] ?? [],
-              );
-
-              // Add new variants if they don't exist
-              for (var nv in newVariants) {
-                if (!existingVariants.any((ev) => ev['id'] == nv['id'])) {
-                  existingVariants.add(nv);
-                }
-              }
-
-              // Sort variants again
-              existingVariants.sort(
-                (a, b) =>
-                    (a['color'] as String).compareTo(b['color'] as String),
-              );
-
-              // Update existing product with merged variants
-              existingP['variants'] = existingVariants;
-              _products[existingIndex] = existingP;
-            } else {
+            if (!_products.any((p) => p['id'] == newP['id'])) {
               _products.add(newP);
             }
           }
@@ -245,32 +237,43 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         final fetchedSoFar = _page * _limit;
         _hasMore = fetchedSoFar < total;
 
-        if (!reset) _page++;
+        _page++;
 
         _isLoadingProducts = false;
         _isLoadingMore = false;
-
-        // Auto-fill: If variant grouping collapsed the list so much that it's not scrollable,
-        // the infinite scroll trigger won't fire. We must fetch the next page automatically.
-        if (_hasMore) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            if (_scrollController.hasClients) {
-              // If valid scroll extent is very small (content fits/barely overflows), load more
-              if (_scrollController.position.maxScrollExtent < 200) {
-                // Prevent rapid loops - add small delay if needed or relying on _isLoading logic
-                _loadProductsAndCategories(reset: false);
-              }
-            }
-          });
-        }
       });
+
+      // Auto-Fill Loop:
+      // If merging reduced the list size significantly (< 10 items) and there's more data,
+      // strictly fetch the next page to ensure the screen is filled.
+      if (!reset && _hasMore && _products.length < 10) {
+        await _loadProductsAndCategories(
+          reset: false,
+          recursionDepth: recursionDepth + 1,
+        );
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoadingProducts = false;
           _isLoadingMore = false;
           if (reset) _loadErrorMessage = 'Failed to load products: $e';
+        });
+      }
+    } finally {
+      // Robust Fail-safe:
+      // If after all loading (and potential recursion), the list is still small
+      // and there's more data, schedule another fetch.
+      // This covers cases where recursion limit was hit but screen isn't full.
+      if (mounted && _hasMore && _products.length < 10 && !_isLoadingProducts) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_scrollController.hasClients) {
+            // Check absolute height or just item count
+            if (_scrollController.position.maxScrollExtent < 500) {
+              _loadProductsAndCategories(reset: false);
+            }
+          }
         });
       }
     }
@@ -398,7 +401,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       setState(() => _isScrolled = scrolled);
     }
 
-    // Infinite Scroll
+    // Infinite Scroll - DISABLED (Switched to Load More Button)
+    /*
     if (_scrollController.hasClients) {
       final maxScroll = _scrollController.position.maxScrollExtent;
       final currentScroll = _scrollController.position.pixels;
@@ -409,6 +413,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         }
       }
     }
+    */
   }
 
   // Open Lens-like Smart Scan camera and apply returned query
@@ -747,23 +752,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       });
       _onSearchChanged(tokens);
     } catch (_) {}
-  }
-
-  // Fuzzy token match: allow small typos (edit distance 1-2) against words in haystack
-  bool _tokenMatch(String haystack, String token) {
-    if (token.isEmpty) return true;
-    if (haystack.contains(token)) return true;
-    // Compare against individual words for fuzzy match
-    final words = haystack
-        .split(RegExp(r'[^a-z0-9]+'))
-        .where((w) => w.isNotEmpty);
-    final int thresh = token.length <= 5 ? 1 : 2;
-    for (final w in words) {
-      if ((w == token) || _levenshtein(w, token) <= thresh) {
-        return true;
-      }
-    }
-    return false;
   }
 
   // Simple Levenshtein distance (lowercase inputs recommended)
@@ -4401,7 +4389,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               );
 
               // If empty (not in list), fetch from server
-              if (newP == null || newP.isEmpty) {
+              if (newP.isEmpty) {
                 newP = await SupabaseService.getShopProductById(variantId);
               }
 
@@ -4418,11 +4406,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       (x) => x['id'] == variantId,
                     );
                     if (matches.isNotEmpty) {
-                      newP!['detected_color'] = matches.first['color'];
+                      newP['detected_color'] = matches.first['color'];
                     }
                   }
 
-                  currentProduct = Map<String, dynamic>.from(newP!);
+                  currentProduct = Map<String, dynamic>.from(newP);
                   currentImage = 0; // Reset image carousel
                 });
               }
@@ -5050,7 +5038,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         : _normalizeAndExpandTokens(q);
 
     final filtered = _products.where((product) {
-      final name = (product['name'] ?? '').toString();
       final brand = (product['brand'] ?? '').toString();
       final category = (product['category'] ?? '').toString();
       final spec = (product['spec'] ?? '').toString();
@@ -5058,16 +5045,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       final price = (product['price'] as num?)?.toDouble() ?? 0.0;
       final stock = (product['stock'] as int?) ?? 0;
 
-      // Multi-keyword, order-agnostic search across name/brand/category/spec/description
-      final hay = [
-        name,
-        brand,
-        category,
-        spec,
-        (product['description'] ?? '').toString(),
-      ].join(' ').toLowerCase();
       final matchesSearch =
-          tokens.isEmpty || tokens.every((t) => _tokenMatch(hay, t));
+          true; // Trust server-side search results for wider matches
 
       // Category (case-insensitive)
       final matchesCategory =
@@ -5210,17 +5189,33 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     child: _buildRecentlyViewedSection(context, constraints),
                   ),
 
-                // Footer
-                SliverToBoxAdapter(child: _buildFooter(context, constraints)),
-
-                // Loading More Indicator
-                if (_isLoadingMore)
-                  const SliverToBoxAdapter(
+                // Load More Button / Indicator
+                if (_hasMore)
+                  SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.all(24.0),
-                      child: Center(child: CircularProgressIndicator()),
+                      padding: const EdgeInsets.all(24.0),
+                      child: Center(
+                        child: _isLoadingMore
+                            ? const CircularProgressIndicator()
+                            : FilledButton.tonalIcon(
+                                onPressed: () {
+                                  _loadProductsAndCategories(reset: false);
+                                },
+                                icon: const Icon(Icons.expand_more),
+                                label: const Text('Load More Products'),
+                                style: FilledButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                      ),
                     ),
                   ),
+
+                // Footer
+                SliverToBoxAdapter(child: _buildFooter(context, constraints)),
               ],
             );
 
@@ -5409,92 +5404,158 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     color: Theme.of(context).scaffoldBackgroundColor,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: _onSearchChanged,
-                    decoration: InputDecoration(
-                      hintText: _isListening
-                          ? 'Listening...'
-                          : 'Search products...',
-                      hintStyle: TextStyle(
-                        fontSize: 14,
-                        color: Theme.of(
+                  child: Autocomplete<String>(
+                    optionsBuilder: (TextEditingValue textEditingValue) {
+                      final query = textEditingValue.text.trim().toLowerCase();
+                      if (query.isEmpty) return const Iterable<String>.empty();
+
+                      final catMatches = _availableCategories
+                          .where((c) => c.toLowerCase().contains(query))
+                          .map((c) => 'Category: $c');
+
+                      final brandMatches = _availableBrands
+                          .where((b) => b.toLowerCase().contains(query))
+                          .map((b) => 'Brand: $b');
+
+                      return [...catMatches, ...brandMatches];
+                    },
+                    onSelected: (String selection) {
+                      if (selection.startsWith('Category: ')) {
+                        final cat = selection.substring(10);
+                        setState(() {
+                          _selectedCategory = cat;
+                          _searchController.clear();
+                        });
+                        _loadProductsAndCategories(reset: true);
+                      } else if (selection.startsWith('Brand: ')) {
+                        final brand = selection.substring(7);
+                        // Ideally we have a brand filter, for now treating as text search or adding filter?
+                        // Current UI has 'Brand' filter logic but it's not fully exposed in _loadProductsAndCategories V2 params commonly?
+                        // _loadProductsAndCategories uses `search` param which acts on name/brand.
+                        // But for strict filtering, we might want to set a dedicated brand filter if supported.
+                        // Let's use search query for now, or update _selectedBrand if we support it in API.
+                        // API supports p_search.
+                        setState(() {
+                          _searchController.text =
+                              brand; // Search by brand name
+                          _onSearchChanged(brand);
+                        });
+                      }
+                    },
+                    fieldViewBuilder:
+                        (
                           context,
-                        ).textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
-                      ),
-                      isDense: true,
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      prefixIconConstraints: const BoxConstraints(
-                        minWidth: 40,
-                        minHeight: 36,
-                      ),
-                      suffixIconConstraints: const BoxConstraints(
-                        minWidth: 72,
-                        minHeight: 36,
-                      ),
-                      filled: true,
-                      fillColor: Theme.of(
-                        context,
-                      ).colorScheme.surface.withValues(alpha: 0.5),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(999),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(999),
-                        borderSide: BorderSide(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.outline.withValues(alpha: 0.1),
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(999),
-                        borderSide: BorderSide(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.primary.withValues(alpha: 0.5),
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                      ),
-                      suffixIcon: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_speechAvailable)
-                            IconButton(
-                              icon: Icon(
-                                _isListening ? Icons.mic : Icons.mic_none,
-                                color: _isListening
-                                    ? Colors.red
-                                    : Theme.of(context).primaryColor,
-                                size: 20,
+                          textEditingController,
+                          focusNode,
+                          onFieldSubmitted,
+                        ) {
+                          // Sync controllers
+                          if (textEditingController.text !=
+                              _searchController.text) {
+                            textEditingController.text = _searchController.text;
+                          }
+
+                          return TextField(
+                            controller: textEditingController,
+                            focusNode: focusNode,
+                            onSubmitted: (val) {
+                              _searchController.text = val;
+                              _onSearchChanged(val);
+                            },
+                            onChanged: (val) {
+                              _searchController.text = val;
+                              // Optionally auto-search on type (existing logic)
+                              // _onSearchChanged(val);
+                            },
+                            decoration: InputDecoration(
+                              hintText: _isListening
+                                  ? 'Listening...'
+                                  : 'Search products...',
+                              hintStyle: TextStyle(
+                                fontSize: 14,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.color
+                                    ?.withValues(alpha: 0.6),
                               ),
-                              onPressed: () => _listen(context),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
+                              isDense: true,
+                              prefixIcon: const Icon(Icons.search, size: 20),
+                              prefixIconConstraints: const BoxConstraints(
+                                minWidth: 40,
+                                minHeight: 36,
+                              ),
+                              suffixIconConstraints: const BoxConstraints(
+                                minWidth: 72,
+                                minHeight: 36,
+                              ),
+                              filled: true,
+                              fillColor: Theme.of(
+                                context,
+                              ).colorScheme.surface.withValues(alpha: 0.5),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(999),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(999),
+                                borderSide: BorderSide(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.outline.withValues(alpha: 0.1),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(999),
+                                borderSide: BorderSide(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withValues(alpha: 0.5),
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              suffixIcon: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (_speechAvailable)
+                                    IconButton(
+                                      icon: Icon(
+                                        _isListening
+                                            ? Icons.mic
+                                            : Icons.mic_none,
+                                        color: _isListening
+                                            ? Colors.red
+                                            : Theme.of(context).primaryColor,
+                                        size: 20,
+                                      ),
+                                      onPressed: () => _listen(context),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.camera_alt_outlined,
+                                      size: 18,
+                                    ),
+                                    onPressed: () => _openSmartScan(context),
+                                  ),
+                                  if (_searchController.text.isNotEmpty)
+                                    IconButton(
+                                      icon: const Icon(Icons.clear, size: 18),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        _onSearchChanged('');
+                                      },
+                                    ),
+                                ],
+                              ),
                             ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(
-                              Icons.camera_alt_outlined,
-                              size: 18,
-                            ),
-                            onPressed: () => _openSmartScan(context),
-                          ),
-                          if (_searchController.text.isNotEmpty)
-                            IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                _onSearchChanged('');
-                              },
-                            ),
-                        ],
-                      ),
-                    ),
-                    textAlignVertical: TextAlignVertical.center,
+                            textAlignVertical: TextAlignVertical.center,
+                          );
+                        },
                   ),
                 ),
               if (MediaQuery.of(context).size.width <= 600)
