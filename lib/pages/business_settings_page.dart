@@ -369,6 +369,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                                     Expanded(
                                       child: ElevatedButton.icon(
                                         onPressed: () {
+                                          // ignore: deprecated_member_use
                                           Share.share(
                                             'Check out my shop: $shopLink',
                                           );
@@ -711,10 +712,10 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                 color: color,
                 borderRadius: BorderRadius.circular(UITokens.radius),
                 border: Border.all(
-                  color: color.value == selected.value
+                  color: color.toARGB32() == selected.toARGB32()
                       ? Theme.of(context).colorScheme.onSurface
                       : Theme.of(context).dividerColor,
-                  width: color.value == selected.value ? 2 : 1,
+                  width: color.toARGB32() == selected.toARGB32() ? 2 : 1,
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -845,7 +846,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
 
       if (businessProfile != null && mounted) {
         setState(() {
-          _businessNameController.text = businessProfile.businessName ?? '';
+          _businessNameController.text = businessProfile.businessName;
           _selectedBusinessType = businessProfile.businessType;
           _descriptionController.text = businessProfile.description ?? '';
           _phoneController.text = businessProfile.phone ?? '';
