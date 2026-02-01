@@ -59,22 +59,39 @@ class _SmartScanPageState extends State<SmartScanPage>
       _cameras = await availableCameras();
       final cam = selected ?? (_cameras.isNotEmpty ? _cameras.first : null);
       if (cam == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('No camera found')));
+        }
         setState(() => _initializing = false);
         return;
       }
       final controller = CameraController(
         cam,
-        ResolutionPreset.high,
-        imageFormatGroup: ImageFormatGroup.jpeg,
+        ResolutionPreset.medium, // Changed from high to medium for stability
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.jpeg
+            : ImageFormatGroup.bgra8888,
         enableAudio: false,
       );
       await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
       setState(() {
         _controller = controller;
         _initializing = false;
       });
-    } catch (_) {
-      setState(() => _initializing = false);
+    } catch (e) {
+      debugPrint('Camera init error: $e');
+      if (mounted) {
+        setState(() => _initializing = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Camera error: $e')));
+      }
     }
   }
 
@@ -422,9 +439,35 @@ class _SmartScanPageState extends State<SmartScanPage>
           children: [
             // Camera Preview
             Positioned.fill(
-              child: _initializing || _controller == null
+              child: _initializing
                   ? const Center(child: CircularProgressIndicator())
-                  : CameraPreview(_controller!),
+                  : _controller != null && _controller!.value.isInitialized
+                  ? CameraPreview(_controller!)
+                  : Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.white,
+                            size: 48,
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Camera Unavailable',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: () {
+                              setState(() => _initializing = true);
+                              _initCamera();
+                            },
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
             ),
 
             // Top bar

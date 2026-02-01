@@ -139,6 +139,52 @@ class SupabaseService {
   }
 
   // =====================
+  // Shop V2 Filters (Smart Search)
+  // =====================
+  static Future<Map<String, List<String>>> getShopFilters() async {
+    await getCurrentBusinessProfile();
+    final businessId = _defaultBusinessId ?? _currentBusinessProfile?.id;
+    if (businessId == null) return {'categories': [], 'brands': []};
+
+    try {
+      // 1. Fetch Categories
+      final catRows = await _client
+          .from('products')
+          .select('category')
+          .eq('business_id', businessId)
+          .eq('status', 'active'); // Only active products
+
+      final categories =
+          (catRows as List)
+              .map((e) => (e['category'] ?? '').toString())
+              .where((s) => s.isNotEmpty)
+              .toSet() // Distinct
+              .toList()
+            ..sort();
+
+      // 2. Fetch Brands
+      final brandRows = await _client
+          .from('products')
+          .select('brand')
+          .eq('business_id', businessId)
+          .eq('status', 'active');
+
+      final brands =
+          (brandRows as List)
+              .map((e) => (e['brand'] ?? '').toString())
+              .where((s) => s.isNotEmpty)
+              .toSet() // Distinct
+              .toList()
+            ..sort();
+
+      return {'categories': categories, 'brands': brands};
+    } catch (e) {
+      if (kDebugMode) print('Error fetching shop filters: $e');
+      return {'categories': [], 'brands': []};
+    }
+  }
+
+  // =====================
   // Single Product Fetch (Fallback for disconnected variants)
   // =====================
   static Future<Map<String, dynamic>?> getShopProductById(int id) async {

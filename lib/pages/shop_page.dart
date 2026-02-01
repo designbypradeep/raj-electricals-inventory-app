@@ -125,6 +125,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _mobileSearchFocusNode = FocusNode();
     _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
     _searchController.addListener(() {
       // Debounce handled by listener in build or manual calls?
@@ -1783,6 +1784,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     _searchController.dispose();
     _minPriceCtl.dispose();
     _maxPriceCtl.dispose();
+    _mobileSearchFocusNode?.dispose();
     super.dispose();
   }
 
@@ -3332,7 +3334,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        initialValue: _selectedCategory,
+                        initialValue: _categories.contains(_selectedCategory)
+                            ? _selectedCategory
+                            : _categories.first,
+                        // initialValue: _selectedCategory, // Removed to rely on 'value' for updates
                         items: _categories
                             .map(
                               (c) => DropdownMenuItem(
@@ -5338,9 +5343,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   Widget _buildSliverAppBar(BuildContext context, bool isDesktop) {
     return SliverAppBar(
       pinned: true,
-      toolbarHeight: isDesktop ? 80 : 120,
-      collapsedHeight: isDesktop ? 80 : 140,
-      expandedHeight: isDesktop ? 120 : 180,
+      toolbarHeight: isDesktop ? 80 : 150,
+      collapsedHeight: isDesktop ? 80 : 150,
+      expandedHeight: isDesktop ? 120 : 200,
       backgroundColor: Theme.of(context).cardColor,
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: EdgeInsets.zero,
@@ -5390,13 +5395,18 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       );
                     },
                     child: Container(
-                      width: 40,
-                      height: 40,
+                      width: 44,
+                      height: 44,
                       decoration: BoxDecoration(
-                        color: Theme.of(
-                          context,
-                        ).primaryColor.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(UITokens.radius),
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: _businessLogoUrl != null
@@ -5441,7 +5451,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 16),
                   // Business Name
                   Expanded(
                     child: Column(
@@ -5451,12 +5461,15 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         Text(
                           _businessName,
                           style: TextStyle(
-                            fontSize: isDesktop ? 20 : 19,
-                            fontWeight: FontWeight.bold,
+                            fontSize: isDesktop ? 22 : 20,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
                             color: Theme.of(
                               context,
                             ).textTheme.titleLarge?.color,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -5465,24 +5478,38 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.shopping_cart_outlined),
-                        onPressed: () => _openCart(context),
-                        iconSize: 24,
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withValues(alpha: 0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.shopping_cart_outlined),
+                          onPressed: () => _openCart(context),
+                          iconSize: 24,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                       ),
                       if (_cartCount > 0)
                         Positioned(
-                          right: 8,
-                          top: 8,
+                          right: 4,
+                          top: 4,
                           child: Container(
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.error,
+                              color: Theme.of(context).colorScheme.primary,
                               shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Theme.of(context).cardColor,
+                                width: 2,
+                              ),
                             ),
                             constraints: const BoxConstraints(
-                              minWidth: 16,
-                              minHeight: 16,
+                              minWidth: 20,
+                              minHeight: 20,
                             ),
                             child: Text(
                               '$_cartCount',
@@ -5502,164 +5529,221 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               // Search Bar (mobile only)
               if (MediaQuery.of(context).size.width <= 600)
                 Container(
-                  height: 36,
+                  height: 48,
+                  margin: const EdgeInsets.only(top: 12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    borderRadius: BorderRadius.circular(20),
+                    color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withValues(alpha: 0.1),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                  child: Autocomplete<String>(
-                    optionsBuilder: (TextEditingValue textEditingValue) {
-                      final query = textEditingValue.text.trim().toLowerCase();
-                      if (query.isEmpty) return const Iterable<String>.empty();
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 16),
+                      Icon(
+                        Icons.search_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: RawAutocomplete<String>(
+                          focusNode:
+                              _mobileSearchFocusNode, // Required when textEditingController is provided
+                          textEditingController: _searchController,
+                          optionsBuilder: (TextEditingValue textEditingValue) {
+                            final query = textEditingValue.text
+                                .trim()
+                                .toLowerCase();
+                            if (query.isEmpty) {
+                              return const Iterable<String>.empty();
+                            }
 
-                      final catMatches = _availableCategories
-                          .where((c) => c.toLowerCase().contains(query))
-                          .map((c) => 'Category: $c');
+                            final catMatches = _availableCategories
+                                .where((c) => c.toLowerCase().contains(query))
+                                .map((c) => 'Category: $c');
 
-                      final brandMatches = _availableBrands
-                          .where((b) => b.toLowerCase().contains(query))
-                          .map((b) => 'Brand: $b');
+                            final brandMatches = _availableBrands
+                                .where((b) => b.toLowerCase().contains(query))
+                                .map((b) => 'Brand: $b');
 
-                      return [...catMatches, ...brandMatches];
-                    },
-                    onSelected: (String selection) {
-                      if (selection.startsWith('Category: ')) {
-                        final cat = selection.substring(10);
-                        setState(() {
-                          _selectedCategory = cat;
-                          _searchController.clear();
-                        });
-                        _loadProductsAndCategories(reset: true);
-                      } else if (selection.startsWith('Brand: ')) {
-                        final brand = selection.substring(7);
-                        // Ideally we have a brand filter, for now treating as text search or adding filter?
-                        // Current UI has 'Brand' filter logic but it's not fully exposed in _loadProductsAndCategories V2 params commonly?
-                        // _loadProductsAndCategories uses `search` param which acts on name/brand.
-                        // But for strict filtering, we might want to set a dedicated brand filter if supported.
-                        // Let's use search query for now, or update _selectedBrand if we support it in API.
-                        // API supports p_search.
-                        setState(() {
-                          _searchController.text =
-                              brand; // Search by brand name
-                          _onSearchChanged(brand);
-                        });
-                      }
-                    },
-                    fieldViewBuilder:
-                        (
-                          context,
-                          textEditingController,
-                          focusNode,
-                          onFieldSubmitted,
-                        ) {
-                          // Sync controllers
-                          if (textEditingController.text !=
-                              _searchController.text) {
-                            textEditingController.text = _searchController.text;
-                          }
-                          _mobileSearchFocusNode = focusNode;
-
-                          return TextField(
-                            controller: textEditingController,
-                            focusNode: focusNode,
-                            onSubmitted: (val) {
-                              _searchController.text = val;
-                              _onSearchChanged(val);
-                            },
-                            onChanged: (val) {
-                              _searchController.text = val;
-                              // Optionally auto-search on type (existing logic)
-                              // _onSearchChanged(val);
-                            },
-                            decoration: InputDecoration(
-                              hintText: _isListening
-                                  ? 'Listening...'
-                                  : 'Search products...',
-                              hintStyle: TextStyle(
-                                fontSize: 14,
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.color
-                                    ?.withValues(alpha: 0.6),
-                              ),
-                              isDense: true,
-                              prefixIcon: const Icon(Icons.search, size: 20),
-                              prefixIconConstraints: const BoxConstraints(
-                                minWidth: 40,
-                                minHeight: 36,
-                              ),
-                              suffixIconConstraints: const BoxConstraints(
-                                minWidth: 72,
-                                minHeight: 36,
-                              ),
-                              filled: true,
-                              fillColor: Theme.of(
+                            // Add explicit text search option first
+                            return [
+                              'Search for "$query"',
+                              ...catMatches,
+                              ...brandMatches,
+                            ];
+                          },
+                          onSelected: (String selection) {
+                            if (selection.startsWith('Search for "')) {
+                              // Extract "bulb" from 'Search for "bulb"'
+                              // Format: Search for "QUERY"
+                              // Length of 'Search for "' is 12
+                              // Last char is '"'
+                              final rawQuery = selection.substring(
+                                12,
+                                selection.length - 1,
+                              );
+                              setState(() {
+                                _selectedCategory = 'all';
+                                _searchController.text = rawQuery; // Clean text
+                                _onSearchChanged(rawQuery);
+                              });
+                              _mobileSearchFocusNode
+                                  ?.unfocus(); // Close keyboard & suggestions
+                              // _loadProductsAndCategories called by _onSearchChanged debounce
+                              // But we want immediate feedback for Enter key?
+                              // Actually _onSearchChanged has a debounce.
+                              // Let's force load?
+                              // Better: _onSearchChanged(rawQuery) deals with it.
+                              // Or simply trigger load directly?
+                              // _loadProductsAndCategories(reset: true); // Let debounce handle it to avoid double fetch
+                            } else if (selection.startsWith('Category: ')) {
+                              final cat = selection.substring(10);
+                              setState(() {
+                                _selectedCategory = cat;
+                                _searchController.clear();
+                              });
+                              _loadProductsAndCategories(reset: true);
+                            } else if (selection.startsWith('Brand: ')) {
+                              final brand = selection.substring(7);
+                              setState(() {
+                                _searchController.text = brand;
+                                _onSearchChanged(brand);
+                              });
+                            }
+                          },
+                          fieldViewBuilder:
+                              (
                                 context,
-                              ).colorScheme.surface.withValues(alpha: 0.5),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(999),
-                                borderSide: BorderSide.none,
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(999),
-                                borderSide: BorderSide(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.outline.withValues(alpha: 0.1),
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(999),
-                                borderSide: BorderSide(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.primary.withValues(alpha: 0.5),
-                                ),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              suffixIcon: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  if (_speechAvailable)
-                                    IconButton(
-                                      icon: Icon(
-                                        _isListening
-                                            ? Icons.mic
-                                            : Icons.mic_none,
-                                        color: _isListening
-                                            ? Colors.red
-                                            : Theme.of(context).primaryColor,
-                                        size: 20,
-                                      ),
-                                      onPressed: () => _listen(context),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
+                                textEditingController,
+                                focusNode,
+                                onFieldSubmitted,
+                              ) {
+                                // Capture the focus node managed by RawAutocomplete
+                                _mobileSearchFocusNode = focusNode;
+
+                                return TextField(
+                                  controller: textEditingController,
+                                  focusNode: focusNode,
+                                  onChanged: _onSearchChanged,
+                                  onSubmitted: (val) {
+                                    // _searchController is already updated via textEditingController
+                                    _onSearchChanged(val);
+                                    onFieldSubmitted();
+                                  },
+                                  decoration: InputDecoration(
+                                    hintText: _isListening
+                                        ? 'Listening...'
+                                        : 'Search products...',
+                                    hintStyle: TextStyle(
+                                      color: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.color
+                                          ?.withValues(alpha: 0.5),
+                                      fontSize: 15,
                                     ),
-                                  const SizedBox(width: 8),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.camera_alt_outlined,
-                                      size: 18,
-                                    ),
-                                    onPressed: () => _openSmartScan(context),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.zero,
                                   ),
-                                  if (_searchController.text.isNotEmpty)
-                                    IconButton(
-                                      icon: const Icon(Icons.clear, size: 18),
-                                      onPressed: () {
-                                        _searchController.clear();
-                                        _onSearchChanged('');
-                                      },
-                                    ),
-                                ],
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  textInputAction: TextInputAction.search,
+                                );
+                              },
+                          optionsViewBuilder: (context, onSelected, options) {
+                            return Align(
+                              alignment: Alignment.topLeft,
+                              child: Material(
+                                elevation: 8,
+                                borderRadius: BorderRadius.circular(16),
+                                color: Theme.of(context).cardColor,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth:
+                                        MediaQuery.of(context).size.width - 48,
+                                    maxHeight: 250,
+                                  ),
+                                  child: ListView.builder(
+                                    padding: EdgeInsets.zero,
+                                    shrinkWrap: true,
+                                    itemCount: options.length,
+                                    itemBuilder:
+                                        (BuildContext context, int index) {
+                                          final String option = options
+                                              .elementAt(index);
+                                          return ListTile(
+                                            title: Text(option),
+                                            onTap: () => onSelected(option),
+                                          );
+                                        },
+                                  ),
+                                ),
                               ),
-                            ),
-                            textAlignVertical: TextAlignVertical.center,
-                          );
-                        },
+                            );
+                          },
+                        ),
+                      ),
+                      // Suffix Icons
+                      if (_speechAvailable)
+                        IconButton(
+                          icon: Icon(
+                            _isListening ? Icons.mic : Icons.mic_none,
+                            color: _isListening
+                                ? Colors.red
+                                : Theme.of(context).colorScheme.primary,
+                            size: 20,
+                          ),
+                          onPressed: () => _listen(context),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        ),
+                      IconButton(
+                        onPressed: () => _openSmartScan(context),
+                        icon: Icon(
+                          Icons.camera_alt_outlined,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          size: 20,
+                        ),
+                        tooltip: 'Scan Product',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                      ),
+                      if (_searchController.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                          },
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        ),
+                      const SizedBox(width: 8),
+                    ],
                   ),
                 ),
               if (MediaQuery.of(context).size.width <= 600)
@@ -5679,77 +5763,141 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
     return Container(
       margin: EdgeInsets.all(padding / 2),
-      padding: EdgeInsets.all(padding),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            cs.primary.withValues(alpha: 0.08),
-            cs.secondaryContainer.withValues(alpha: 0.05),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.outline.withValues(alpha: 0.05)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
-      child: Column(
+      child: Stack(
         children: [
-          Text(
-            'Your One-Stop Shop in Ghaziabad',
-            style: TextStyle(
-              fontSize: titleSize,
-              fontWeight: FontWeight.w900,
-              color: cs.onSurface,
-              letterSpacing: -0.5,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Quality electricals, hardware, and accessories.\nAll your needs, in one place.',
-            style: TextStyle(
-              fontSize: constraints.maxWidth > 768 ? 18 : 16,
-              color: cs.onSurfaceVariant,
-              height: 1.5,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 16,
-            runSpacing: 16,
-            children: [
-              FilledButton.icon(
-                onPressed: () {
-                  _launchUrl(_googleMapsUrl);
-                },
-                icon: const FaIcon(FontAwesomeIcons.mapLocationDot, size: 18),
-                label: const Text('Locate Us'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 16,
-                  ),
-                  textStyle: const TextStyle(fontWeight: FontWeight.bold),
+          // Background Gradient
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [cs.surfaceContainerHigh, cs.surface],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
               ),
-              OutlinedButton.icon(
-                onPressed: () {
-                  _launchUrl(_instagramUrl);
-                },
-                icon: const FaIcon(FontAwesomeIcons.instagram, size: 18),
-                label: const Text('Follow Us'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 16,
-                  ),
-                  side: BorderSide(color: cs.outline, width: 1.5),
-                  textStyle: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+
+          // Decorative Background Icon
+          Positioned(
+            right: -20,
+            bottom: -20,
+            child: Transform.rotate(
+              angle: -0.2,
+              child: Icon(
+                Icons.electrical_services_rounded,
+                size: 200,
+                color: cs.primary.withValues(alpha: 0.05),
+              ),
+            ),
+          ),
+
+          // Glassy overlay pattern (optional subtle noise or shine)
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.white.withValues(alpha: 0.1),
+                    Colors.transparent,
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0.0, 0.3],
                 ),
               ),
-            ],
+            ),
+          ),
+
+          // Content
+          Padding(
+            padding: EdgeInsets.all(padding),
+            child: Column(
+              children: [
+                Text(
+                  'Your One-Stop Shop in\nGhaziabad',
+                  style: TextStyle(
+                    fontSize: titleSize,
+                    fontWeight: FontWeight.w900,
+                    color: cs.onSurface,
+                    letterSpacing: -1.0,
+                    height: 1.1,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Quality electricals, hardware, and accessories.\nAll your needs, in one place.',
+                  style: TextStyle(
+                    fontSize: constraints.maxWidth > 768 ? 18 : 16,
+                    color: cs.onSurfaceVariant,
+                    height: 1.5,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 16,
+                  runSpacing: 16,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () {
+                        _launchUrl(_googleMapsUrl);
+                      },
+                      icon: const FaIcon(
+                        FontAwesomeIcons.mapLocationDot,
+                        size: 18,
+                      ),
+                      label: const Text('Locate Us'),
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 18, // Taller button
+                        ),
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                        elevation: 8,
+                        shadowColor: cs.primary.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        _launchUrl(_instagramUrl);
+                      },
+                      icon: const FaIcon(FontAwesomeIcons.instagram, size: 18),
+                      label: const Text('Follow Us'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 18,
+                        ),
+                        side: BorderSide(color: cs.outline, width: 2),
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                        backgroundColor: cs.surface.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
