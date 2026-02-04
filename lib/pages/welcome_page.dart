@@ -101,7 +101,7 @@ class _WelcomePageState extends State<WelcomePage> {
 
         // 3. Save Context & Persist
         await _slugResolver.saveSlug(slug);
-        SupabaseService.setBusinessContext(profileMap);
+        await SupabaseService.setBusinessContext(profileMap);
 
         // 4. Navigate to Shop
         if (mounted) {

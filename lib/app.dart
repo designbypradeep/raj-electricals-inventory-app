@@ -309,19 +309,41 @@ class _FlavorWrapperState extends State<FlavorWrapper> {
         final slug = await slugResolver.resolveInitialSlug();
 
         if (slug != null && slug.isNotEmpty) {
-          // 2. Validate & Load Context (secure RPC - no PII)
-          final response = await SupabaseService.client.rpc(
-            'get_public_business_by_slug_secure',
-            params: {'p_slug': slug},
-          );
+          try {
+            // 2. Validate & Load Context (secure RPC - no PII)
+            // Attempt online fetch first
+            final response = await SupabaseService.client
+                .rpc(
+                  'get_public_business_by_slug_secure',
+                  params: {'p_slug': slug},
+                )
+                .timeout(const Duration(seconds: 5)); // Fail fast for offline
 
-          if (response != null) {
-            final profileMap = Map<String, dynamic>.from(response);
-            SupabaseService.setBusinessContext(profileMap);
-            if (mounted) {
-              setState(() {
-                _isShopResolved = true;
-              });
+            if (response != null) {
+              final profileMap = Map<String, dynamic>.from(response);
+              await SupabaseService.setBusinessContext(profileMap);
+              if (mounted) {
+                setState(() {
+                  _isShopResolved = true;
+                });
+              }
+              // Found online, proceed to set shop flavor below
+            }
+          } catch (e) {
+            debugPrint('Error resolving shop slug online: $e');
+            // Fallthrough to offline cache check
+          }
+
+          if (!_isShopResolved) {
+            // 3. Offline Caching Fallback
+            // If network failed or timed out, try to load last valid profile
+            final cached = await SupabaseService.loadBusinessContextFromCache();
+            if (cached) {
+              if (mounted) {
+                setState(() {
+                  _isShopResolved = true;
+                });
+              }
             }
           }
         }

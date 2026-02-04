@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../models/supabase_models.dart' as supabase_models;
 import '../models/sales_purchase_models.dart';
 
@@ -11,14 +13,47 @@ class SupabaseService {
   static SupabaseClient get supabase => _client;
   static SupabaseClient get client => _client;
 
+  static supabase_models.BusinessProfile? get cachedBusinessProfile =>
+      _currentBusinessProfile;
+
   // Method to set business context explicitly (for Shop App runtime resolution)
-  static void setBusinessContext(Map<String, dynamic> profileMap) {
+  static Future<void> setBusinessContext(
+    Map<String, dynamic> profileMap,
+  ) async {
     if (profileMap.isNotEmpty) {
       _currentBusinessProfile = supabase_models.BusinessProfile.fromJson(
         profileMap,
       );
       _defaultBusinessId = _currentBusinessProfile!.id;
+      // Persist for offline access
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          'cached_business_profile',
+          jsonEncode(profileMap),
+        );
+      } catch (e) {
+        if (kDebugMode) print('Failed to cache business profile: $e');
+      }
     }
+  }
+
+  static Future<bool> loadBusinessContextFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final jsonStr = prefs.getString('cached_business_profile');
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final profileMap = jsonDecode(jsonStr);
+        _currentBusinessProfile = supabase_models.BusinessProfile.fromJson(
+          profileMap,
+        );
+        _defaultBusinessId = _currentBusinessProfile!.id;
+        return true;
+      }
+    } catch (e) {
+      if (kDebugMode) print('Failed to load cached business profile: $e');
+    }
+    return false;
   }
 
   static void setDefaultBusinessId(String businessId) {

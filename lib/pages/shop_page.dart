@@ -122,6 +122,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   final GlobalKey _categoriesKey = GlobalKey();
   FocusNode? _mobileSearchFocusNode;
 
+  // Force image reload
+  int _logoKey = 0;
+
   @override
   void initState() {
     super.initState();
@@ -138,6 +141,28 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     });
     _initSpeech();
     _initDeepLinks();
+
+    // Auto-refresh when back online
+    ConnectivityService().isOnline.addListener(_onConnectivityChanged);
+  }
+
+  void _onConnectivityChanged() {
+    if (ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Back online! Refreshing...'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.green,
+          ),
+        );
+        setState(() {
+          _logoKey++; // Force logo widget rebuild
+        });
+        _loadBusinessProfile();
+        _loadProductsAndCategories(reset: true);
+      }
+    }
   }
 
   Future<void> _loadFilters() async {
@@ -793,7 +818,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
   Future<void> _loadBusinessProfile() async {
     try {
-      final p = await SupabaseService.getCurrentBusinessProfile();
+      // 1. Try standard fetch (network-first usually)
+      var p = await SupabaseService.getCurrentBusinessProfile();
+
+      // 2. Fallback: If null (or failed silently), try offline cache
+      if (p == null) {
+        final loaded = await SupabaseService.loadBusinessContextFromCache();
+        if (loaded) {
+          p = SupabaseService.cachedBusinessProfile;
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _businessProfile = p;
@@ -806,9 +841,24 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         _instagramUrl = 'https://www.instagram.com/raj_electricals_hardware/';
         _whatsappCatalogUrl = 'https://wa.me/c/919911636339';
         _googleMapsUrl = 'https://share.google/kJ0sqD2CEQwy1XYCA';
-        // _mapMyIndiaUrl left null for now (user will provide later)
       });
-    } catch (_) {}
+    } catch (e) {
+      // 3. Exception Fallback: Network failure likely
+      try {
+        final loaded = await SupabaseService.loadBusinessContextFromCache();
+        if (loaded && mounted) {
+          final p = SupabaseService.cachedBusinessProfile;
+          setState(() {
+            _businessProfile = p;
+            if (p != null) {
+              _businessName = p.businessName;
+              _businessLogoUrl = p.logoUrl;
+              _currentBusinessId = p.id;
+            }
+          });
+        }
+      } catch (_) {}
+    }
   }
 
   // Pinned filter + search header (tablet/desktop), expandable with filters
@@ -1778,10 +1828,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _linkSubscription?.cancel();
-    _scrollController.dispose();
+    ConnectivityService().isOnline.removeListener(_onConnectivityChanged);
     _searchDebounce?.cancel();
+    _linkSubscription?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     _minPriceCtl.dispose();
     _maxPriceCtl.dispose();
     _mobileSearchFocusNode?.dispose();
@@ -5412,6 +5463,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       child: _businessLogoUrl != null
                           ? Image.network(
                               _businessLogoUrl!,
+                              key: ValueKey('logo_$_logoKey'),
                               headers: const {
                                 'User-Agent':
                                     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -5432,21 +5484,27 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                   );
                                 }
                                 return Center(
-                                  child: Image.asset(
-                                    'assets/icons/app_icon.png',
-                                    fit: BoxFit.contain,
-                                    width: 28,
-                                    height: 28,
+                                  child: Transform.scale(
+                                    scale: 1.5,
+                                    child: Image.asset(
+                                      'assets/icons/app_icon_shop.png',
+                                      fit: BoxFit.contain,
+                                      width: 28,
+                                      height: 28,
+                                    ),
                                   ),
                                 );
                               },
                             )
                           : Center(
-                              child: Image.asset(
-                                'assets/icons/app_icon.png',
-                                fit: BoxFit.contain,
-                                width: 28,
-                                height: 28,
+                              child: Transform.scale(
+                                scale: 1.5,
+                                child: Image.asset(
+                                  'assets/icons/app_icon_shop.png',
+                                  fit: BoxFit.contain,
+                                  width: 28,
+                                  height: 28,
+                                ),
                               ),
                             ),
                     ),
