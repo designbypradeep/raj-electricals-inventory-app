@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+
 import 'package:raj_electricals_inventory_app/theme/ui_tokens.dart';
 import '../data/app_database.dart';
 import 'dashboard_charts.dart';
@@ -40,6 +41,7 @@ import '../theme/status_colors.dart';
 // import '../theme/brand_accents.dart'; // no longer needed after semantic color mapping
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../services/connectivity_service.dart';
 
 // ===== FIFO profit calculation helpers (top-level) =====
 class _Lot {
@@ -88,7 +90,7 @@ class _DashboardPageState extends State<DashboardPage> {
   RealtimeChannel? _replacementsChannel;
   RealtimeChannel? _returnsChannel;
   bool _reloadScheduled = false;
-  bool _offline = false;
+
   StreamSubscription<List<ConnectivityResult>>? _connSub;
 
   // FIFO helpers are defined at top-level
@@ -316,18 +318,18 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
-    _loadDashboardData();
-    _loadBusinessProfile();
+    // Check connectivity first to avoid network timeout lag
+    // Check connectivity first to avoid network timeout lag
+    if (ConnectivityService().isOnline.value) {
+      _loadDashboardData();
+      _loadBusinessProfile();
+    } else {
+      // Offline: Skip Supabase network calls and load local DB/cache immediately
+      _loadLocalDataOnly();
+      // Still try to get business profile from cache
+      _loadBusinessProfile();
+    }
     _subscribeToBusinessProfileChanges();
-    // Connectivity monitoring
-    _connSub = Connectivity().onConnectivityChanged.listen((results) {
-      final offline = results.contains(ConnectivityResult.none);
-      if (mounted) setState(() => _offline = offline);
-    });
-    Connectivity().checkConnectivity().then((results) {
-      final offline = results.contains(ConnectivityResult.none);
-      if (mounted) setState(() => _offline = offline);
-    });
   }
 
   void _subscribeToBusinessProfileChanges() {
@@ -414,7 +416,6 @@ class _DashboardPageState extends State<DashboardPage> {
         replacements,
         returnsList,
       );
-      if (mounted) setState(() => _offline = false);
       setState(() => _isLoadingCharts = false);
       return;
     } catch (e) {
@@ -423,24 +424,31 @@ class _DashboardPageState extends State<DashboardPage> {
       }
     }
 
+    await _loadLocalDataOnly();
+  }
+
+  Future<void> _loadLocalDataOnly() async {
     // Fallback to local database
     final purchases = await widget.db.getAllPurchases();
     final products = await widget.db.getAllProducts();
 
     if (purchases.isEmpty) {
-      setState(() {
-        _hasPurchases = false;
-        _categoryCounts = {};
-        _stats = {
-          'totalRevenue': 0.0,
-          'totalProfit': 0.0,
-          'lowStockCount': 0,
-          'salesCount': 0,
-          'totalReturns': 0,
-          'totalRefund': 0.0,
-          'totalReplacements': 0,
-        };
-      });
+      if (mounted) {
+        setState(() {
+          _hasPurchases = false;
+          _categoryCounts = {};
+          _stats = {
+            'totalRevenue': 0.0,
+            'totalProfit': 0.0,
+            'lowStockCount': 0,
+            'salesCount': 0,
+            'totalReturns': 0,
+            'totalRefund': 0.0,
+            'totalReplacements': 0,
+          };
+          _isLoadingCharts = false;
+        });
+      }
       return;
     }
 
@@ -457,26 +465,28 @@ class _DashboardPageState extends State<DashboardPage> {
       totalRevenue += (purchase.quantity * purchase.unitPrice);
     }
 
-    setState(() {
-      _hasPurchases = true;
-      _categoryCounts = grouped;
-      _stats = {
-        'totalRevenue': totalRevenue,
-        'totalProfit': totalRevenue * 0.3, // Estimate 30% profit
-        'lowStockCount': lowStockCount,
-        'salesCount': purchases.length,
-        'totalReturns': 2,
-        'totalRefund': 1250.0,
-        'totalReplacements': 1,
-        'todaysSales': 5,
-        'todaysRevenue': 1250.0,
-        'itemsSold': 23,
-        'outOfStock': 3,
-        'todaysReturns': 1,
-        'todaysReplacements': 0,
-      };
-      _isLoadingCharts = false;
-    });
+    if (mounted) {
+      setState(() {
+        _hasPurchases = true;
+        _categoryCounts = grouped;
+        _stats = {
+          'totalRevenue': totalRevenue,
+          'totalProfit': totalRevenue * 0.3, // Estimate 30% profit
+          'lowStockCount': lowStockCount,
+          'salesCount': purchases.length,
+          'totalReturns': 2,
+          'totalRefund': 1250.0,
+          'totalReplacements': 1,
+          'todaysSales': 5,
+          'todaysRevenue': 1250.0,
+          'itemsSold': 23,
+          'outOfStock': 3,
+          'todaysReturns': 1,
+          'todaysReplacements': 0,
+        };
+        _isLoadingCharts = false;
+      });
+    }
   }
 
   void _calculateStatsFromSupabase(
@@ -992,62 +1002,6 @@ class _DashboardPageState extends State<DashboardPage> {
           SizedBox(height: 12),
           _skeletonBox(height: 160),
         ],
-      ),
-    );
-  }
-
-  Widget _buildOfflineView() {
-    final isMobile = MediaQuery.of(context).size.width < 480;
-    return Container(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      alignment: Alignment.center,
-      child: SingleChildScrollView(
-        padding: EdgeInsets.all(isMobile ? 16 : 24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.wifi_off,
-              size: isMobile ? 48 : 64,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'You are offline',
-              style: TextStyle(
-                fontSize: isMobile ? 18 : 20,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Connect to the internet to see live analytics. You can still browse cached UI skeletons.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.color?.withAlpha(178),
-              ),
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () async {
-                await _loadDashboardData();
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-            const SizedBox(height: 24),
-            // Skeleton preview under offline banner
-            _skeletonBox(height: isMobile ? 80 : 96, radius: 20),
-            SizedBox(height: isMobile ? 12 : 20),
-            _skeletonBox(height: 200),
-            SizedBox(height: 12),
-            _skeletonBox(height: 200),
-          ],
-        ),
       ),
     );
   }
@@ -2732,10 +2686,6 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildMainDashboard() {
     final width = MediaQuery.of(context).size.width;
     final isMobile = width < 480;
-    // Show offline template only if still loading and offline
-    if (_offline && _isLoadingCharts) {
-      return _buildOfflineView();
-    }
     // Show skeleton while loading
     if (_isLoadingCharts) {
       return _buildSkeletonMain();
@@ -2802,50 +2752,15 @@ class _DashboardPageState extends State<DashboardPage> {
                           Text(
                             'Read-only mode enabled. You cannot add or edit data.',
                             style: TextStyle(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onErrorContainer.withOpacity(0.8),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onErrorContainer
+                                  .withValues(alpha: 0.8),
                               fontSize: isMobile ? 12 : 14,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              ),
-
-            if (_offline)
-              Container(
-                margin: EdgeInsets.only(bottom: isMobile ? 8 : 12),
-                padding: EdgeInsets.all(isMobile ? 10 : 12),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.error.withAlpha(77),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.wifi_off,
-                      size: 18,
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'You are offline. Showing last loaded data.',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onErrorContainer,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _handlePullToRefresh,
-                      child: const Text('Retry'),
                     ),
                   ],
                 ),

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:drift/drift.dart' as drift;
 import 'tables/products.dart';
 import 'tables/purchases.dart';
@@ -121,14 +122,14 @@ class AppDatabase extends _$AppDatabase {
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
-    final dbFolder = Directory.current; // Windows-safe
+    final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'raj_inventory.sqlite'));
 
     return NativeDatabase(
       file,
       logStatements: false,
       setup: (db) {
-        db.execute('PRAGMA foreign_keys = ON;'); // ✅ No await here
+        db.execute('PRAGMA foreign_keys = ON;');
       },
     );
   });

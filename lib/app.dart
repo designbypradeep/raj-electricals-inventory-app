@@ -420,7 +420,7 @@ class AuthWrapper extends StatelessWidget {
   }
 }
 
-class DashboardWrapper extends StatelessWidget {
+class DashboardWrapper extends StatefulWidget {
   final Function(ThemeMode) onThemeChanged;
   final AppDatabase database;
   const DashboardWrapper({
@@ -430,9 +430,81 @@ class DashboardWrapper extends StatelessWidget {
   });
 
   @override
+  State<DashboardWrapper> createState() => _DashboardWrapperState();
+}
+
+class _DashboardWrapperState extends State<DashboardWrapper> {
+  int _refreshKey = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    ConnectivityService().isOnline.addListener(_onConnectivityChanged);
+  }
+
+  @override
+  void dispose() {
+    ConnectivityService().isOnline.removeListener(_onConnectivityChanged);
+    super.dispose();
+  }
+
+  void _onConnectivityChanged() {
+    if (ConnectivityService().isOnline.value) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Back online! Reloading dashboard...'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.green,
+          ),
+        );
+        setState(() {
+          _refreshKey++;
+        });
+      }
+    }
+  }
+
+  Future<dynamic> _loadProfileSafely() async {
+    try {
+      // 1. Try Fetch
+      var p = await SupabaseService.getCurrentBusinessProfile();
+
+      // 2. If success, cache it explicitly because SupabaseService might not be doing it automatically
+      if (p != null) {
+        try {
+          // We need to construct a map or use a method to cache.
+          // Since SupabaseService.setBusinessContext is public and handles caching:
+          await SupabaseService.setBusinessContext(p.toJson());
+        } catch (_) {
+          // implicit caching failed, but we have the profile, so proceed
+        }
+      }
+
+      // 3. If null, check cache (SupabaseService might swallow error -> null)
+      if (p == null) {
+        final loaded = await SupabaseService.loadBusinessContextFromCache();
+        if (loaded) {
+          p = SupabaseService.cachedBusinessProfile;
+        }
+      }
+      return p;
+    } catch (e) {
+      // 4. If explicit error (timeout/socket), try cache
+      final loaded = await SupabaseService.loadBusinessContextFromCache();
+      if (loaded) {
+        return SupabaseService.cachedBusinessProfile;
+      }
+      // If no cache, rethrow to show Dashboard (empty/error state) instead of BusinessSettings
+      throw e;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder(
-      future: SupabaseService.getCurrentBusinessProfile(),
+      key: ValueKey('dashboard_$_refreshKey'),
+      future: _loadProfileSafely(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -441,19 +513,26 @@ class DashboardWrapper extends StatelessWidget {
           );
         }
 
-        // If there was an error (e.g., offline), do NOT return BusinessSettings
-        // as the root. Show Dashboard so it can display its offline view/skeleton.
+        // If error (and no cache found in catch), fallback to DashboardPage
+        // effectively treating it as "Offline / Error" rather than "No Business"
         if (snapshot.hasError) {
-          return DashboardPage(db: database, onThemeChanged: onThemeChanged);
+          return DashboardPage(
+            db: widget.database,
+            onThemeChanged: widget.onThemeChanged,
+          );
         }
 
         final businessProfile = snapshot.data;
+        // Only if we explicitly got NULL and NO CACHE do we show BusinessSettings.
+        // This likely means: Online + Success + No Profile row found.
         if (businessProfile == null) {
-          // Only treat as setup-needed when request succeeded but profile is actually null.
           return const BusinessSettingsPage();
         }
 
-        return DashboardPage(db: database, onThemeChanged: onThemeChanged);
+        return DashboardPage(
+          db: widget.database,
+          onThemeChanged: widget.onThemeChanged,
+        );
       },
     );
   }
