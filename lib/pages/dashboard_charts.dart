@@ -29,6 +29,7 @@ class DashboardCharts {
       children: [
         Builder(
           builder: (context) => Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
                 width: 32,
@@ -174,7 +175,11 @@ class DashboardCharts {
               SizedBox(
                 height: _chartHeight(context),
                 child: data.isEmpty
-                    ? const Center(child: Text('No sales data available'))
+                    ? _buildEmptyState(
+                        context,
+                        'No sales data available',
+                        Icons.bar_chart_rounded,
+                      )
                     : BarChart(
                         BarChartData(
                           alignment: BarChartAlignment.spaceAround,
@@ -312,7 +317,11 @@ class DashboardCharts {
               SizedBox(
                 height: _chartHeight(context),
                 child: data.isEmpty
-                    ? const Center(child: Text('No profit data available'))
+                    ? _buildEmptyState(
+                        context,
+                        'No profit data available',
+                        Icons.trending_up_rounded,
+                      )
                     : LineChart(
                         LineChartData(
                           gridData: const FlGridData(show: true),
@@ -445,7 +454,11 @@ class DashboardCharts {
               SizedBox(
                 height: _chartHeight(context),
                 child: data.isEmpty
-                    ? const Center(child: Text('No category data available'))
+                    ? _buildEmptyState(
+                        context,
+                        'No category data available',
+                        Icons.pie_chart_rounded,
+                      )
                     : Builder(
                         builder: (context) {
                           final status = _statusColors(context);
@@ -532,88 +545,7 @@ class DashboardCharts {
                       ),
               ),
               const SizedBox(height: 12),
-              // Legend
-              if (data.isNotEmpty)
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ...data.asMap().entries.map((entry) {
-                      final status = _statusColors(context);
-                      final colors = [
-                        Theme.of(context).colorScheme.primary,
-                        Theme.of(context).colorScheme.secondary,
-                        status.warning,
-                        status.success,
-                        Theme.of(context).colorScheme.error,
-                        status.info,
-                      ];
-                      final valueNum = entry.value['revenue'];
-                      final value = valueNum is num
-                          ? valueNum.toDouble()
-                          : (valueNum ?? 0.0) as double;
-                      final total = data.fold<double>(
-                        0.0,
-                        (sum, e) =>
-                            sum +
-                            (e['revenue'] is num
-                                ? (e['revenue'] as num).toDouble()
-                                : (e['revenue'] ?? 0.0) as double),
-                      );
-                      final pct = total > 0 ? (value / total) * 100 : 0;
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: Theme.of(
-                              context,
-                            ).dividerColor.withValues(alpha: 0.2),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 10,
-                              height: 10,
-                              decoration: BoxDecoration(
-                                color: colors[entry.key % colors.length],
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              entry.value['category'] ?? 'Unknown',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(
-                                  context,
-                                ).textTheme.bodyMedium?.color,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '₹${value.toStringAsFixed(0)} (${pct.toStringAsFixed(0)}%)',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.color
-                                    ?.withValues(alpha: 0.7),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ),
+              if (data.isNotEmpty) _buildCategoryLegend(context, data),
             ],
           ),
         ),
@@ -680,42 +612,55 @@ class DashboardCharts {
               SizedBox(
                 height: _chartHeight(context),
                 child: total == 0
-                    ? const Center(child: Text('No inventory data available'))
+                    ? _buildEmptyState(
+                        context,
+                        'No inventory data available',
+                        Icons.inventory_2_rounded,
+                      )
                     : PieChart(
                         PieChartData(
                           sections: [
                             PieChartSectionData(
                               value: fresh.toDouble(),
-                              title: 'Fresh\n(0-30d)',
+                              title: fresh > 0
+                                  ? '${((fresh / total) * 100).toStringAsFixed(0)}%'
+                                  : '',
                               color: _statusColors(context).success,
                               radius: 60,
                               titleStyle: const TextStyle(
-                                fontSize: 10,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
+                              titlePositionPercentageOffset: 0.55,
                             ),
                             PieChartSectionData(
                               value: aging.toDouble(),
-                              title: 'Aging\n(31-60d)',
+                              title: aging > 0 && (aging / total) >= 0.08
+                                  ? '${((aging / total) * 100).toStringAsFixed(0)}%'
+                                  : '',
                               color: _statusColors(context).warning,
                               radius: 60,
                               titleStyle: const TextStyle(
-                                fontSize: 10,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
+                              titlePositionPercentageOffset: 0.55,
                             ),
                             PieChartSectionData(
                               value: dead.toDouble(),
-                              title: 'Dead\n(60+d)',
+                              title: dead > 0 && (dead / total) >= 0.08
+                                  ? '${((dead / total) * 100).toStringAsFixed(0)}%'
+                                  : '',
                               color: Theme.of(context).colorScheme.error,
                               radius: 60,
                               titleStyle: const TextStyle(
-                                fontSize: 10,
+                                fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
+                              titlePositionPercentageOffset: 0.55,
                             ),
                           ],
                           centerSpaceRadius: 40,
@@ -728,19 +673,19 @@ class DashboardCharts {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   _buildAgingSummary(
-                    'Fresh',
+                    'Fresh (0-30d)',
                     fresh,
                     _statusColors(context).success,
                     context,
                   ),
                   _buildAgingSummary(
-                    'Aging',
+                    'Aging (31-60d)',
                     aging,
                     _statusColors(context).warning,
                     context,
                   ),
                   _buildAgingSummary(
-                    'Dead',
+                    'Dead (60+d)',
                     dead,
                     Theme.of(context).colorScheme.error,
                     context,
@@ -800,6 +745,7 @@ class DashboardCharts {
       children: [
         Builder(
           builder: (context) => Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
                 width: 32,
@@ -955,10 +901,12 @@ class DashboardCharts {
                 child: Text(
                   value,
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: color,
+                    height: 1.2,
                   ),
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -1249,6 +1197,185 @@ class DashboardCharts {
           ),
         ),
       ),
+    );
+  }
+
+  /// Enhanced empty state widget with icon and styled messaging
+  static Widget _buildEmptyState(
+    BuildContext context,
+    String message,
+    IconData icon,
+  ) {
+    final color = Theme.of(
+      context,
+    ).textTheme.bodyMedium?.color?.withValues(alpha: 0.5);
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 32, color: color),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            style: TextStyle(
+              fontSize: 14,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Record transactions to see data here',
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(
+                context,
+              ).textTheme.bodySmall?.color?.withValues(alpha: 0.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Category legend with "Show More" functionality
+  static Widget _buildCategoryLegend(
+    BuildContext context,
+    List<Map<String, dynamic>> data,
+  ) {
+    const int visibleLimit = 6;
+    final showAll = ValueNotifier<bool>(data.length <= visibleLimit);
+    final status = _statusColors(context);
+    final colors = [
+      Theme.of(context).colorScheme.primary,
+      Theme.of(context).colorScheme.secondary,
+      status.warning,
+      status.success,
+      Theme.of(context).colorScheme.error,
+      status.info,
+    ];
+    final total = data.fold<double>(
+      0.0,
+      (sum, e) =>
+          sum +
+          (e['revenue'] is num
+              ? (e['revenue'] as num).toDouble()
+              : (e['revenue'] ?? 0.0) as double),
+    );
+
+    Widget buildLegendItem(int index, Map<String, dynamic> entry) {
+      final valueNum = entry['revenue'];
+      final value = valueNum is num
+          ? valueNum.toDouble()
+          : (valueNum ?? 0.0) as double;
+      final pct = total > 0 ? (value / total) * 100 : 0;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: colors[index % colors.length],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              entry['category'] ?? 'Unknown',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).textTheme.bodyMedium?.color,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '₹${value.toStringAsFixed(0)} (${pct.toStringAsFixed(0)}%)',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: showAll,
+      builder: (context, expanded, _) {
+        final visibleData = expanded ? data : data.take(visibleLimit).toList();
+        final hiddenCount = data.length - visibleLimit;
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            ...visibleData.asMap().entries.map(
+              (e) => buildLegendItem(e.key, e.value),
+            ),
+            if (!expanded && hiddenCount > 0)
+              GestureDetector(
+                onTap: () => showAll.value = true,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.expand_more,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Show $hiddenCount more',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 

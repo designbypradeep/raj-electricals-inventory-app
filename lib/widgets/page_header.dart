@@ -78,10 +78,15 @@ class PageHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final isMobile = width < 480;
-    final pad = EdgeInsets.all(isMobile ? 20 : 24);
+    final pad = EdgeInsets.only(
+      top: isMobile ? 12 : 20,
+      left: isMobile ? 20 : 24,
+      right: isMobile ? 20 : 24,
+      bottom: isMobile ? 12 : 20,
+    );
     final titleSize = isMobile ? 22.0 : 28.0;
     final descSize = isMobile ? 13.0 : 16.0;
-    final gapAfterNav = isMobile ? 20.0 : 32.0;
+    final gapAfterNav = isMobile ? 8.0 : 16.0;
     final breadcrumbSize = isMobile ? 12.0 : 14.0;
     final headerContent = Padding(
       padding: pad,

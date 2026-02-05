@@ -2766,15 +2766,15 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
             _buildPageHeader(),
-            SizedBox(height: isMobile ? 12 : 24),
+            SizedBox(height: isMobile ? 16 : 24),
             _buildKeyMetrics(),
-            SizedBox(height: isMobile ? 12 : 24),
+            SizedBox(height: isMobile ? 16 : 24),
             _buildChartsSection(),
-            SizedBox(height: isMobile ? 12 : 32),
+            SizedBox(height: isMobile ? 16 : 24),
             _buildRealtimeMetrics(),
-            SizedBox(height: isMobile ? 12 : 32),
+            SizedBox(height: isMobile ? 16 : 24),
             _buildGrowthAnalytics(),
-            SizedBox(height: isMobile ? 12 : 32),
+            SizedBox(height: isMobile ? 16 : 24),
             _buildQuickActions(),
           ],
         ),
@@ -2817,6 +2817,7 @@ class _DashboardPageState extends State<DashboardPage> {
       description: 'Real-time business overview and key performance metrics',
       icon: '🏠',
       showBackButton: false,
+      wrapInSafeArea: false,
       breadcrumbs: [],
       stats: [
         PageHeaderStat(
@@ -2864,14 +2865,33 @@ class _DashboardPageState extends State<DashboardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Key Performance Metrics',
-          style: TextStyle(
-            fontSize: isMobile ? 18 : 20,
-            fontWeight: FontWeight.bold,
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary.withAlpha(26),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary.withAlpha(51),
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.insights,
+                size: 16,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Key Performance Metrics',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+          ],
         ),
-        SizedBox(height: isMobile ? 12 : 16),
+        SizedBox(height: isMobile ? 8 : 12),
         LayoutBuilder(
           builder: (context, constraints) {
             final crossAxisCount = constraints.maxWidth > 768
@@ -3562,6 +3582,7 @@ class _DashboardPageState extends State<DashboardPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
               width: 32,
