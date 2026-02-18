@@ -100,6 +100,9 @@ class _SalesPageState extends State<SalesPage> {
   final TextEditingController _discountController = TextEditingController();
   final TextEditingController _paidNowController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
+  final TextEditingController _quantityController = TextEditingController(
+    text: '1',
+  );
   DateTime? _customDate;
 
   @override
@@ -176,7 +179,9 @@ class _SalesPageState extends State<SalesPage> {
     _transactionIdController.dispose();
     _discountController.dispose();
     _paidNowController.dispose();
+    _paidNowController.dispose();
     _priceController.dispose();
+    _quantityController.dispose();
     super.dispose();
   }
 
@@ -285,7 +290,10 @@ class _SalesPageState extends State<SalesPage> {
       _selectedUnit = '';
       _selectedProductObj = null;
       _pricePerUnit = 0.0;
+      _selectedProductObj = null;
+      _pricePerUnit = 0.0;
       _priceController.text = '';
+      _quantityController.text = '1';
     });
   }
 
@@ -319,6 +327,8 @@ class _SalesPageState extends State<SalesPage> {
       _paidNowController.clear();
       _paymentMethod = 'Cash';
       _customDate = null;
+      _quantity = 1;
+      _quantityController.text = '1';
     });
   }
 
@@ -1557,14 +1567,22 @@ class _SalesPageState extends State<SalesPage> {
         ),
         const SizedBox(height: 8),
         TextField(
+          controller: _quantityController,
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           onChanged: (value) {
-            setState(() {
-              _quantity = int.tryParse(value) ?? 1;
-            });
+            // Only update the state variable, don't force the text back
+            // allow empty string during typing
+            if (value.isNotEmpty) {
+              setState(() {
+                _quantity = int.tryParse(value) ?? 1;
+              });
+            } else {
+              // temporarily set to 0 or 1 internally to avoid issues,
+              // but leave text empty so user can type
+              _quantity = 0;
+            }
           },
-          controller: TextEditingController(text: _quantity.toString()),
           decoration: InputDecoration(
             hintText: '1',
             filled: true,

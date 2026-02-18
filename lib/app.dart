@@ -496,7 +496,7 @@ class _DashboardWrapperState extends State<DashboardWrapper> {
         return SupabaseService.cachedBusinessProfile;
       }
       // If no cache, rethrow to show Dashboard (empty/error state) instead of BusinessSettings
-      throw e;
+      rethrow;
     }
   }
 
