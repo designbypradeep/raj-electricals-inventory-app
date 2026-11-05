@@ -45,6 +45,7 @@ jobs:
           sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = com.example.rajElectricalsInventoryApp;/PRODUCT_BUNDLE_IDENTIFIER = ${{ matrix.bundle_id }};/g' ios/Runner.xcodeproj/project.pbxproj
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName '${{ matrix.display_name }}'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string '${{ matrix.display_name }}'" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleName '${{ matrix.display_name }}'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleName string '${{ matrix.display_name }}'" ios/Runner/Info.plist
+          echo "DEVELOPMENT_TEAM=ABCDE12345" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
