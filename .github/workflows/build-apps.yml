@@ -13,7 +13,7 @@ jobs:
   # ==========================================
   build-ios:
     name: Build iOS (${{ matrix.app_name }})
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     strategy:
       fail-fast: false
