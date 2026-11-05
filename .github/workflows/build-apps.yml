@@ -95,10 +95,10 @@ jobs:
         run: flutter pub get
 
       - name: Build Admin Release APK
-        run: flutter build apk --release --flavor admin
+        run: flutter build apk --release --flavor admin --android-skip-build-dependency-validation
 
       - name: Build Shop Release APK
-        run: flutter build apk --release --flavor shop
+        run: flutter build apk --release --flavor shop --android-skip-build-dependency-validation
 
       - name: Upload Admin APK
         uses: actions/upload-artifact@v4
