@@ -4975,8 +4975,10 @@ class SupabaseService {
   // Sign in with Google (OAuth)
   static Future<bool> signInWithGoogle({String? redirectTo}) async {
     try {
+      final isShop = appFlavor == 'shop' ||
+          const String.fromEnvironment('APP_TYPE') == 'shop';
       final callback = redirectTo ??
-          (appFlavor == 'shop'
+          (isShop
               ? 'io.supabase.rajinventory://shop-login-callback'
               : 'io.supabase.rajinventory://login-callback');
       return await _client.auth.signInWithOAuth(

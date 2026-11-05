@@ -1,4 +1,4 @@
-name: Build Apps (iOS IPA & Android APKs)
+name: Build Apps (iOS IPAs & Android APKs)
 
 on:
   workflow_dispatch:
@@ -9,12 +9,25 @@ on:
 
 jobs:
   # ==========================================
-  # iOS Build Job (Runs on macOS)
+  # iOS Build Matrix (Admin & Shop in parallel on macOS)
   # ==========================================
   build-ios:
-    name: Build iOS IPA
+    name: Build iOS (${{ matrix.app_name }})
     runs-on: macos-14
     timeout-minutes: 60
+    strategy:
+      matrix:
+        include:
+          - app_type: admin
+            app_name: Inventoza-Admin
+            bundle_id: com.example.rajElectricalsInventoryApp
+            display_name: Inventoza
+            artifact_name: inventoza-admin-ios-ipa
+          - app_type: shop
+            app_name: Inventoza-Shop
+            bundle_id: com.example.rajElectricalsInventoryApp.shop
+            display_name: "Inventoza Shop"
+            artifact_name: inventoza-shop-ios-ipa
 
     steps:
       - name: Checkout repository
@@ -26,6 +39,12 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Configure iOS Bundle & Display Name
+        run: |
+          sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = com.example.rajElectricalsInventoryApp;/PRODUCT_BUNDLE_IDENTIFIER = ${{ matrix.bundle_id }};/g' ios/Runner.xcodeproj/project.pbxproj
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName '${{ matrix.display_name }}'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string '${{ matrix.display_name }}'" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName '${{ matrix.display_name }}'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleName string '${{ matrix.display_name }}'" ios/Runner/Info.plist
+
       - name: Get Flutter dependencies
         run: flutter pub get
 
@@ -36,21 +55,21 @@ jobs:
           cd ..
 
       - name: Build iOS Application (Release, Unsigned)
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --dart-define=APP_TYPE=${{ matrix.app_type }}
 
       - name: Package Payload into IPA
         run: |
           mkdir -p build/ios/iphoneos/Payload
           cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
           cd build/ios/iphoneos
-          zip -r -9 Inventoza.ipa Payload
+          zip -r -9 ${{ matrix.app_name }}.ipa Payload
           cd ../../..
 
-      - name: Upload iOS IPA
+      - name: Upload iOS IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: inventoza-ios-ipa
-          path: build/ios/iphoneos/Inventoza.ipa
+          name: ${{ matrix.artifact_name }}
+          path: build/ios/iphoneos/${{ matrix.app_name }}.ipa
           retention-days: 14
 
   # ==========================================

@@ -338,7 +338,10 @@ class _FlavorWrapperState extends State<FlavorWrapper> {
 
   Future<void> _checkFlavor() async {
     final packageInfo = await PackageInfo.fromPlatform();
-    final isShop = packageInfo.packageName.endsWith('.shop');
+    const appType = String.fromEnvironment('APP_TYPE');
+    final isShop = appType == 'shop' ||
+        packageInfo.packageName.endsWith('.shop') ||
+        appFlavor == 'shop';
 
     if (isShop) {
       // 1. Runtime Slug Resolution
