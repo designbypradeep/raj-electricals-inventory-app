@@ -288,23 +288,25 @@ class PageHeader extends StatelessWidget {
 
           // Stats (avoid LayoutBuilder in scrollable context)
           if (stats.isNotEmpty) ...[
-            SizedBox(height: isMobile ? 12 : 24),
+            SizedBox(height: isMobile ? 10 : 24),
             Builder(
               builder: (context) {
                 final w = MediaQuery.of(context).size.width;
                 final isDesktop = w > 768;
                 if (!isDesktop) {
-                  return Column(
-                    children: stats
-                        .map(
-                          (s) => Padding(
-                            padding: EdgeInsets.only(
-                              bottom: isMobile ? 10 : 16,
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      children: stats
+                          .map(
+                            (s) => Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: _buildCompactStatChip(context, s),
                             ),
-                            child: _buildStatCard(context, s),
-                          ),
-                        )
-                        .toList(),
+                          )
+                          .toList(),
+                    ),
                   );
                 }
                 // Desktop: 2 columns using Rows of Expanded cards
@@ -348,6 +350,43 @@ class PageHeader extends StatelessWidget {
       child: wrapInSafeArea
           ? SafeArea(top: true, bottom: false, child: headerContent)
           : headerContent,
+    );
+  }
+
+  Widget _buildCompactStatChip(BuildContext context, PageHeaderStat stat) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.22),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            stat.value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            stat.label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.8),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

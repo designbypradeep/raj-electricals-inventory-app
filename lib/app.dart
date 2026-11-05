@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:app_links/app_links.dart';
 import 'package:raj_electricals_inventory_app/pages/welcome_page.dart';
 import 'package:raj_electricals_inventory_app/services/slug_resolver.dart';
 import 'data/app_database.dart';
@@ -14,9 +16,12 @@ import 'pages/replacements_history_page.dart';
 import 'pages/returns_page.dart';
 import 'pages/process_replacement_page.dart';
 import 'pages/shop_page.dart';
+import 'pages/inventory_page.dart';
 import 'pages/customers_page.dart';
 import 'pages/payment_verification_page.dart';
+import 'pages/status_blocked_page.dart';
 import 'services/supabase_service.dart';
+import 'models/supabase_models.dart' as supabase_models;
 import 'services/connectivity_service.dart';
 import 'services/theme_service.dart';
 import 'services/theme_controller.dart';
@@ -38,6 +43,8 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
   late ThemeService _themeService;
   ThemeMode _themeMode = ThemeMode.system;
   final ThemeController _themeController = ThemeController.instance;
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _appLinksSub;
 
   @override
   void initState() {
@@ -47,6 +54,25 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
     _themeController.addListener(_onThemeColorsChanged);
     _themeController.loadSavedColors();
     ConnectivityService().initialize();
+    _initAppLinks();
+  }
+
+  void _initAppLinks() {
+    _appLinks = AppLinks();
+    _appLinks.getInitialLink().then((uri) {
+      if (uri != null) _handleGlobalUri(uri);
+    }).catchError((_) {});
+    _appLinksSub = _appLinks.uriLinkStream.listen(_handleGlobalUri);
+  }
+
+  void _handleGlobalUri(Uri uri) {
+    if (uri.scheme == 'io.supabase.rajinventory' || uri.scheme == 'inventoza') {
+      SupabaseService.handleAuthCallbackUrl(uri).then((_) {
+        if (mounted) setState(() {});
+      }).catchError((e) {
+        debugPrint('[App] Error handling OAuth callback: $e');
+      });
+    }
   }
 
   void _loadThemeMode() async {
@@ -69,6 +95,7 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
 
   @override
   void dispose() {
+    _appLinksSub?.cancel();
     _themeController.removeListener(_onThemeColorsChanged);
     ConnectivityService().dispose();
     super.dispose();
@@ -127,10 +154,19 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
           database: widget.database,
         ),
         '/login': (context) => const LoginPage(),
-        '/dashboard': (context) => DashboardPage(
-          db: widget.database,
-          onThemeChanged: _changeThemeMode,
+        '/dashboard': (context) => BiometricLockGate(
+          child: DashboardWrapper(
+            onThemeChanged: _changeThemeMode,
+            database: widget.database,
+          ),
         ),
+        '/home': (context) => BiometricLockGate(
+          child: DashboardWrapper(
+            onThemeChanged: _changeThemeMode,
+            database: widget.database,
+          ),
+        ),
+        '/inventory': (context) => const InventoryPage(),
         '/business-settings': (context) => const BusinessSettingsPage(),
         '/catalog': (context) => CatalogPage(db: widget.database),
         '/add-product': (context) => AddProductPage(db: widget.database),
@@ -146,6 +182,8 @@ class _RajElectricalsAppState extends State<RajElectricalsApp> {
         '/history/replacements': (context) => const ReplacementsHistoryPage(),
         '/payments/verification': (context) => const PaymentVerificationPage(),
         '/customers': (context) => const CustomersPage(),
+        '/status-blocked': (context) =>
+            const StatusBlockedPage(status: 'SUSPENDED'),
       },
     );
   }
@@ -527,6 +565,19 @@ class _DashboardWrapperState extends State<DashboardWrapper> {
         // This likely means: Online + Success + No Profile row found.
         if (businessProfile == null) {
           return const BusinessSettingsPage();
+        }
+
+        if (businessProfile is supabase_models.BusinessProfile) {
+          if (businessProfile.isSuspended || businessProfile.isPending) {
+            return StatusBlockedPage(
+              status: businessProfile.status ?? 'SUSPENDED',
+              onStatusRefreshed: () {
+                setState(() {
+                  _refreshKey++;
+                });
+              },
+            );
+          }
         }
 
         return DashboardPage(

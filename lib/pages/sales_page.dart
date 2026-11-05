@@ -240,7 +240,7 @@ class _SalesPageState extends State<SalesPage> {
     }
 
     // Calculate stock check based on unit type
-    int availableStock = selectedProduct.currentStock;
+    final num availableStock = selectedProduct.currentStock;
     int quantityInSingleUnits = _quantity;
 
     // If selling in wholesale units, convert to single units for stock checking
@@ -253,7 +253,7 @@ class _SalesPageState extends State<SalesPage> {
       final maxWholesale = _selectedUnit == selectedProduct.unitTypeWholesale
           ? (availableStock / (selectedProduct.itemsPerWholesaleUnit ?? 1))
                 .floor()
-          : availableStock;
+          : availableStock.toInt();
       setState(() {
         _errorMessage =
             'Not enough stock. Only $maxWholesale $_selectedUnit available.';
@@ -596,14 +596,18 @@ class _SalesPageState extends State<SalesPage> {
                     backLabel: 'Back to Dashboard',
                     stats: [
                       PageHeaderStat(
-                        label: 'Sales Management',
-                        value: 'Transaction Entry',
-                        description: '',
+                        label: 'Items in Cart',
+                        value: '${_salesItems.length}',
+                        description: _salesItems.isEmpty
+                            ? 'Cart is empty'
+                            : 'Ready for billing',
                       ),
                       PageHeaderStat(
-                        label: 'नई बिक्री दर्ज करें',
-                        value: 'Ready to process',
-                        description: '',
+                        label: 'Cart Total',
+                        value: '₹${_finalTotal.toStringAsFixed(0)}',
+                        description: _paymentMethod.isNotEmpty
+                            ? 'Payment: $_paymentMethod'
+                            : 'Pending payment',
                       ),
                     ],
                   ),
@@ -891,8 +895,9 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   Widget _buildSaleForm() {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return Container(
-      padding: const EdgeInsets.all(32),
+      padding: EdgeInsets.all(isMobile ? 12 : 24),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
@@ -911,8 +916,8 @@ class _SalesPageState extends State<SalesPage> {
         children: [
           // Customer Details Section - Exact SvelteKit styling
           Container(
-            padding: const EdgeInsets.all(32),
-            margin: const EdgeInsets.only(bottom: 32),
+            padding: EdgeInsets.all(isMobile ? 12 : 20),
+            margin: EdgeInsets.only(bottom: isMobile ? 16 : 24),
             decoration: BoxDecoration(
               color: Theme.of(context).dividerColor.withValues(alpha: 0.03),
               borderRadius: BorderRadius.circular(12),
@@ -1233,11 +1238,10 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   Widget _buildAddItemsSection() {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return Container(
-      padding: EdgeInsets.all(
-        MediaQuery.of(context).size.width < 480 ? 20 : 32,
-      ),
-      margin: const EdgeInsets.only(bottom: 32),
+      padding: EdgeInsets.all(isMobile ? 12 : 20),
+      margin: EdgeInsets.only(bottom: isMobile ? 16 : 24),
       decoration: BoxDecoration(
         color: Theme.of(context).dividerColor.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(12),
@@ -1740,7 +1744,10 @@ class _SalesPageState extends State<SalesPage> {
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
-                          Row(
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -1764,7 +1771,6 @@ class _SalesPageState extends State<SalesPage> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
                               Text(
                                 '@ ₹${item.pricePerUnit.toStringAsFixed(2)}',
                                 style: TextStyle(
@@ -1776,7 +1782,6 @@ class _SalesPageState extends State<SalesPage> {
                                       ?.withValues(alpha: 0.6),
                                 ),
                               ),
-                              const SizedBox(width: 8),
                               Text(
                                 '= ₹${(item.quantity * item.pricePerUnit).toStringAsFixed(2)}',
                                 style: TextStyle(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../services/connectivity_service.dart';
 
@@ -11,7 +12,8 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
+class _LoginPageState extends State<LoginPage>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   bool _isLoading = false;
@@ -33,10 +35,13 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   late AnimationController _slideController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  StreamSubscription<AuthState>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -57,10 +62,43 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
     _fadeController.forward();
     _slideController.forward();
+
+    // If already authenticated, redirect straight to dashboard
+    if (SupabaseService.currentUser != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil('/dashboard', (route) => false);
+        }
+      });
+    }
+
+    _authSubscription = SupabaseService.onAuthStateChange.listen((data) {
+      if (data.session != null && mounted) {
+        setState(() => _isLoading = false);
+        Navigator.of(context).pushNamedAndRemoveUntil('/dashboard', (route) => false);
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isLoading) {
+      // If returning from external OAuth browser, allow 2.5s for deep link callback.
+      // If still not signed in, reset loading spinner so the UI is unblocked.
+      Future.delayed(const Duration(milliseconds: 2500), () {
+        if (mounted && _isLoading && SupabaseService.currentUser == null) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _authSubscription?.cancel();
     _fadeController.dispose();
     _slideController.dispose();
     _emailController.dispose();
@@ -162,6 +200,30 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _signInWithGoogle() async {
+    final isOnline = ConnectivityService().isOnline.value;
+    if (!isOnline) {
+      setState(() {
+        _error = 'You are offline. Please check your internet connection.';
+      });
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _error = '';
+    });
+    try {
+      await SupabaseService.signInWithGoogle();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = _friendlyError(e);
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _verifyOTP() async {
     String otpCode = _otpControllers
         .map((controller) => controller.text)
@@ -192,7 +254,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
       if (result['success']) {
         if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/dashboard');
+          Navigator.of(context).pushNamedAndRemoveUntil('/dashboard', (route) => false);
         }
       } else {
         setState(() {
@@ -317,7 +379,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                         ],
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(40),
+                        padding: EdgeInsets.all(MediaQuery.of(context).size.width < 480 ? 20 : 36),
                         child: Form(
                           key: _formKey,
                           child: Column(
@@ -553,6 +615,92 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                           ),
                                   ),
                                 ),
+                                const SizedBox(height: 20),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Divider(
+                                        color: Colors.grey.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                      ),
+                                      child: Text(
+                                        'OR',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade400,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 1,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Divider(
+                                        color: Colors.grey.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 20),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton(
+                                    onPressed:
+                                        _isLoading ? null : _signInWithGoogle,
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.white,
+                                      side: BorderSide(
+                                        color: Colors.white.withValues(alpha: 0.2),
+                                      ),
+                                      backgroundColor: Colors.white.withValues(
+                                        alpha: 0.05,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          width: 22,
+                                          height: 22,
+                                          decoration: const BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: Colors.white,
+                                          ),
+                                          padding: const EdgeInsets.all(2),
+                                          child: Image.network(
+                                            'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/120px-Google_%22G%22_logo.svg.png',
+                                            width: 18,
+                                            height: 18,
+                                            errorBuilder:
+                                                (_, __, ___) => const Icon(
+                                                  Icons.account_circle,
+                                                  size: 18,
+                                                  color: Colors.blue,
+                                                ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        const Text(
+                                          'Continue with Google',
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ] else ...[
                                 // Back Button
                                 Row(
@@ -589,13 +737,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                       MainAxisAlignment.spaceEvenly,
                                   children: List.generate(6, (index) {
                                     return SizedBox(
-                                      width: 45,
-                                      height: 55,
+                                      width: 42,
+                                      height: 54,
                                       child: TextFormField(
                                         controller: _otpControllers[index],
                                         focusNode: _otpFocusNodes[index],
                                         keyboardType: TextInputType.number,
                                         textAlign: TextAlign.center,
+                                        textAlignVertical: TextAlignVertical.center,
                                         maxLength:
                                             6, // All fields can accept 6 digits for paste
                                         style: TextStyle(
@@ -609,7 +758,11 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                           0xFFC1441E,
                                         ), // Brand Orange
                                         decoration: InputDecoration(
-                                          counterText: '',
+                                          isDense: true,
+                                          contentPadding: const EdgeInsets.symmetric(
+                                            vertical: 10,
+                                          ),
+                                          counterText: '', 
                                           border: OutlineInputBorder(
                                             borderRadius: BorderRadius.circular(
                                               12,

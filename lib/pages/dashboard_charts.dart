@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../theme/status_colors.dart';
 
@@ -117,6 +118,203 @@ class DashboardCharts {
     );
   }
 
+  // Tabbed Analytics Section
+  static Widget buildTabbedAnalytics({
+    required int selectedTab,
+    required ValueChanged<int> onTabChanged,
+    required List<Map<String, dynamic>> dailySales,
+    required List<Map<String, dynamic>> categorySales,
+    required List<Map<String, dynamic>> dailyProfits,
+    required Map<String, dynamic> inventoryAging,
+    required Map<String, dynamic> realtimeStats,
+    required Map<String, dynamic> growthData,
+    required bool isLoading,
+  }) {
+    if (isLoading) {
+      return Container(
+        height: 240,
+        alignment: Alignment.center,
+        child: const CircularProgressIndicator(),
+      );
+    }
+
+    final tabs = [
+      {'title': 'Revenue & Profit', 'icon': Icons.trending_up},
+      {'title': 'Categories', 'icon': Icons.pie_chart_outline},
+      {'title': 'Stock Health', 'icon': Icons.inventory_2_outlined},
+      {'title': 'Live & Growth', 'icon': Icons.bolt},
+    ];
+
+    return Builder(
+      builder: (context) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withAlpha(26),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary.withAlpha(51),
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.insights_rounded,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Analytics & Insights',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: List.generate(tabs.length, (index) {
+                  final isSelected = selectedTab == index;
+                  final item = tabs[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          onTabChanged(index);
+                        },
+                        borderRadius: BorderRadius.circular(20),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).cardColor,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).dividerColor.withAlpha(40),
+                            ),
+                            boxShadow: isSelected
+                                ? [
+                                    BoxShadow(
+                                      color: Theme.of(context).colorScheme.primary.withAlpha(77),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                item['icon'] as IconData,
+                                size: 15,
+                                color: isSelected
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                item['title'] as String,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                  color: isSelected
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(height: 16),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: KeyedSubtree(
+                key: ValueKey<int>(selectedTab),
+                child: Builder(
+                  builder: (context) {
+                    switch (selectedTab) {
+                      case 0:
+                        return LayoutBuilder(
+                          builder: (context, c) {
+                            if (c.maxWidth > 768) {
+                              return Row(
+                                children: [
+                                  Expanded(child: _buildDailySalesChart(dailySales)),
+                                  const SizedBox(width: 16),
+                                  Expanded(child: _buildProfitChart(dailyProfits)),
+                                ],
+                              );
+                            }
+                            return Column(
+                              children: [
+                                _buildDailySalesChart(dailySales),
+                                const SizedBox(height: 14),
+                                _buildProfitChart(dailyProfits),
+                              ],
+                            );
+                          },
+                        );
+                      case 1:
+                        return _buildCategorySalesChart(categorySales);
+                      case 2:
+                        return _buildInventoryAgingChart(inventoryAging);
+                      case 3:
+                        return Column(
+                          children: [
+                            buildRealtimeMetrics(stats: realtimeStats, isLoading: false),
+                            const SizedBox(height: 14),
+                            buildGrowthAnalytics(growthData: growthData, isLoading: false),
+                          ],
+                        );
+                      default:
+                        return const SizedBox.shrink();
+                    }
+                  },
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  static String _formatAxisValue(double value) {
+    if (value == 0) return '₹0';
+    final absVal = value.abs();
+    if (absVal >= 100000) {
+      final inLakh = value / 100000;
+      return '₹${inLakh.toStringAsFixed(1)}L';
+    } else if (absVal >= 1000) {
+      final inK = value / 1000;
+      return inK % 1 == 0
+          ? '₹${inK.toStringAsFixed(0)}k'
+          : '₹${inK.toStringAsFixed(1)}k';
+    } else {
+      return '₹${value.toStringAsFixed(0)}';
+    }
+  }
+
   static Widget _buildDailySalesChart(List<Map<String, dynamic>> data) {
     return Builder(
       builder: (context) => _HoverCard(
@@ -213,10 +411,10 @@ class DashboardCharts {
                             leftTitles: AxisTitles(
                               sideTitles: SideTitles(
                                 showTitles: true,
-                                reservedSize: 40,
+                                reservedSize: 46,
                                 getTitlesWidget: (value, meta) {
                                   return Text(
-                                    '₹${(value / 1000).toStringAsFixed(0)}k',
+                                    _formatAxisValue(value),
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: Theme.of(
@@ -348,10 +546,10 @@ class DashboardCharts {
                             leftTitles: AxisTitles(
                               sideTitles: SideTitles(
                                 showTitles: true,
-                                reservedSize: 40,
+                                reservedSize: 46,
                                 getTitlesWidget: (value, meta) {
                                   return Text(
-                                    '₹${(value / 1000).toStringAsFixed(0)}k',
+                                    _formatAxisValue(value),
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: Theme.of(
@@ -701,14 +899,16 @@ class DashboardCharts {
 
   static Widget _buildAgingSummary(
     String label,
-    int value,
+    num value,
     Color color,
     BuildContext context,
   ) {
     return Column(
       children: [
         Text(
-          value.toString(),
+          value is int || value == value.roundToDouble()
+              ? value.toInt().toString()
+              : value.toStringAsFixed(1),
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,

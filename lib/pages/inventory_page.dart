@@ -21,6 +21,27 @@ class _InventoryPageState extends State<InventoryPage> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
+  // Pagination state
+  int _currentPage = 1;
+  int _itemsPerPage = 25;
+
+  List<supabase_models.Product> get _paginatedProducts {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    if (startIndex >= _filteredProducts.length) {
+      if (_filteredProducts.isEmpty) return [];
+      return _filteredProducts.take(_itemsPerPage).toList();
+    }
+    final endIndex = startIndex + _itemsPerPage;
+    return _filteredProducts.sublist(
+      startIndex,
+      endIndex > _filteredProducts.length ? _filteredProducts.length : endIndex,
+    );
+  }
+
+  int get _totalPages => _filteredProducts.isEmpty
+      ? 1
+      : (_filteredProducts.length / _itemsPerPage).ceil();
+
   @override
   void initState() {
     super.initState();
@@ -48,7 +69,7 @@ class _InventoryPageState extends State<InventoryPage> {
             DataColumn(label: Text('📊 Stock')),
             DataColumn(label: Text('💰 Price'), numeric: true),
           ],
-          rows: _filteredProducts.map((product) {
+          rows: _paginatedProducts.map((product) {
             final stockColor = _getStockColor(product.currentStock);
             return DataRow(
               cells: [
@@ -224,6 +245,7 @@ class _InventoryPageState extends State<InventoryPage> {
       setState(() {
         _allProducts = productsWithStock;
         _filteredProducts = productsWithStock;
+        _currentPage = 1;
         _recentPurchases = purchases.take(5).toList();
         _recentSales = sales.take(5).toList();
         _isLoading = false;
@@ -241,6 +263,7 @@ class _InventoryPageState extends State<InventoryPage> {
   void _filterProducts(String query) {
     setState(() {
       _searchQuery = query;
+      _currentPage = 1;
       if (query.isEmpty) {
         _filteredProducts = _allProducts;
       } else {
@@ -606,6 +629,7 @@ class _InventoryPageState extends State<InventoryPage> {
               }
             },
           ),
+          if (_filteredProducts.isNotEmpty) _buildPaginationControls(),
         ],
       ),
     );
@@ -635,7 +659,7 @@ class _InventoryPageState extends State<InventoryPage> {
             DataColumn(label: Text('📊 Stock Level')),
             DataColumn(label: Text('💰 Price'), numeric: true),
           ],
-          rows: _filteredProducts.isEmpty
+          rows: _paginatedProducts.isEmpty
               ? [
                   DataRow(
                     cells: [
@@ -665,7 +689,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     ],
                   ),
                 ]
-              : _filteredProducts.map((product) {
+              : _paginatedProducts.map((product) {
                   final stockColor = _getStockColor(product.currentStock);
 
                   return DataRow(
@@ -891,7 +915,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Widget _buildMobileProductCards() {
     return Column(
-      children: _filteredProducts.map((product) {
+      children: _paginatedProducts.map((product) {
         final stockColor = _getStockColor(product.currentStock);
         final totalValue = product.currentStock * (product.sellingPrice ?? 0);
 
@@ -984,19 +1008,25 @@ class _InventoryPageState extends State<InventoryPage> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Row(
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    if (product.brand != null) ...[
-                      Icon(
-                        Icons.business,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    if (product.brand != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.business,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(product.brand!),
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      Text(product.brand!),
-                      const SizedBox(width: 16),
-                    ],
-                    if (product.category != null) ...[
+                    if (product.category != null)
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -1016,12 +1046,14 @@ class _InventoryPageState extends State<InventoryPage> {
                           ),
                         ),
                       ),
-                    ],
                   ],
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.end,
+                  spacing: 12,
+                  runSpacing: 8,
                   children: [
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1100,6 +1132,182 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildPaginationControls() {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    final startItem = _filteredProducts.isEmpty ? 0 : startIndex + 1;
+    final endItem = (_currentPage * _itemsPerPage > _filteredProducts.length)
+        ? _filteredProducts.length
+        : _currentPage * _itemsPerPage;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(20),
+        border: Border(
+          top: BorderSide(
+            color: Theme.of(context).colorScheme.outline.withAlpha(30),
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Items per page:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  DropdownButton<int>(
+                    value: _itemsPerPage,
+                    underline: Container(),
+                    items: [10, 25, 50, 100].map((int value) {
+                      return DropdownMenuItem<int>(
+                        value: value,
+                        child: Text('$value'),
+                      );
+                    }).toList(),
+                    onChanged: (int? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _itemsPerPage = newValue;
+                          _currentPage = 1;
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+              Text(
+                'Showing $startItem-$endItem of ${_filteredProducts.length}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          ),
+          if (_totalPages > 1) ...[
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: _currentPage > 1
+                        ? () => setState(() => _currentPage = 1)
+                        : null,
+                    icon: const Icon(Icons.first_page),
+                    tooltip: 'First page',
+                  ),
+                  IconButton(
+                    onPressed: _currentPage > 1
+                        ? () => setState(() => _currentPage--)
+                        : null,
+                    icon: const Icon(Icons.chevron_left),
+                    tooltip: 'Previous page',
+                  ),
+                  const SizedBox(width: 8),
+                  ...List.generate(_totalPages, (index) {
+                    final pageNum = index + 1;
+                    final isCurrentPage = pageNum == _currentPage;
+                    final showPage =
+                        pageNum == 1 ||
+                        pageNum == _totalPages ||
+                        (pageNum >= _currentPage - 2 &&
+                            pageNum <= _currentPage + 2);
+
+                    if (!showPage) {
+                      if (pageNum == _currentPage - 3 ||
+                          pageNum == _currentPage + 3) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Text('...'),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: isCurrentPage
+                              ? null
+                              : () => setState(() => _currentPage = pageNum),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: isCurrentPage
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isCurrentPage
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(
+                                        context,
+                                      ).colorScheme.outline.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '$pageNum',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: isCurrentPage
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(context).colorScheme.onSurface,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: _currentPage < _totalPages
+                        ? () => setState(() => _currentPage++)
+                        : null,
+                    icon: const Icon(Icons.chevron_right),
+                    tooltip: 'Next page',
+                  ),
+                  IconButton(
+                    onPressed: _currentPage < _totalPages
+                        ? () => setState(() => _currentPage = _totalPages)
+                        : null,
+                    icon: const Icon(Icons.last_page),
+                    tooltip: 'Last page',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1256,7 +1464,7 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Widget _buildStockStatusChip(int stock) {
+  Widget _buildStockStatusChip(num stock) {
     final color = _getStockColor(stock);
     final status = _getStockStatus(stock);
 
@@ -1277,14 +1485,14 @@ class _InventoryPageState extends State<InventoryPage> {
     );
   }
 
-  Color _getStockColor(int stock) {
+  Color _getStockColor(num stock) {
     if (stock <= 0) return Colors.red;
     if (stock <= 5) return Colors.orange;
     if (stock <= 20) return Colors.yellow.shade700;
     return Colors.green;
   }
 
-  String _getStockStatus(int stock) {
+  String _getStockStatus(num stock) {
     if (stock <= 0) return 'Out of Stock';
     if (stock <= 5) return 'Critical';
     if (stock <= 20) return 'Low Stock';

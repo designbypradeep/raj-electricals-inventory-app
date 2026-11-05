@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:raj_electricals_inventory_app/theme/ui_tokens.dart';
 import '../widgets/page_header.dart';
 import '../services/supabase_service.dart';
@@ -8,6 +9,7 @@ import '../services/accounting_service.dart';
 import '../services/report_pdf_service.dart';
 import '../models/supabase_models.dart' as supabase_models;
 import '../models/sales_purchase_models.dart';
+import 'billing_page.dart';
 
 class ReportsPage extends StatefulWidget {
   final String? initialReportType;
@@ -29,6 +31,7 @@ class _ReportsPageState extends State<ReportsPage> {
   DateTime _startDate = DateTime.now().subtract(const Duration(days: 30));
   DateTime _endDate = DateTime.now();
   bool _isLoading = true;
+  supabase_models.SubscriptionInfo? _subscriptionInfo;
   List<supabase_models.Product> _products = [];
   List<Sale> _sales = [];
   List<Purchase> _purchases = [];
@@ -455,6 +458,7 @@ class _ReportsPageState extends State<ReportsPage> {
     try {
       // Ensure business profile is loaded and fetch data
       await SupabaseService.getCurrentBusinessProfile();
+      final subInfo = await SupabaseService.getSubscriptionInfo();
       final products = await SupabaseService.getProducts();
       final sales =
           await SupabaseService.getSales(); // already typed with sales_items
@@ -486,6 +490,7 @@ class _ReportsPageState extends State<ReportsPage> {
         _purchases = purchases;
         _returns = returnsList;
         _replacements = replacements;
+        _subscriptionInfo = subInfo;
         _isLoading = false;
       });
     } catch (e) {
@@ -862,6 +867,9 @@ class _ReportsPageState extends State<ReportsPage> {
                 ),
                 child: Column(
                   children: [
+                    if (_subscriptionInfo != null &&
+                        !_subscriptionInfo!.hasFeature('reports'))
+                      _buildPlanFeatureBanner(),
                     _buildQuickStats(),
                     const SizedBox(height: 24),
                     _buildFinancialBreakdown(),
@@ -880,6 +888,80 @@ class _ReportsPageState extends State<ReportsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPlanFeatureBanner() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2C1B10) : const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFF97316).withValues(alpha: 0.4),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF97316).withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.workspace_premium,
+              color: Color(0xFFF97316),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Analytics Gated on ${_subscriptionInfo?.planName ?? 'Current'} Plan',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF9A3412),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Your current subscription has limited analytics access. Upgrade to Standard or Premium on the web to export PDF audits and unlock detailed margins.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: isDark ? Colors.white70 : const Color(0xFFC2410C),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const BillingPage()),
+                    );
+                  },
+                  icon: const Icon(Icons.arrow_upward, size: 16),
+                  label: const Text('Upgrade Plan'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFEA580C),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2213,7 +2295,7 @@ class _ReportsPageState extends State<ReportsPage> {
                             p.currentStock > 0),
                       )
                       .toList();
-                  final totalUnits = inventoryList.fold<int>(
+                  final totalUnits = inventoryList.fold<num>(
                     0,
                     (sum, p) => sum + p.currentStock,
                   );
@@ -2682,7 +2764,7 @@ class _ReportsPageState extends State<ReportsPage> {
                       final unitCostByProduct = _computeUnitCostMapForRange(
                         range,
                       );
-                      final totalUnits = inventoryList.fold<int>(
+                      final totalUnits = inventoryList.fold<num>(
                         0,
                         (sum, p) => sum + p.currentStock,
                       );
@@ -3039,7 +3121,7 @@ class _ReportsPageState extends State<ReportsPage> {
             )
             .toList();
         final unitCostByProduct = _computeUnitCostMapForRange(range);
-        final totalUnits = inventoryList.fold<int>(
+        final totalUnits = inventoryList.fold<num>(
           0,
           (sum, p) => sum + p.currentStock,
         );

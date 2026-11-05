@@ -9,6 +9,8 @@ import 'package:raj_electricals_inventory_app/data/app_database.dart';
 import 'package:raj_electricals_inventory_app/services/image_storage_service.dart';
 import 'package:raj_electricals_inventory_app/services/supabase_service.dart';
 import 'package:raj_electricals_inventory_app/services/connectivity_service.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../models/supabase_models.dart' as supabase_models;
 import 'package:drift/drift.dart' as drift;
 import '../widgets/page_header.dart';
 import './shop_page.dart';
@@ -74,6 +76,7 @@ class _AddProductPageState extends State<AddProductPage> {
   bool _isLoadingCategories = false;
 
   bool _isSupabaseEnabled = false;
+  supabase_models.QuotaCheckResult? _quotaResult;
 
   final List<String> _selectedImages =
       []; // Can hold both URLs and local file paths
@@ -120,6 +123,28 @@ class _AddProductPageState extends State<AddProductPage> {
   Future<void> _initializeApp() async {
     await _checkSupabaseConnection();
     await _loadCategories();
+    await _checkQuota();
+  }
+
+  Future<void> _checkQuota() async {
+    if (!_isSupabaseEnabled) return;
+    try {
+      final res = await SupabaseService.checkProductQuota();
+      if (mounted) {
+        setState(() {
+          _quotaResult = res;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _openBillingWeb() async {
+    final uri = Uri.parse('https://inventoza.com/billing');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -771,7 +796,12 @@ class _AddProductPageState extends State<AddProductPage> {
                   // Page Header
                   _buildPageHeader(),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+
+                  // Quota / Subscription Banner
+                  _buildQuotaBanner(),
+
+                  const SizedBox(height: 8),
 
                   // Main Content
                   Center(
@@ -1800,6 +1830,75 @@ class _AddProductPageState extends State<AddProductPage> {
     );
   }
 
+  Widget _buildQuotaBanner() {
+    if (_quotaResult == null || _quotaResult!.allowed) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.error,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            color: Theme.of(context).colorScheme.error,
+            size: 28,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Plan Limit Reached',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _quotaResult?.message ??
+                      'You have reached the maximum product limit for your current subscription plan.',
+                  style: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onErrorContainer
+                        .withValues(alpha: 0.85),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: _openBillingWeb,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('Upgrade Plan'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPageHeader() {
     return PageHeader(
       title: 'Add Product',
@@ -1813,14 +1912,22 @@ class _AddProductPageState extends State<AddProductPage> {
       ],
       stats: [
         PageHeaderStat(
-          label: 'Product Management',
-          value: 'New Entry',
-          description: 'Create product with images and details',
+          label: 'Plan Quota',
+          value: _quotaResult != null
+              ? '${_quotaResult!.currentCount} / ${_quotaResult!.maxAllowed ?? '∞'}'
+              : 'Checking...',
+          description: _quotaResult?.maxAllowed != null
+              ? '${_quotaResult!.maxAllowed! - _quotaResult!.currentCount} slots remaining'
+              : 'Unlimited product slots',
         ),
         PageHeaderStat(
           label: 'Status',
-          value: 'Ready',
-          description: 'All systems operational',
+          value: _quotaResult != null && !_quotaResult!.allowed
+              ? 'Limit Reached'
+              : 'Ready',
+          description: _quotaResult != null && !_quotaResult!.allowed
+              ? 'Upgrade required'
+              : 'All systems operational',
         ),
       ],
       actions: [
@@ -1845,6 +1952,35 @@ class _AddProductPageState extends State<AddProductPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Please select a category')));
+      return;
+    }
+
+    if (_isSupabaseEnabled && _quotaResult != null && !_quotaResult!.allowed) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Cannot Save Product'),
+          content: Text(
+            _quotaResult?.message ?? 'Product quota reached for this plan.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Dismiss'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _openBillingWeb();
+              },
+              child: const Text('Upgrade Plan'),
+            ),
+          ],
+        ),
+      );
       return;
     }
 
@@ -1970,8 +2106,13 @@ class _AddProductPageState extends State<AddProductPage> {
       }
     } catch (e) {
       if (mounted) {
+        final errorMsg = e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('❌ $errorMsg'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
     } finally {

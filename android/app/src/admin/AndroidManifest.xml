@@ -1,5 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:icon="@mipmap/ic_launcher_admin"
-        android:roundIcon="@mipmap/ic_launcher_admin" />
+        android:roundIcon="@mipmap/ic_launcher_admin">
+        <activity
+            android:name=".MainActivity">
+            <!-- OAuth callback for Admin Google Sign-In -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="io.supabase.rajinventory" android:host="login-callback"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="inventoza" android:host="auth-callback"/>
+            </intent-filter>
+        </activity>
+    </application>
 </manifest>

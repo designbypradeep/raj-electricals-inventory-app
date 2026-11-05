@@ -32,11 +32,13 @@ import 'suppliers_page.dart';
 import 'customers_page.dart';
 import '../services/supabase_service.dart';
 import '../services/accounting_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/supabase_models.dart' as supabase_models;
 import '../models/sales_purchase_models.dart' as models;
 import '../widgets/page_header.dart';
 import 'archived_products_page.dart';
 import 'order_history_page.dart';
+import 'billing_page.dart';
 import '../theme/status_colors.dart';
 // import '../theme/brand_accents.dart'; // no longer needed after semantic color mapping
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -77,6 +79,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Map<String, int> _categoryCounts = {};
   Map<String, dynamic> _stats = {};
   supabase_models.BusinessProfile? _businessProfile;
+  supabase_models.SubscriptionInfo? _subscriptionInfo;
   // ignore: unused_field
   bool _hasPurchases = false;
   // ignore: unused_field
@@ -287,6 +290,15 @@ class _DashboardPageState extends State<DashboardPage> {
   Map<String, dynamic> _realtimeStats = {};
   bool _isLoadingCharts = true;
   int _selectedTabIndex = 0;
+  int _selectedAnalyticsTab = 0;
+
+  // Time range filter: 'today', 'month', 'all' (matching Inventoza Web)
+  String _activeTimeRange = 'month';
+  List<models.Sale> _cachedSales = [];
+  List<models.Purchase> _cachedPurchases = [];
+  List<supabase_models.Product> _cachedProducts = [];
+  List<Map<String, dynamic>> _cachedReplacements = [];
+  List<Map<String, dynamic>> _cachedReturns = [];
 
   StatusColors _statusColors(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
@@ -401,6 +413,11 @@ class _DashboardPageState extends State<DashboardPage> {
       final returnsList = await SupabaseService.getReturns();
 
       _supabaseProducts = supabaseProducts;
+      _cachedProducts = supabaseProducts;
+      _cachedSales = sales;
+      _cachedPurchases = purchases;
+      _cachedReplacements = replacements;
+      _cachedReturns = returnsList;
 
       _calculateStatsFromSupabase(
         supabaseProducts,
@@ -494,37 +511,27 @@ class _DashboardPageState extends State<DashboardPage> {
     List<models.Sale> sales,
     List<models.Purchase> purchases,
     List<Map<String, dynamic>> replacements,
-    List<Map<String, dynamic>> returnsList,
-  ) {
-    final Map<String, int> grouped = {};
-    int lowStockCount = 0;
-    final totalInventoryValue = products.fold<double>(
-      0.0,
-      (sum, product) =>
-          sum + (product.sellingPrice ?? 0) * product.currentStock,
-    );
+    List<Map<String, dynamic>> returnsList, {
+    String? timeRange,
+  }) {
+    final rangeKey = timeRange ?? _activeTimeRange;
+    final now = DateTime.now();
+    DateTime start;
+    DateTime end = now;
 
-    // Calculate product statistics
-    for (var product in products) {
-      final category = product.category ?? 'Uncategorized';
-      grouped[category] = (grouped[category] ?? 0) + 1;
-
-      if (product.currentStock <= 5 && product.currentStock > 0) {
-        lowStockCount++;
-      }
+    if (rangeKey == 'today') {
+      start = DateTime(now.year, now.month, now.day);
+      end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+    } else if (rangeKey == 'month') {
+      start = DateTime(now.year, now.month, 1);
+      end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+    } else {
+      // 'all'
+      start = DateTime(1970);
+      end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
     }
 
-    // Period range: from earliest record to now (matches previous lifetime behavior)
-    DateTime earliest = DateTime.now();
-    for (final s in sales) {
-      final d = s.createdAt ?? s.saleDate;
-      if (d != null && d.isBefore(earliest)) earliest = d;
-    }
-    for (final p in purchases) {
-      final d = p.purchaseDate ?? p.createdAt;
-      if (d != null && d.isBefore(earliest)) earliest = d;
-    }
-    final range = DateTimeRange(start: earliest, end: DateTime.now());
+    final period = DateTimeRange(start: start, end: end);
 
     // Centralized, accurate net summary (handles refunds, replacements, FIFO)
     final net = AccountingService.computeNetSummary(
@@ -533,53 +540,91 @@ class _DashboardPageState extends State<DashboardPage> {
       products: products,
       replacements: replacements,
       returnsList: returnsList,
-      period: range,
+      period: period,
     );
 
-    // Compute today's counts using raw sales (UI-only stat)
-    int todaysSalesCount = 0;
-    double todaysRevenue = 0;
-    final today = DateTime.now();
-    for (var sale in sales) {
-      final saleAmount = sale.totalAmount;
-      if (sale.createdAt != null &&
-          sale.createdAt!.year == today.year &&
-          sale.createdAt!.month == today.month &&
-          sale.createdAt!.day == today.day) {
-        todaysSalesCount++;
-        todaysRevenue += saleAmount;
+    // Filter sales to range
+    final rangeSales = sales.where((s) {
+      final d = s.createdAt ?? s.saleDate;
+      if (d == null) return false;
+      return d.isAfter(start.subtract(const Duration(milliseconds: 1))) &&
+          d.isBefore(end.add(const Duration(milliseconds: 1)));
+    }).toList();
+
+    // Filter returns to range
+    final rangeReturns = returnsList.where((r) {
+      final createdStr = r['created_at']?.toString();
+      if (createdStr == null) return false;
+      final d = DateTime.tryParse(createdStr);
+      if (d == null) return false;
+      return d.isAfter(start.subtract(const Duration(milliseconds: 1))) &&
+          d.isBefore(end.add(const Duration(milliseconds: 1)));
+    }).toList();
+
+    // Filter replacements to range
+    final rangeReplacements = replacements.where((r) {
+      final createdStr = r['created_at']?.toString();
+      if (createdStr == null) return false;
+      final d = DateTime.tryParse(createdStr);
+      if (d == null) return false;
+      return d.isAfter(start.subtract(const Duration(milliseconds: 1))) &&
+          d.isBefore(end.add(const Duration(milliseconds: 1)));
+    }).toList();
+
+    // Low stock items
+    int lowStockCount = 0;
+    final Map<String, int> grouped = {};
+    final totalInventoryValue = products.fold<double>(
+      0.0,
+      (sum, product) =>
+          sum + (product.sellingPrice ?? 0) * product.currentStock,
+    );
+
+    for (var product in products) {
+      final category = product.category ?? 'Uncategorized';
+      grouped[category] = (grouped[category] ?? 0) + 1;
+      if (product.currentStock <= 5 && product.currentStock > 0) {
+        lowStockCount++;
       }
     }
 
-    // Purchases total for display
+    // Today's pulse stat (for Executive Header)
+    int todaysSalesCount = 0;
+    double todaysRevenue = 0;
+    for (var sale in sales) {
+      if (sale.createdAt != null &&
+          sale.createdAt!.year == now.year &&
+          sale.createdAt!.month == now.month &&
+          sale.createdAt!.day == now.day) {
+        todaysSalesCount++;
+        todaysRevenue += sale.totalAmount;
+      }
+    }
+
+    // Purchases total
     double totalPurchaseAmount = 0;
     for (var purchase in purchases) {
       totalPurchaseAmount += purchase.totalAmount;
     }
-
-    // Other counts
-    int totalReplacements = replacements.length;
-    int totalReturns = returnsList.length;
 
     setState(() {
       _hasPurchases =
           products.isNotEmpty || sales.isNotEmpty || purchases.isNotEmpty;
       _categoryCounts = grouped;
       _stats = {
-        // Use gross revenue to match Sales History's "Total Revenue"
         'totalRevenue': net.grossRevenue,
-        'salesCount': sales.length,
+        'salesCount': rangeSales.length,
         'lowStockCount': lowStockCount,
         'totalProfit': net.netProfit,
-        'totalReturns': totalReturns,
+        'totalReturns': rangeReturns.length,
         'totalRefund': net.refunds,
-        'totalReplacements': totalReplacements,
-        'todaysReturns': 0, // kept simple for dashboard glance
-        'todaysReplacements': 0, // optional: compute if needed
+        'totalReplacements': rangeReplacements.length,
+        'todaysReturns': 0,
+        'todaysReplacements': 0,
         'warrantyLoss': net.warrantyLoss,
         'todaysSales': todaysSalesCount,
         'todaysRevenue': todaysRevenue,
-        'itemsSold': sales.length, // Count of sales transactions
+        'itemsSold': rangeSales.length,
         'outOfStock': products.where((p) => p.currentStock == 0).length,
         'totalPurchases': purchases.length,
         'totalPurchaseValue': totalPurchaseAmount,
@@ -593,19 +638,35 @@ class _DashboardPageState extends State<DashboardPage> {
     List<models.Purchase> purchases,
     List<supabase_models.Product> products,
     List<Map<String, dynamic>> replacements,
-    List<Map<String, dynamic>> returnsList,
-  ) async {
+    List<Map<String, dynamic>> returnsList, {
+    String? timeRange,
+  }) async {
+    final rangeKey = timeRange ?? _activeTimeRange;
     final now = DateTime.now();
-    final sevenDaysAgo = now.subtract(const Duration(days: 7));
-    final thirtyDaysAgo = now.subtract(const Duration(days: 30));
-    final sixtyDaysAgo = now.subtract(const Duration(days: 60));
-    final today = DateTime(now.year, now.month, now.day);
+    DateTime start;
+    DateTime end = now;
 
-    // Daily Sales Data (last 7 days)
+    if (rangeKey == 'today') {
+      start = DateTime(now.year, now.month, now.day);
+      end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+    } else if (rangeKey == 'month') {
+      start = DateTime(now.year, now.month, 1);
+      end = now;
+    } else {
+      start = DateTime(2020);
+      end = now;
+    }
+
+    // Daily Sales Data (filtered by selected range)
     final Map<String, double> dailySalesMap = {};
     for (var sale in sales) {
-      if (sale.createdAt != null && sale.createdAt!.isAfter(sevenDaysAgo)) {
-        final dateKey = DateFormat('MMM d').format(sale.createdAt!);
+      final d = sale.createdAt ?? sale.saleDate;
+      if (d != null &&
+          d.isAfter(start.subtract(const Duration(seconds: 1))) &&
+          d.isBefore(end.add(const Duration(seconds: 1)))) {
+        final dateKey = rangeKey == 'today'
+            ? DateFormat('h a').format(d)
+            : DateFormat('MMM d').format(d);
         dailySalesMap[dateKey] =
             (dailySalesMap[dateKey] ?? 0) + sale.totalAmount;
       }
@@ -626,20 +687,20 @@ class _DashboardPageState extends State<DashboardPage> {
         .map((e) => {'category': e.key, 'revenue': e.value})
         .toList();
 
-    // Daily Profits using FIFO
+    // Daily Profits using FIFO filtered by range
     final fifoForCharts = _computeFifoProfit(sales, purchases, products);
     _dailyProfits = fifoForCharts.dailyProfits.entries
         .where((e) {
-          // Only include last 7 days
+          if (rangeKey == 'all') return true;
           try {
             final parsedDate = DateFormat('MMM d').parse(e.key);
-            // Rebuild with current year to compare window correctly
             final date = DateTime(
               DateTime.now().year,
               parsedDate.month,
               parsedDate.day,
             );
-            return date.isAfter(sevenDaysAgo);
+            return date.isAfter(start.subtract(const Duration(days: 1))) &&
+                date.isBefore(end.add(const Duration(days: 1)));
           } catch (_) {
             return true;
           }
@@ -648,7 +709,7 @@ class _DashboardPageState extends State<DashboardPage> {
         .toList();
 
     // Inventory Aging Analysis
-    int freshStock = 0, agingStock = 0, deadStock = 0;
+    num freshStock = 0, agingStock = 0, deadStock = 0;
     for (var product in products) {
       if (product.createdAt != null) {
         final ageInDays = now.difference(product.createdAt!).inDays;
@@ -667,19 +728,16 @@ class _DashboardPageState extends State<DashboardPage> {
       'dead': deadStock,
     };
 
-    // Growth Data
+    final thirtyDaysAgo = now.subtract(const Duration(days: 30));
+    final sixtyDaysAgo = now.subtract(const Duration(days: 60));
     final currentMonthSales = sales
-        .where(
-          (s) => s.createdAt != null && s.createdAt!.isAfter(thirtyDaysAgo),
-        )
+        .where((s) => s.createdAt != null && s.createdAt!.isAfter(thirtyDaysAgo))
         .toList();
     final previousMonthSales = sales
-        .where(
-          (s) =>
-              s.createdAt != null &&
-              s.createdAt!.isAfter(sixtyDaysAgo) &&
-              s.createdAt!.isBefore(thirtyDaysAgo),
-        )
+        .where((s) =>
+            s.createdAt != null &&
+            s.createdAt!.isAfter(sixtyDaysAgo) &&
+            s.createdAt!.isBefore(thirtyDaysAgo))
         .toList();
 
     final currentRevenue = currentMonthSales.fold<double>(
@@ -691,25 +749,22 @@ class _DashboardPageState extends State<DashboardPage> {
       (sum, sale) => sum + sale.totalAmount,
     );
 
-    final revenueGrowth = previousRevenue > 0
-        ? ((currentRevenue - previousRevenue) / previousRevenue) * 100
-        : 0.0;
-    final salesGrowth = previousMonthSales.isNotEmpty
-        ? ((currentMonthSales.length - previousMonthSales.length) /
+    _growthData = {
+      'revenueGrowth': previousRevenue > 0
+          ? ((currentRevenue - previousRevenue) / previousRevenue) * 100
+          : 0.0,
+      'salesGrowth': previousMonthSales.isNotEmpty
+          ? ((currentMonthSales.length - previousMonthSales.length) /
                   previousMonthSales.length) *
               100
-        : 0.0;
-
-    _growthData = {
-      'revenueGrowth': revenueGrowth,
-      'salesGrowth': salesGrowth,
+          : 0.0,
       'currentRevenue': currentRevenue,
       'previousRevenue': previousRevenue,
     };
 
-    // Real-time Stats
+    final todayDate = DateTime(now.year, now.month, now.day);
     final todaysSales = sales
-        .where((s) => s.createdAt != null && s.createdAt!.isAfter(today))
+        .where((s) => s.createdAt != null && s.createdAt!.isAfter(todayDate))
         .toList();
 
     final lowStockCount = products
@@ -722,7 +777,6 @@ class _DashboardPageState extends State<DashboardPage> {
       (sum, sale) => sum + sale.totalAmount,
     );
 
-    // Compute units sold today from actual sales items
     final todaysUnitsSold = todaysSales.fold<int>(
       0,
       (sum, sale) =>
@@ -737,14 +791,28 @@ class _DashboardPageState extends State<DashboardPage> {
       'lowStock': lowStockCount,
       'topSeller': _computeTopSellerFromSales(sales, products),
     };
+  }
 
-    // Merge chart-derived metrics into _stats without discarding existing KPIs
-    _stats = {
-      ..._stats,
-      // Preserve totalRevenue and totalProfit computed with returns/replacements
-      'lowStockCount': lowStockCount,
-      'salesCount': sales.length,
-    };
+  void _switchTimeRange(String rangeKey) {
+    if (_activeTimeRange == rangeKey) return;
+    HapticFeedback.selectionClick();
+    setState(() => _activeTimeRange = rangeKey);
+    _calculateStatsFromSupabase(
+      _cachedProducts,
+      _cachedSales,
+      _cachedPurchases,
+      _cachedReplacements,
+      _cachedReturns,
+      timeRange: rangeKey,
+    );
+    _loadChartData(
+      _cachedSales,
+      _cachedPurchases,
+      _cachedProducts,
+      _cachedReplacements,
+      _cachedReturns,
+      timeRange: rangeKey,
+    );
   }
 
   // Determine top seller from actual sales items across all time in memory
@@ -800,8 +868,10 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _loadBusinessProfile() async {
     try {
       final profile = await SupabaseService.getBusinessProfile();
+      final subInfo = await SupabaseService.getSubscriptionInfo();
       setState(() {
         _businessProfile = profile;
+        _subscriptionInfo = subInfo;
         _isLoadingBusiness = false;
       });
       // After we know business_id, subscribe to realtime changes for live updates
@@ -814,6 +884,101 @@ class _DashboardPageState extends State<DashboardPage> {
         _isLoadingBusiness = false;
       });
     }
+  }
+
+  Future<void> _openBillingWeb() async {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => BillingPage(db: widget.db)),
+    );
+  }
+
+  bool _assertFeature(
+    BuildContext context,
+    String featureKey,
+    String featureName,
+  ) {
+    if (_subscriptionInfo != null && _subscriptionInfo!.features.isNotEmpty) {
+      if (!_subscriptionInfo!.hasFeature(featureKey)) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Icon(
+                  Icons.workspace_premium_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Text('$featureName Not Included'),
+              ],
+            ),
+            content: Text(
+              '$featureName is not included in your current plan (${_subscriptionInfo!.planName}).\n\nUpgrade your plan on the Inventoza web portal to unlock this feature.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Dismiss'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _openBillingWeb();
+                },
+                child: const Text('Upgrade Plan'),
+              ),
+            ],
+          ),
+        );
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _assertWritable(BuildContext context, String actionDescription) {
+    if (_businessProfile != null && !_businessProfile!.isWritable) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.lock_clock_outlined,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(width: 8),
+              const Text('Action Locked'),
+            ],
+          ),
+          content: Text(
+            'Your account is in read-only mode because your subscription has expired.\n\nPlease upgrade your plan to $actionDescription.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Dismiss'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _openBillingWeb();
+              },
+              child: const Text('Upgrade Plan'),
+            ),
+          ],
+        ),
+      );
+      return false;
+    }
+    return true;
   }
 
   void _scheduleReload() {
@@ -1210,16 +1375,19 @@ class _DashboardPageState extends State<DashboardPage> {
                 MaterialPageRoute(builder: (context) => const InventoryPage()),
               );
             } else if (label == 'Sales') {
+              if (!_assertWritable(context, 'record a sale')) return;
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const SalesPage()),
               ).then((_) => _loadDashboardData());
             } else if (label == 'Purchase') {
+              if (!_assertWritable(context, 'record a purchase')) return;
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const PurchasePage()),
               ).then((_) => _loadDashboardData());
             } else if (label == 'Reports') {
+              if (!_assertFeature(context, 'reports', 'Reports & Analytics')) return;
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const ReportsPage()),
@@ -1396,13 +1564,19 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           );
         } else if (value == 'Returns') {
+          if (!_assertWritable(context, 'process a return')) return;
+          if (!_assertFeature(context, 'returns', 'Customer Returns')) return;
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => ReturnsPage(db: widget.db)),
           );
         } else if (value == 'Replacements') {
+          if (!_assertWritable(context, 'process a replacement')) return;
+          if (!_assertFeature(context, 'returns', 'Customer Replacements')) return;
           Navigator.pushNamed(context, '/replacements');
         } else if (value == 'Supplier Returns') {
+          if (!_assertWritable(context, 'create a supplier return')) return;
+          if (!_assertFeature(context, 'returns', 'Supplier Returns')) return;
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -1410,6 +1584,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           );
         } else if (value == 'Supplier Credits') {
+          if (!_assertFeature(context, 'reports', 'Supplier Credits')) return;
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -1441,6 +1616,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           );
         } else if (value == 'Reports') {
+          if (!_assertFeature(context, 'reports', 'Reports & Analytics')) return;
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const ReportsPage()),
@@ -1594,7 +1770,7 @@ class _DashboardPageState extends State<DashboardPage> {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -1625,21 +1801,21 @@ class _DashboardPageState extends State<DashboardPage> {
                 tag: 'business_logo',
                 child: Container(
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
                         color: Theme.of(
                           context,
                         ).colorScheme.primary.withAlpha(51),
-                        blurRadius: 8,
+                        blurRadius: 6,
                         offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                  child: _buildBusinessLogo(size: 40, radius: 14),
+                  child: _buildBusinessLogo(size: 36, radius: 12),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 10),
               // Enhanced Brand Name with better typography
               Expanded(
                 child: Column(
@@ -1651,7 +1827,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 17,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.3,
                         color: Theme.of(context).colorScheme.onSurface,
@@ -1662,7 +1838,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     Text(
                       'Dashboard',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                         color: Theme.of(
                           context,
@@ -1673,7 +1849,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               // Modern Action Buttons
               Row(
                 children: [
@@ -1684,13 +1860,13 @@ class _DashboardPageState extends State<DashboardPage> {
                     onTap: _showThemeDialog,
                     tooltip: 'Toggle theme',
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildModernActionButton(
                     icon: Icons.history_rounded,
                     onTap: () => _showModernHistorySheet(),
                     tooltip: 'History',
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildModernProfileButton(),
                 ],
               ),
@@ -1715,15 +1891,15 @@ class _DashboardPageState extends State<DashboardPage> {
             HapticFeedback.lightImpact();
             onTap();
           },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           child: Container(
-            width: 44,
-            height: 44,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: Theme.of(
                 context,
               ).colorScheme.surfaceContainerHighest.withAlpha(153),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: Theme.of(context).colorScheme.outline.withAlpha(26),
                 width: 0.5,
@@ -1731,7 +1907,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             child: Icon(
               icon,
-              size: 20,
+              size: 18,
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
@@ -1755,10 +1931,10 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             );
           },
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           child: Container(
-            width: 44,
-            height: 44,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -1768,7 +1944,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   Theme.of(context).colorScheme.primary.withAlpha(26),
                 ],
               ),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: Theme.of(context).colorScheme.primary.withAlpha(51),
                 width: 0.5,
@@ -1776,7 +1952,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             child: Icon(
               Icons.person_rounded,
-              size: 20,
+              size: 18,
               color: Theme.of(context).colorScheme.primary,
             ),
           ),
@@ -2530,6 +2706,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           'System Health',
                           Icons.health_and_safety,
                         ),
+                        _buildMobileMoreItem('Billing & Plan', Icons.credit_card),
                         _buildMobileMoreItem('Archive', Icons.archive),
                         _buildMobileMoreItem('Settings', Icons.settings),
                         _buildMobileMoreItem('Customers', Icons.people_outline),
@@ -2552,6 +2729,8 @@ class _DashboardPageState extends State<DashboardPage> {
         onTap: () {
           Navigator.pop(context);
           if (label == 'Returns') {
+            if (!_assertWritable(context, 'process a return')) return;
+            if (!_assertFeature(context, 'returns', 'Customer Returns')) return;
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -2559,6 +2738,7 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             );
           } else if (label == 'Reports') {
+            if (!_assertFeature(context, 'reports', 'Reports & Analytics')) return;
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const ReportsPage()),
@@ -2576,6 +2756,8 @@ class _DashboardPageState extends State<DashboardPage> {
               MaterialPageRoute(builder: (context) => const RequestsPage()),
             );
           } else if (label == 'Replacements') {
+            if (!_assertWritable(context, 'process a replacement')) return;
+            if (!_assertFeature(context, 'returns', 'Customer Replacements')) return;
             Navigator.pushNamed(context, '/replacements');
           } else if (label == 'System Health') {
             Navigator.push(
@@ -2592,6 +2774,13 @@ class _DashboardPageState extends State<DashboardPage> {
               context,
               MaterialPageRoute(
                 builder: (context) => const PurchaseHistoryPage(),
+              ),
+            );
+          } else if (label == 'Billing & Plan') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => BillingPage(db: widget.db),
               ),
             );
           } else if (label == 'Archive') {
@@ -2702,31 +2891,38 @@ class _DashboardPageState extends State<DashboardPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Read-Only Status Banner
+            // Read-Only Status Banner or Trial Expiration Warning
             if (_businessProfile != null &&
-                [
-                  'PENDING',
-                  'SUSPENDED',
-                  'EXPIRED',
-                ].contains(_businessProfile!.status?.toUpperCase()))
+                (!_businessProfile!.isWritable ||
+                    (_businessProfile!.status?.toUpperCase() == 'TRIAL' &&
+                        _businessProfile!.daysRemainingInTrial != null &&
+                        _businessProfile!.daysRemainingInTrial! <= 3)))
               Container(
                 width: double.infinity,
                 margin: EdgeInsets.only(bottom: isMobile ? 12 : 16),
                 padding: EdgeInsets.all(isMobile ? 12 : 16),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(12),
+                  color: _businessProfile!.isExpired
+                      ? Theme.of(context).colorScheme.errorContainer
+                      : Colors.amber.shade900.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Theme.of(context).colorScheme.error,
+                    color: _businessProfile!.isExpired
+                        ? Theme.of(context).colorScheme.error
+                        : Colors.amber.shade600,
                     width: 1,
                   ),
                 ),
                 child: Row(
                   children: [
                     Icon(
-                      Icons.lock_outline,
-                      color: Theme.of(context).colorScheme.error,
-                      size: isMobile ? 20 : 24,
+                      _businessProfile!.isExpired
+                          ? Icons.lock_outline
+                          : Icons.timelapse,
+                      color: _businessProfile!.isExpired
+                          ? Theme.of(context).colorScheme.error
+                          : Colors.amber.shade700,
+                      size: isMobile ? 24 : 28,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -2734,50 +2930,240 @@ class _DashboardPageState extends State<DashboardPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _businessProfile!.status?.toUpperCase() == 'PENDING'
-                                ? 'Account Pending Approval'
-                                : _businessProfile!.status?.toUpperCase() ==
-                                      'EXPIRED'
-                                ? 'Trial Expired'
-                                : 'Account Suspended',
+                            _businessProfile!.isExpired
+                                ? 'Subscription Expired - Read-Only Mode'
+                                : 'Trial Expiring Soon (${_businessProfile!.daysRemainingInTrial}d left)',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onErrorContainer,
+                              color: _businessProfile!.isExpired
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer
+                                  : Colors.amber.shade900,
                               fontSize: isMobile ? 14 : 16,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Read-only mode enabled. You cannot add or edit data.',
+                            _businessProfile!.isExpired
+                                ? 'You can view data, but adding products, sales, and purchases are locked. Upgrade to restore full access.'
+                                : 'Upgrade to a paid plan on the Inventoza web portal to prevent service interruption.',
                             style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onErrorContainer
-                                  .withValues(alpha: 0.8),
+                              color: _businessProfile!.isExpired
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer
+                                      .withValues(alpha: 0.85)
+                                  : Colors.amber.shade900.withValues(alpha: 0.85),
                               fontSize: isMobile ? 12 : 14,
                             ),
                           ),
                         ],
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _openBillingWeb,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _businessProfile!.isExpired
+                            ? Theme.of(context).colorScheme.error
+                            : Colors.amber.shade700,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 12 : 16,
+                          vertical: isMobile ? 8 : 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Upgrade',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            _buildPageHeader(),
-            SizedBox(height: isMobile ? 16 : 24),
+            _buildExecutiveHeader(),
+            SizedBox(height: isMobile ? 12 : 16),
             _buildKeyMetrics(),
-            SizedBox(height: isMobile ? 16 : 24),
-            _buildChartsSection(),
-            SizedBox(height: isMobile ? 16 : 24),
-            _buildRealtimeMetrics(),
-            SizedBox(height: isMobile ? 16 : 24),
-            _buildGrowthAnalytics(),
-            SizedBox(height: isMobile ? 16 : 24),
+            SizedBox(height: isMobile ? 16 : 20),
+            _buildTabbedAnalytics(),
+            SizedBox(height: isMobile ? 16 : 20),
             _buildQuickActions(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTabbedAnalytics() {
+    return DashboardCharts.buildTabbedAnalytics(
+      selectedTab: _selectedAnalyticsTab,
+      onTabChanged: (index) {
+        setState(() => _selectedAnalyticsTab = index);
+      },
+      dailySales: _dailySales,
+      categorySales: _categorySales,
+      dailyProfits: _dailyProfits,
+      inventoryAging: _inventoryAging,
+      realtimeStats: _realtimeStats,
+      growthData: _growthData,
+      isLoading: _isLoadingCharts,
+    );
+  }
+
+  Widget _buildExecutiveHeader() {
+    final width = MediaQuery.of(context).size.width;
+    final isMobile = width < 480;
+
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12
+        ? 'Good morning'
+        : hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+
+    final formattedDate = DateFormat('EEE, d MMM').format(DateTime.now());
+    final todaysRevenue = (_stats['todaysRevenue'] as num?) ?? 0;
+    final todaysSales = (_stats['todaysSales'] as num?) ?? 0;
+    final formattedTodayRevenue = NumberFormat.currency(
+      locale: 'en_IN',
+      symbol: '₹',
+      decimalDigits: 0,
+    ).format(todaysRevenue);
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 14 : 20,
+        vertical: isMobile ? 12 : 14,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Theme.of(context).colorScheme.primary.withAlpha(24),
+            Theme.of(context).cardColor,
+            Theme.of(context).colorScheme.surface,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withAlpha(40),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withAlpha(14),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '$greeting!',
+                          style: TextStyle(
+                            fontSize: isMobile ? 16 : 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withAlpha(26),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.green.withAlpha(60)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Colors.green,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Text(
+                                'LIVE',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      todaysSales > 0
+                          ? "Today: $formattedTodayRevenue ($todaysSales sales)"
+                          : "Today's sales ready • Live sync active",
+                      style: TextStyle(
+                        fontSize: isMobile ? 12 : 13,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(90),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.calendar_today_outlined,
+                      size: 12,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      formattedDate,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: isMobile ? 10 : 12),
+          _buildTimeRangeSelector(),
+        ],
       ),
     );
   }
@@ -2838,6 +3224,7 @@ class _DashboardPageState extends State<DashboardPage> {
           icon: Icons.bar_chart,
           color: Theme.of(context).colorScheme.primary,
           onPressed: () {
+            if (!_assertFeature(context, 'reports', 'Reports & Analytics')) return;
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const ReportsPage()),
@@ -2860,6 +3247,85 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  Widget _buildTimeRangeSelector() {
+    final ranges = [
+      {'key': 'today', 'label': 'Today', 'icon': Icons.today_rounded},
+      {'key': 'month', 'label': 'This Month', 'icon': Icons.calendar_month_rounded},
+      {'key': 'all', 'label': 'All Time', 'icon': Icons.all_inclusive_rounded},
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(3.5),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(100),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withAlpha(25),
+        ),
+      ),
+      child: Row(
+        children: ranges.map((r) {
+          final isSelected = _activeTimeRange == r['key'];
+          return Expanded(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _switchTimeRange(r['key'] as String),
+                borderRadius: BorderRadius.circular(11),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(11),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withAlpha(70),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        r['icon'] as IconData,
+                        size: 13,
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        r['label'] as String,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.onPrimary
+                              : Theme.of(context).textTheme.bodySmall?.color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   Widget _buildKeyMetrics() {
     final isMobile = MediaQuery.of(context).size.width < 480;
     return Column(
@@ -2869,55 +3335,76 @@ class _DashboardPageState extends State<DashboardPage> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: 32,
-              height: 32,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.primary.withAlpha(26),
                 border: Border.all(
                   color: Theme.of(context).colorScheme.primary.withAlpha(51),
                 ),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 Icons.insights,
-                size: 16,
+                size: 15,
                 color: Theme.of(context).colorScheme.primary,
               ),
             ),
-            const SizedBox(width: 12),
-            const Text(
+            const SizedBox(width: 10),
+            Text(
               'Key Performance Metrics',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: isMobile ? 18 : 20,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
         SizedBox(height: isMobile ? 8 : 12),
         LayoutBuilder(
           builder: (context, constraints) {
-            final crossAxisCount = constraints.maxWidth > 768
-                ? 3
-                : constraints.maxWidth > 480
-                ? 2
-                : 1;
+            final isMobile = constraints.maxWidth <= 480;
+            final crossAxisCount = constraints.maxWidth > 768 ? 3 : 2;
+
+            final revenueNum = (_stats['totalRevenue'] as num?) ?? 0;
+            final profitNum = (_stats['totalProfit'] as num?) ?? 0;
+            final refundNum = (_stats['totalRefund'] as num?) ?? 0;
+
+            final revenueFormatted = NumberFormat.currency(
+              locale: 'en_IN',
+              symbol: '₹',
+              decimalDigits: 0,
+            ).format(revenueNum);
+
+            final profitFormatted = NumberFormat.currency(
+              locale: 'en_IN',
+              symbol: '₹',
+              decimalDigits: 0,
+            ).format(profitNum);
+
+            final refundFormatted = NumberFormat.currency(
+              locale: 'en_IN',
+              symbol: '₹',
+              decimalDigits: 0,
+            ).format(refundNum);
+
             return GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               crossAxisCount: crossAxisCount,
-              crossAxisSpacing: constraints.maxWidth <= 480 ? 10 : 12,
-              mainAxisSpacing: constraints.maxWidth <= 480 ? 10 : 12,
-              childAspectRatio: constraints.maxWidth > 768
-                  ? 1.8
-                  : constraints.maxWidth > 480
-                  ? 1.5
-                  : 2.0,
+              crossAxisSpacing: isMobile ? 8 : 12,
+              mainAxisSpacing: isMobile ? 8 : 12,
+              childAspectRatio: isMobile ? 1.55 : (constraints.maxWidth > 768 ? 1.8 : 1.5),
               children: [
                 _buildMetricCard(
                   'Total Revenue',
-                  '₹${(_stats['totalRevenue'] ?? 0).toStringAsFixed(0)}',
-                  Icons.account_balance_wallet,
+                  revenueFormatted,
+                  Icons.account_balance_wallet_outlined,
                   _statusColors(context).success,
                   'From ${_stats['salesCount'] ?? 0} sales',
                   onTap: () {
+                    HapticFeedback.lightImpact();
+                    if (!_assertFeature(context, 'reports', 'Financial Reports')) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -2931,15 +3418,17 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
                 _buildMetricCard(
                   'Total Profit/Loss',
-                  '₹${(_stats['totalProfit'] ?? 0).toStringAsFixed(0)}',
-                  (_stats['totalProfit'] ?? 0) >= 0
+                  profitFormatted,
+                  profitNum >= 0
                       ? Icons.trending_up
                       : Icons.trending_down,
-                  (_stats['totalProfit'] ?? 0) >= 0
+                  profitNum >= 0
                       ? _statusColors(context).success
                       : Theme.of(context).colorScheme.error,
-                  (_stats['totalProfit'] ?? 0) >= 0 ? 'Profit' : 'Loss',
+                  profitNum >= 0 ? 'Profit' : 'Loss',
                   onTap: () {
+                    HapticFeedback.lightImpact();
+                    if (!_assertFeature(context, 'reports', 'Financial Reports')) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -2954,10 +3443,12 @@ class _DashboardPageState extends State<DashboardPage> {
                 _buildMetricCard(
                   'Low Stock Items',
                   '${_stats['lowStockCount'] ?? 0}',
-                  Icons.warning,
+                  Icons.warning_amber_rounded,
                   _statusColors(context).warning,
                   'Items ≤5 in stock',
                   onTap: () {
+                    HapticFeedback.lightImpact();
+                    if (!_assertFeature(context, 'reports', 'Inventory Reports')) return;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -2970,9 +3461,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 _buildMetricCard(
                   'Total Returns',
                   '${_stats['totalReturns'] ?? 0}',
-                  Icons.assignment_return,
+                  Icons.assignment_return_outlined,
                   Theme.of(context).colorScheme.error,
-                  '₹${(_stats['totalRefund'] ?? 0).toStringAsFixed(0)} refunded',
+                  '$refundFormatted refunded',
                 ),
                 _buildMetricCard(
                   'Total Replacements',
@@ -2984,7 +3475,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 _buildMetricCard(
                   'Categories',
                   '${_categoryCounts.length}',
-                  Icons.category,
+                  Icons.category_outlined,
                   _statusColors(context).info,
                   'Product categories',
                 ),
@@ -3010,7 +3501,7 @@ class _DashboardPageState extends State<DashboardPage> {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
         hoverColor: Colors.transparent,
@@ -3019,13 +3510,16 @@ class _DashboardPageState extends State<DashboardPage> {
           builder: (hovered) => AnimatedContainer(
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeOutCubic,
-            padding: EdgeInsets.all(isMobile ? 16 : 20),
-            constraints: BoxConstraints(minHeight: isMobile ? 120 : 140),
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 10 : 16,
+              vertical: isMobile ? 10 : 16,
+            ),
+            constraints: BoxConstraints(minHeight: isMobile ? 78 : 120),
             decoration: BoxDecoration(
               color: hovered
                   ? Theme.of(context).cardColor.withAlpha(229)
                   : Theme.of(context).cardColor.withAlpha(178),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: hovered ? color.withAlpha(102) : color.withAlpha(51),
                 width: hovered ? 1.5 : 1,
@@ -3033,25 +3527,18 @@ class _DashboardPageState extends State<DashboardPage> {
               boxShadow: [
                 // Primary colored shadow for depth
                 BoxShadow(
-                  color: color.withAlpha(hovered ? 51 : 31),
-                  blurRadius: hovered ? 28 : 18,
-                  offset: Offset(0, hovered ? 14 : 8),
-                  spreadRadius: hovered ? 3 : 1,
+                  color: color.withAlpha(hovered ? 51 : 25),
+                  blurRadius: hovered ? 24 : 14,
+                  offset: Offset(0, hovered ? 10 : 6),
+                  spreadRadius: hovered ? 2 : 0,
                 ),
                 // Secondary shadow for realism
                 BoxShadow(
                   color: Theme.of(
                     context,
-                  ).shadowColor.withAlpha(hovered ? 38 : 20),
-                  blurRadius: hovered ? 12 : 6,
-                  offset: Offset(0, hovered ? 4 : 2),
-                ),
-                // Inner highlight for glassmorphism
-                BoxShadow(
-                  color: Colors.white.withAlpha(hovered ? 26 : 13),
-                  blurRadius: hovered ? 4 : 2,
-                  offset: const Offset(0, -1),
-                  spreadRadius: 0,
+                  ).shadowColor.withAlpha(hovered ? 38 : 16),
+                  blurRadius: hovered ? 10 : 5,
+                  offset: Offset(0, hovered ? 3 : 2),
                 ),
               ],
             ),
@@ -3061,7 +3548,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 Positioned.fill(
                   child: Container(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -3084,19 +3571,21 @@ class _DashboardPageState extends State<DashboardPage> {
                         Expanded(
                           child: Text(
                             title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: isMobile ? 11 : 13,
                               color: Theme.of(
                                 context,
                               ).textTheme.bodyMedium?.color?.withAlpha(178),
                               fontWeight: FontWeight.w600,
-                              letterSpacing: 0.3,
+                              letterSpacing: 0.2,
                             ),
                           ),
                         ),
                         // Modern icon container with enhanced styling
                         Container(
-                          padding: const EdgeInsets.all(12),
+                          padding: EdgeInsets.all(isMobile ? 6 : 10),
                           decoration: BoxDecoration(
                             gradient: hovered
                                 ? LinearGradient(
@@ -3112,60 +3601,46 @@ class _DashboardPageState extends State<DashboardPage> {
                                       color.withAlpha(26),
                                     ],
                                   ),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: hovered
                                   ? color.withAlpha(102)
                                   : color.withAlpha(64),
-                              width: hovered ? 1.5 : 1.2,
+                              width: hovered ? 1.5 : 1,
                             ),
-                            boxShadow: hovered
-                                ? [
-                                    BoxShadow(
-                                      color: color.withAlpha(102),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 6),
-                                    ),
-                                    BoxShadow(
-                                      color: color.withAlpha(51),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ]
-                                : [
-                                    BoxShadow(
-                                      color: color.withAlpha(26),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
                           ),
                           child: Icon(
                             icon,
                             color: hovered ? Colors.white : color,
-                            size: 22,
+                            size: isMobile ? 15 : 20,
                           ),
                         ),
                       ],
                     ),
-                    SizedBox(height: isMobile ? 12 : 16),
+                    SizedBox(height: isMobile ? 6 : 10),
                     // Enhanced value display
-                    Text(
-                      value,
-                      style: TextStyle(
-                        fontSize: isMobile ? 26 : 28,
-                        fontWeight: FontWeight.w800,
-                        color: Theme.of(context).textTheme.headlineSmall?.color,
-                        letterSpacing: -0.5,
-                        height: 1.1,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        value,
+                        style: TextStyle(
+                          fontSize: isMobile ? 21 : 28,
+                          fontWeight: FontWeight.w800,
+                          color: Theme.of(context).textTheme.headlineSmall?.color,
+                          letterSpacing: -0.5,
+                          height: 1.1,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: isMobile ? 2 : 6),
                     // Improved subtitle with better contrast
                     Text(
                       subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: isMobile ? 10 : 12,
                         color: Theme.of(
                           context,
                         ).textTheme.bodyMedium?.color?.withAlpha(153),
@@ -3609,7 +4084,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         SizedBox(height: isMobile ? 12 : 16),
 
-        // Primary Actions - Most Important (Hide if restricted)
+        // Highlighted Operations (Actions not already present in bottom navbar)
         if (!isRestricted)
           LayoutBuilder(
             builder: (context, constraints) {
@@ -3623,16 +4098,16 @@ class _DashboardPageState extends State<DashboardPage> {
                 childAspectRatio: isMobile ? 4.0 : 4.0,
                 children: [
                   _buildPrimaryActionCard(
-                    'Record Sale',
-                    'Log new transaction quickly',
-                    Icons.currency_rupee,
-                    _statusColors(context).success,
+                    'Add Product',
+                    'Register new item into catalog',
+                    Icons.add_box,
+                    Theme.of(context).colorScheme.primary,
                   ),
                   _buildPrimaryActionCard(
-                    'Record Purchase',
-                    'Add new stock items',
-                    Icons.shopping_cart,
-                    _statusColors(context).info,
+                    'View Reports',
+                    'Financial insights & performance',
+                    Icons.bar_chart,
+                    _twColor('purple'),
                   ),
                 ],
               );
@@ -3641,7 +4116,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
         if (!isRestricted) SizedBox(height: isMobile ? 12 : 24),
 
-        // Secondary Actions Grid
+        // Secondary Actions Grid (Focused on secondary operations)
         LayoutBuilder(
           builder: (context, constraints) {
             final crossAxisCount = constraints.maxWidth > 1024
@@ -3658,27 +4133,35 @@ class _DashboardPageState extends State<DashboardPage> {
               childAspectRatio: constraints.maxWidth <= 480 ? 1.5 : 1.6,
               children: [
                 _buildSecondaryActionCard(
-                  'View Inventory',
-                  Icons.bar_chart,
-                  _twColor('teal'),
-                ),
-                _buildSecondaryActionCard(
                   'Business Settings',
                   Icons.business,
                   Theme.of(context).colorScheme.secondary,
                 ),
-                if (!isRestricted)
-                  _buildSecondaryActionCard(
-                    'Create Request',
-                    Icons.people,
-                    _statusColors(context).warning,
-                  ),
-                if (!isRestricted)
-                  _buildSecondaryActionCard(
-                    'Manage Requests',
-                    Icons.settings,
-                    _twColor('purple'),
-                  ),
+                _buildSecondaryActionCard(
+                  'Billing & Plans',
+                  Icons.credit_card_rounded,
+                  Colors.amber.shade700,
+                ),
+                _buildSecondaryActionCard(
+                  'Payment Verification',
+                  Icons.verified,
+                  _statusColors(context).success,
+                ),
+                _buildSecondaryActionCard(
+                  'Order History',
+                  Icons.history,
+                  _twColor('orange'),
+                ),
+                _buildSecondaryActionCard(
+                  'Sales History',
+                  Icons.trending_up,
+                  _twColor('cyan'),
+                ),
+                _buildSecondaryActionCard(
+                  'Purchase History',
+                  Icons.receipt_long,
+                  _twColor('blue'),
+                ),
                 if (!isRestricted)
                   _buildSecondaryActionCard(
                     'Process Returns',
@@ -3691,41 +4174,18 @@ class _DashboardPageState extends State<DashboardPage> {
                     Icons.swap_horiz,
                     _twColor('blue'),
                   ),
-                _buildSecondaryActionCard(
-                  'Sales History',
-                  Icons.trending_up,
-                  _twColor('cyan'),
-                ),
-                _buildSecondaryActionCard(
-                  'Order History',
-                  Icons.history,
-                  _twColor('orange'),
-                ),
-                _buildSecondaryActionCard(
-                  'Purchase History',
-                  Icons.receipt_long,
-                  _twColor('blue'),
-                ),
-                _buildSecondaryActionCard(
-                  'Add Product',
-                  Icons.add_box,
-                  _twColor('purple'),
-                ),
-                _buildSecondaryActionCard(
-                  'View Reports',
-                  Icons.bar_chart,
-                  _twColor('purple'),
-                ),
-                _buildSecondaryActionCard(
-                  'Product Catalog',
-                  Icons.inventory_2,
-                  _twColor('indigo'),
-                ),
-                _buildSecondaryActionCard(
-                  'Payment Verification',
-                  Icons.verified,
-                  _statusColors(context).success,
-                ),
+                if (!isRestricted)
+                  _buildSecondaryActionCard(
+                    'Create Request',
+                    Icons.people,
+                    _statusColors(context).warning,
+                  ),
+                if (!isRestricted)
+                  _buildSecondaryActionCard(
+                    'Manage Requests',
+                    Icons.settings,
+                    _twColor('purple'),
+                  ),
               ],
             );
           },
@@ -3753,15 +4213,19 @@ class _DashboardPageState extends State<DashboardPage> {
         highlightColor: Colors.transparent,
         hoverColor: Colors.transparent,
         onTap: () {
-          if (title == 'Record Sale') {
+          if (title == 'Add Product') {
+            if (!_assertWritable(context, 'add a product')) return;
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const SalesPage()),
+              MaterialPageRoute(
+                builder: (context) => AddProductPage(db: widget.db),
+              ),
             );
-          } else if (title == 'Record Purchase') {
+          } else if (title == 'View Reports') {
+            if (!_assertFeature(context, 'reports', 'Reports & Analytics')) return;
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const PurchasePage()),
+              MaterialPageRoute(builder: (context) => const ReportsPage()),
             );
           }
         },
@@ -3923,6 +4387,7 @@ class _DashboardPageState extends State<DashboardPage> {
         hoverColor: Colors.transparent,
         onTap: () {
           if (title == 'Add Product') {
+            if (!_assertWritable(context, 'add a product')) return;
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -3971,6 +4436,8 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             );
           } else if (title == 'Process Returns') {
+            if (!_assertWritable(context, 'process a return')) return;
+            if (!_assertFeature(context, 'returns', 'Customer Returns')) return;
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -3978,6 +4445,8 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             );
           } else if (title == 'Process Replacements') {
+            if (!_assertWritable(context, 'process a replacement')) return;
+            if (!_assertFeature(context, 'returns', 'Customer Replacements')) return;
             Navigator.pushNamed(context, '/replacements');
           } else if (title == 'Create Request' || title == 'Manage Requests') {
             Navigator.push(
@@ -3992,6 +4461,7 @@ class _DashboardPageState extends State<DashboardPage> {
               MaterialPageRoute(builder: (context) => const InventoryPage()),
             );
           } else if (title == 'Add Product') {
+            if (!_assertWritable(context, 'add a product')) return;
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -4023,6 +4493,7 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             );
           } else if (title == 'View Reports') {
+            if (!_assertFeature(context, 'reports', 'Reports & Analytics')) return;
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const ReportsPage()),
@@ -4032,6 +4503,13 @@ class _DashboardPageState extends State<DashboardPage> {
               context,
               MaterialPageRoute(
                 builder: (context) => const BusinessSettingsPage(),
+              ),
+            );
+          } else if (title == 'Billing & Plans') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => BillingPage(db: widget.db),
               ),
             );
           } else {

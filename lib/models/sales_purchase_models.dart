@@ -289,17 +289,17 @@ class SaleItem {
     if (json['products'] != null) {
       final p = json['products'] as Map<String, dynamic>;
       prod = Product(
-        id: p['id'] as int?,
+        id: (p['id'] as num?)?.toInt(),
         name: p['name'] as String? ?? '',
         brand: p['brand'] as String?,
-        currentStock: p['current_stock'] as int? ?? 0,
+        currentStock: (p['current_stock'] as num?) ?? 0,
       );
     }
     return SaleItem(
-      id: json['id'] as int?,
-      saleId: json['sale_id'] as int? ?? 0,
-      productId: json['product_id'] as int? ?? 0,
-      quantity: json['quantity'] as int? ?? 0,
+      id: (json['id'] as num?)?.toInt(),
+      saleId: (json['sale_id'] as num?)?.toInt() ?? 0,
+      productId: (json['product_id'] as num?)?.toInt() ?? 0,
+      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
       pricePerUnit: json['price_per_unit'] != null
           ? (json['price_per_unit'] as num).toDouble()
           : 0.0,
@@ -338,10 +338,10 @@ class PurchaseItem {
       // Handle nested product data from Supabase join
       final productData = json['products'] as Map<String, dynamic>;
       product = Product(
-        id: productData['id'] as int?,
+        id: (productData['id'] as num?)?.toInt(),
         name: productData['name'] as String? ?? '',
         brand: productData['brand'] as String?,
-        currentStock: productData['current_stock'] as int? ?? 0,
+        currentStock: (productData['current_stock'] as num?) ?? 0,
       );
       if (kDebugMode) {
         print('Parsed nested product: ${product.name}');
@@ -353,10 +353,10 @@ class PurchaseItem {
     }
 
     final item = PurchaseItem(
-      id: json['id'] as int?,
-      purchaseId: json['purchase_id'] as int? ?? 0,
-      productId: json['product_id'] as int? ?? 0,
-      quantity: json['quantity'] as int? ?? 0,
+      id: (json['id'] as num?)?.toInt(),
+      purchaseId: (json['purchase_id'] as num?)?.toInt() ?? 0,
+      productId: (json['product_id'] as num?)?.toInt() ?? 0,
+      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
       pricePerUnit: json['price_per_unit'] != null
           ? (json['price_per_unit'] as num).toDouble()
           : 0.0,
@@ -377,7 +377,7 @@ class Product {
   final int? id;
   final String name;
   final String? brand;
-  final int currentStock;
+  final num currentStock;
 
   const Product({
     this.id,
@@ -388,10 +388,10 @@ class Product {
 
   factory Product.fromJson(Map<String, dynamic> json) {
     return Product(
-      id: json['id'] as int?,
+      id: (json['id'] as num?)?.toInt(),
       name: json['name'] as String? ?? '',
       brand: json['brand'] as String?,
-      currentStock: json['current_stock'] as int? ?? 0,
+      currentStock: (json['current_stock'] as num?) ?? 0,
     );
   }
 }

@@ -815,8 +815,8 @@ class _CatalogPageState extends State<CatalogPage> {
   }
 
   Widget _buildSearchAndActionRow() {
-    final status = _businessProfile?.status?.toUpperCase();
-    final isRestricted = ['PENDING', 'SUSPENDED', 'EXPIRED'].contains(status);
+    final isRestricted =
+        _businessProfile != null && !_businessProfile!.isWritable;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -2542,7 +2542,7 @@ class _CatalogPageState extends State<CatalogPage> {
     );
   }
 
-  Color _getStockColor(int stock) {
+  Color _getStockColor(num stock) {
     if (stock <= 0) return Colors.red;
     if (stock <= 10) return Colors.orange;
     return Colors.green;
@@ -2602,37 +2602,45 @@ class _CatalogPageState extends State<CatalogPage> {
       child: Column(
         children: [
           // Items per page selector
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Text(
-                'Items per page:',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Items per page:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  DropdownButton<int>(
+                    value: _itemsPerPage,
+                    underline: Container(),
+                    items: [10, 20, 50, 100].map((int value) {
+                      return DropdownMenuItem<int>(
+                        value: value,
+                        child: Text('$value'),
+                      );
+                    }).toList(),
+                    onChanged: (int? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _itemsPerPage = newValue;
+                          _currentPage = 1; // Reset to first page
+                        });
+                      }
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              DropdownButton<int>(
-                value: _itemsPerPage,
-                underline: Container(),
-                items: [10, 20, 50, 100].map((int value) {
-                  return DropdownMenuItem<int>(
-                    value: value,
-                    child: Text('$value'),
-                  );
-                }).toList(),
-                onChanged: (int? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      _itemsPerPage = newValue;
-                      _currentPage = 1; // Reset to first page
-                    });
-                  }
-                },
-              ),
-              const Spacer(),
               Text(
                 'Showing $startItem-$endItem of ${_filteredProducts.length}',
                 style: TextStyle(
@@ -2646,106 +2654,109 @@ class _CatalogPageState extends State<CatalogPage> {
           ),
           const SizedBox(height: 12),
           // Navigation controls
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // First page
-              IconButton(
-                onPressed: _currentPage > 1
-                    ? () => setState(() => _currentPage = 1)
-                    : null,
-                icon: const Icon(Icons.first_page),
-                tooltip: 'First page',
-              ),
-              // Previous page
-              IconButton(
-                onPressed: _currentPage > 1
-                    ? () => setState(() => _currentPage--)
-                    : null,
-                icon: const Icon(Icons.chevron_left),
-                tooltip: 'Previous page',
-              ),
-              const SizedBox(width: 8),
-              // Page numbers
-              ...List.generate(_totalPages, (index) {
-                final pageNum = index + 1;
-                final isCurrentPage = pageNum == _currentPage;
-                final showPage =
-                    pageNum == 1 ||
-                    pageNum == _totalPages ||
-                    (pageNum >= _currentPage - 2 &&
-                        pageNum <= _currentPage + 2);
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // First page
+                IconButton(
+                  onPressed: _currentPage > 1
+                      ? () => setState(() => _currentPage = 1)
+                      : null,
+                  icon: const Icon(Icons.first_page),
+                  tooltip: 'First page',
+                ),
+                // Previous page
+                IconButton(
+                  onPressed: _currentPage > 1
+                      ? () => setState(() => _currentPage--)
+                      : null,
+                  icon: const Icon(Icons.chevron_left),
+                  tooltip: 'Previous page',
+                ),
+                const SizedBox(width: 8),
+                // Page numbers
+                ...List.generate(_totalPages, (index) {
+                  final pageNum = index + 1;
+                  final isCurrentPage = pageNum == _currentPage;
+                  final showPage =
+                      pageNum == 1 ||
+                      pageNum == _totalPages ||
+                      (pageNum >= _currentPage - 2 &&
+                          pageNum <= _currentPage + 2);
 
-                if (!showPage) {
-                  if (pageNum == _currentPage - 3 ||
-                      pageNum == _currentPage + 3) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 4),
-                      child: Text('...'),
-                    );
+                  if (!showPage) {
+                    if (pageNum == _currentPage - 3 ||
+                        pageNum == _currentPage + 3) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Text('...'),
+                      );
+                    }
+                    return const SizedBox.shrink();
                   }
-                  return const SizedBox.shrink();
-                }
 
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: isCurrentPage
-                          ? null
-                          : () => setState(() => _currentPage = pageNum),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: isCurrentPage
-                              ? Theme.of(context).colorScheme.primary
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: isCurrentPage
+                            ? null
+                            : () => setState(() => _currentPage = pageNum),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
                             color: isCurrentPage
                                 ? Theme.of(context).colorScheme.primary
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.outline.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            '$pageNum',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
                               color: isCurrentPage
-                                  ? Theme.of(context).colorScheme.onPrimary
-                                  : Theme.of(context).colorScheme.onSurface,
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(
+                                      context,
+                                    ).colorScheme.outline.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$pageNum',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: isCurrentPage
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context).colorScheme.onSurface,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              }),
-              const SizedBox(width: 8),
-              // Next page
-              IconButton(
-                onPressed: _currentPage < _totalPages
-                    ? () => setState(() => _currentPage++)
-                    : null,
-                icon: const Icon(Icons.chevron_right),
-                tooltip: 'Next page',
-              ),
-              // Last page
-              IconButton(
-                onPressed: _currentPage < _totalPages
-                    ? () => setState(() => _currentPage = _totalPages)
-                    : null,
-                icon: const Icon(Icons.last_page),
-                tooltip: 'Last page',
-              ),
-            ],
+                  );
+                }),
+                const SizedBox(width: 8),
+                // Next page
+                IconButton(
+                  onPressed: _currentPage < _totalPages
+                      ? () => setState(() => _currentPage++)
+                      : null,
+                  icon: const Icon(Icons.chevron_right),
+                  tooltip: 'Next page',
+                ),
+                // Last page
+                IconButton(
+                  onPressed: _currentPage < _totalPages
+                      ? () => setState(() => _currentPage = _totalPages)
+                      : null,
+                  icon: const Icon(Icons.last_page),
+                  tooltip: 'Last page',
+                ),
+              ],
+            ),
           ),
         ],
       ),

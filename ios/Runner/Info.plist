@@ -3,7 +3,27 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-<string>Allow camera to search products</string>
+	<string>Allow camera to scan barcodes and capture product images</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Select product and receipt images from your photo library</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Allow microphone access for voice search</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Allow speech recognition to search inventory by voice</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Biometric authentication to secure your business dashboard</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>io.supabase.rajinventory</string>
+				<string>inventoza</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

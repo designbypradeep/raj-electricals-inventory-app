@@ -30,6 +30,7 @@ ios/Runner/GeneratedPluginRegistrant.*
 web/.dart_tool/
 
 ### Others
+graphify-out/
 *.log
 *.lock
 *.DS_Store

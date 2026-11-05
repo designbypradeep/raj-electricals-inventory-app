@@ -12,15 +12,15 @@ class AccountingService {
     required List<supa.Product> products,
     required DateTimeRange period,
   }) {
-    // Filter sales within period
-    final sales =
+    // Sort all sales chronologically up to the end of the period to correctly consume lots
+    final salesUpToEnd =
         allSales.where((s) {
           final d = s.createdAt ?? s.saleDate;
           if (d == null) return false;
-          return !d.isBefore(period.start) && !d.isAfter(period.end);
+          return !d.isAfter(period.end);
         }).toList()..sort((a, b) {
-          final ad = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-          final bd = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final ad = a.createdAt ?? a.saleDate ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final bd = b.createdAt ?? b.saleDate ?? DateTime.fromMillisecondsSinceEpoch(0);
           return ad.compareTo(bd);
         });
 
@@ -45,16 +45,26 @@ class AccountingService {
     double totalCogs = 0.0;
     double totalRevenue = 0.0;
     int unitsSold = 0;
+    double totalInternalCost = 0.0;
 
-    for (final sale in sales) {
-      // If there are no items, we cannot compute COGS precisely.
-      // Use sale-level revenue and skip COGS.
+    for (final sale in salesUpToEnd) {
+      final d = sale.createdAt ?? sale.saleDate;
+      final inPeriod = d != null && !d.isBefore(period.start) && !d.isAfter(period.end);
+
+      final cust = (sale.customerName ?? '').trim().toLowerCase();
+      final isInternal =
+          cust == 'self consumption' ||
+          cust == 'internal testing' ||
+          cust == 'internal use';
+      final saleRevenue = isInternal ? 0.0 : sale.totalAmount;
+
       if (sale.salesItems.isEmpty) {
-        totalRevenue += sale.totalAmount;
+        if (!isInternal && inPeriod) {
+          totalRevenue += saleRevenue;
+        }
         continue;
       }
 
-      // Compute COGS per sale from items, respecting units and FIFO lots.
       double saleCogs = 0.0;
       int saleUnits = 0;
       for (final item in sale.salesItems) {
@@ -73,7 +83,9 @@ class AccountingService {
           }
         }
 
-        saleUnits += qty;
+        if (inPeriod) {
+          saleUnits += qty;
+        }
 
         // Consume lots FIFO for COGS
         lots.putIfAbsent(pid, () => []);
@@ -84,21 +96,30 @@ class AccountingService {
             final avg =
                 avgCostByProduct[pid] ??
                 (prodMap[pid]?.purchasePrice ?? 0).toDouble();
-            saleCogs += avg * qty;
+            if (inPeriod) {
+              saleCogs += avg * qty;
+            }
             qty = 0;
             break;
           }
           final used = qty < lot.remainingQty ? qty : lot.remainingQty;
-          saleCogs += lot.unitCost * used;
+          if (inPeriod) {
+            saleCogs += lot.unitCost * used;
+          }
           lot.remainingQty -= used;
           qty -= used;
         }
       }
 
-      // Add sale-level totals: revenue from sale.totalAmount (respects discounts), COGS from items
-      totalRevenue += sale.totalAmount;
-      totalCogs += saleCogs;
-      unitsSold += saleUnits;
+      if (inPeriod) {
+        if (isInternal) {
+          totalInternalCost += saleCogs;
+        } else {
+          totalRevenue += saleRevenue;
+          totalCogs += saleCogs;
+          unitsSold += saleUnits;
+        }
+      }
     }
 
     // Average values (defensive)
@@ -112,6 +133,7 @@ class AccountingService {
       unitsSold: unitsSold,
       avgSellPrice: avgSell,
       avgCostPrice: avgCost,
+      internalConsumptionCost: totalInternalCost,
     );
   }
 
@@ -129,12 +151,6 @@ class AccountingService {
     final DateTime start = period.start;
     final DateTime end = period.end;
 
-    final salesInPeriod = allSales.where((s) {
-      final d = s.createdAt ?? s.saleDate;
-      if (d == null) return false;
-      return !d.isBefore(start) && !d.isAfter(end);
-    }).toList();
-
     final fifo = computeFifoSummary(
       allSales: allSales,
       allPurchases: allPurchases,
@@ -142,19 +158,15 @@ class AccountingService {
       period: period,
     );
 
-    final double totalSalesRevenue = salesInPeriod.fold<double>(
-      0.0,
-      (sum, sale) => sum + (sale.totalAmount),
-    );
+    final double totalSalesRevenue = fifo.revenue;
 
-    final lots = _buildLotsByProduct(
-      allPurchases.where((p) {
-        final d = p.purchaseDate ?? p.createdAt;
-        if (d == null) return false;
-        return !d.isAfter(end);
-      }).toList(),
-      products,
-    );
+    final purchasesUpToEnd = allPurchases.where((p) {
+      final d = p.purchaseDate ?? p.createdAt;
+      if (d == null) return false;
+      return !d.isAfter(end);
+    }).toList();
+
+    final lots = _buildLotsByProduct(purchasesUpToEnd, products);
 
     final Map<int, supa.Product> prodMap = {
       for (final p in products)
@@ -163,6 +175,7 @@ class AccountingService {
 
     double totalRefund = 0.0;
     double returnsProfitReversal = 0.0;
+    double warrantyLossTotal = 0.0;
 
     for (final r in returnsList) {
       final createdAt = r['created_at'] as String?;
@@ -189,11 +202,19 @@ class AccountingService {
         final double cp = _fallbackAvgCostForProduct(pid, lots, prodMap);
         totalRefund += qty * sp;
         returnsProfitReversal += (sp - cp) * qty;
+
+        final cond = (it['item_condition'] as String?)?.toLowerCase();
+        final restockEligible = it['restock_eligible'];
+        if (cond == 'defective' ||
+            cond == 'damaged' ||
+            cond == 'warranty_claim' ||
+            restockEligible == false) {
+          warrantyLossTotal += cp * qty;
+        }
       }
     }
 
     double totalPriceDiff = 0.0;
-    double warrantyLossTotal = 0.0;
     for (final rep in replacements) {
       final createdAt = rep['created_at'] as String?;
       final dt = createdAt != null ? DateTime.tryParse(createdAt) : null;
@@ -219,7 +240,13 @@ class AccountingService {
       double costReturnedRestockable = 0.0;
       for (final it in outs) {
         final cond = (it['item_condition'] as String?)?.toLowerCase();
-        if (cond == 'defective' || cond == 'damaged') continue;
+        final restockEligible = it['restock_eligible'];
+        if (cond == 'defective' ||
+            cond == 'damaged' ||
+            cond == 'warranty_claim' ||
+            restockEligible == false) {
+          continue;
+        }
         final double qty = ((it['quantity_returned'] as num?) ?? 0).toDouble();
         final int pid =
             (it['product_id'] as num?)?.toInt() ??
@@ -250,6 +277,7 @@ class AccountingService {
       priceDifference: totalPriceDiff,
       warrantyLoss: warrantyLossTotal,
       returnsProfitReversal: returnsProfitReversal,
+      internalConsumptionCost: fifo.internalConsumptionCost,
     );
   }
 
@@ -321,7 +349,7 @@ class AccountingService {
           final per = (meta.itemsPerWholesaleUnit ?? 1);
           if (item.unit != null &&
               wholesale != null &&
-              item.unit == wholesale &&
+              item.unit!.trim().toLowerCase() == wholesale.trim().toLowerCase() &&
               per > 0) {
             qtyPieces = item.quantity * per;
             costPerPiece = item.pricePerUnit / per;
@@ -602,6 +630,7 @@ class FifoSummary {
   final int unitsSold;
   final double avgSellPrice;
   final double avgCostPrice;
+  final double internalConsumptionCost;
   const FifoSummary({
     required this.revenue,
     required this.cogs,
@@ -609,6 +638,7 @@ class FifoSummary {
     this.unitsSold = 0,
     this.avgSellPrice = 0.0,
     this.avgCostPrice = 0.0,
+    this.internalConsumptionCost = 0.0,
   });
 }
 
@@ -621,6 +651,7 @@ class NetSummary {
   final double priceDifference;
   final double warrantyLoss;
   final double returnsProfitReversal;
+  final double internalConsumptionCost;
 
   const NetSummary({
     required this.grossRevenue,
@@ -631,6 +662,7 @@ class NetSummary {
     this.priceDifference = 0.0,
     this.warrantyLoss = 0.0,
     this.returnsProfitReversal = 0.0,
+    this.internalConsumptionCost = 0.0,
   });
 }
 

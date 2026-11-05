@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../widgets/page_header.dart';
 import '../services/supabase_service.dart';
 import '../models/supabase_models.dart';
@@ -11,6 +12,7 @@ import '../services/theme_controller.dart';
 import 'package:local_auth/local_auth.dart';
 import '../services/security_service.dart';
 import '../theme/ui_tokens.dart';
+import 'billing_page.dart';
 
 class BusinessSettingsPage extends StatefulWidget {
   const BusinessSettingsPage({super.key});
@@ -44,6 +46,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   String? _errorMessage;
   String? _successMessage;
   bool _isLinkCopied = false; // New state for feedback
+  SubscriptionInfo? _subscriptionInfo;
 
   // Brand color drafts for live preview (null = use defaults)
   Color? _primaryDraft;
@@ -131,6 +134,207 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   }
 
   // UPI VPA validation is no longer required here since it is app-managed
+
+  Future<void> _openBillingWeb() async {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const BillingPage()),
+    );
+  }
+
+  // ===================== Subscription & Plan Section =====================
+  Widget _buildSubscriptionPlanSection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sub = _subscriptionInfo;
+
+    Color statusColor = Colors.green;
+    String statusText = sub?.status ?? 'ACTIVE';
+    if (sub != null) {
+      if (sub.isExpired) {
+        statusColor = Colors.red;
+        statusText = 'EXPIRED';
+      } else if (sub.isSuspended) {
+        statusColor = Colors.red;
+        statusText = 'SUSPENDED';
+      } else if (sub.isPending) {
+        statusColor = Colors.orange;
+        statusText = 'PENDING';
+      } else if (sub.isTrial) {
+        statusColor = Colors.blue;
+        statusText = sub.daysRemaining != null
+            ? 'TRIAL (${sub.daysRemaining}d left)'
+            : 'TRIAL';
+      }
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.card_membership_rounded,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Subscription & Plan',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        sub?.planName ?? 'Standard Plan',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: isDark
+                              ? Colors.grey.shade400
+                              : Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: statusColor.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    statusText,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Divider(),
+            const SizedBox(height: 16),
+            // Limits Row
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuotaItem(
+                    icon: Icons.inventory_2_outlined,
+                    label: 'Product Limit',
+                    value: sub?.maxProducts != null
+                        ? '${sub!.maxProducts}'
+                        : 'Unlimited',
+                  ),
+                ),
+                Expanded(
+                  child: _buildQuotaItem(
+                    icon: Icons.image_outlined,
+                    label: 'Storage Images',
+                    value: sub?.maxStorageImages != null
+                        ? '${sub!.maxStorageImages}'
+                        : 'Unlimited',
+                  ),
+                ),
+                Expanded(
+                  child: _buildQuotaItem(
+                    icon: Icons.people_outline,
+                    label: 'Staff Users',
+                    value: sub?.maxUsers != null
+                        ? '${sub!.maxUsers}'
+                        : 'Unlimited',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: OutlinedButton.icon(
+                onPressed: _openBillingWeb,
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text('Manage Subscription on Web'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuotaItem({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      children: [
+        Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+          ),
+        ),
+      ],
+    );
+  }
 
   // ===================== Shop Access Section =====================
   Widget _buildShopAccessSection() {
@@ -278,7 +482,8 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                             const SizedBox(width: 24),
 
                           // Link Actions
-                          Expanded(
+                          Flexible(
+                            fit: isSmall ? FlexFit.loose : FlexFit.tight,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -843,9 +1048,24 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
 
     try {
       final businessProfile = await SupabaseService.getBusinessProfile();
+      final subInfo = await SupabaseService.getSubscriptionInfo();
 
       if (businessProfile != null && mounted) {
+        // Sync primary brand color into ThemeController if profile has it and user hasn't overridden
+        if (businessProfile.primaryColor != null) {
+          try {
+            final hex = businessProfile.primaryColor!.replaceFirst('#', '');
+            if (hex.length == 6) {
+              final color = Color(int.parse('FF$hex', radix: 16));
+              if (ThemeController.instance.savedPrimary == null) {
+                await ThemeController.instance.saveColors(primary: color);
+              }
+            }
+          } catch (_) {}
+        }
+
         setState(() {
+          _subscriptionInfo = subInfo;
           _businessNameController.text = businessProfile.businessName;
           _selectedBusinessType = businessProfile.businessType;
           _descriptionController.text = businessProfile.description ?? '';
@@ -1413,6 +1633,11 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                               }
                             },
                           ),
+
+                          const SizedBox(height: 40),
+
+                          // Subscription & Plan Section
+                          _buildSubscriptionPlanSection(),
 
                           const SizedBox(height: 40),
 

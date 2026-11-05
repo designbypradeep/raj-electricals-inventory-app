@@ -544,14 +544,16 @@ class _PurchasePageState extends State<PurchasePage> {
                     showBackButton: true,
                     stats: [
                       PageHeaderStat(
-                        label: 'Purchase Management',
-                        value: 'नई खरीद',
-                        description: 'Record new purchases',
+                        label: 'Items Added',
+                        value: '${_purchaseItems.length}',
+                        description: _purchaseItems.isEmpty
+                            ? 'No items added'
+                            : 'Ready to record',
                       ),
                       PageHeaderStat(
-                        label: 'Stock Acquisition',
-                        value: 'New inventory',
-                        description: 'Add stock to inventory',
+                        label: 'Total Cost',
+                        value: '₹${_computeTotalAmount().toStringAsFixed(0)}',
+                        description: 'Estimated order value',
                       ),
                     ],
                   ),

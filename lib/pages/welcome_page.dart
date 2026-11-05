@@ -55,8 +55,13 @@ class _WelcomePageState extends State<WelcomePage> {
 
   Future<void> _handleDeepLink(Uri uri) async {
     String? slug;
-    // 1. Standard Path: https://domain.com/store/slug or myshop://store/slug
-    if (uri.pathSegments.contains('store')) {
+    // 1. Inventoza SvelteKit Path: /s/slug or /store/slug
+    if (uri.pathSegments.contains('s')) {
+      final idx = uri.pathSegments.indexOf('s');
+      if (idx + 1 < uri.pathSegments.length) {
+        slug = uri.pathSegments[idx + 1];
+      }
+    } else if (uri.pathSegments.contains('store')) {
       final idx = uri.pathSegments.indexOf('store');
       if (idx + 1 < uri.pathSegments.length) {
         slug = uri.pathSegments[idx + 1];
@@ -158,8 +163,13 @@ class _WelcomePageState extends State<WelcomePage> {
                     final isCustom = uri.scheme == 'myshop';
 
                     if (isHttp || isCustom) {
-                      // 1. Standard Path: https://domain.com/store/slug
-                      if (uri.pathSegments.contains('store')) {
+                      // 1. Inventoza SvelteKit Path: /s/slug or /store/slug
+                      if (uri.pathSegments.contains('s')) {
+                        final idx = uri.pathSegments.indexOf('s');
+                        if (idx + 1 < uri.pathSegments.length) {
+                          slug = uri.pathSegments[idx + 1];
+                        }
+                      } else if (uri.pathSegments.contains('store')) {
                         final idx = uri.pathSegments.indexOf('store');
                         if (idx + 1 < uri.pathSegments.length) {
                           slug = uri.pathSegments[idx + 1];

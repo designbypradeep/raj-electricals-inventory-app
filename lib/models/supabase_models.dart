@@ -8,7 +8,7 @@ class Product {
   final String businessId;
   final String? category;
   final String? description;
-  final int currentStock;
+  final num currentStock;
   final String? productImageUrl;
   final List<String>?
   productImages; // multiple image URLs (stored as JSON in DB)
@@ -72,7 +72,7 @@ class Product {
       businessId: json['business_id'] as String,
       category: json['category'] as String?,
       description: json['description'] as String?,
-      currentStock: json['current_stock'] as int? ?? 0,
+      currentStock: (json['current_stock'] as num?) ?? 0,
       productImageUrl: json['product_image_url'] as String?,
       productImages: parseImages(json['product_images']),
       purchasePrice: (json['purchase_price'] as num?)?.toDouble(),
@@ -81,7 +81,7 @@ class Product {
       status: json['status'] as String?,
       unitTypeSingle: json['unit_type_single'] as String? ?? 'Piece',
       unitTypeWholesale: json['unit_type_wholesale'] as String?,
-      itemsPerWholesaleUnit: json['items_per_wholesale_unit'] as int? ?? 1,
+      itemsPerWholesaleUnit: (json['items_per_wholesale_unit'] as num?)?.toInt() ?? 1,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -119,7 +119,7 @@ class Product {
     String? businessId,
     String? category,
     String? description,
-    int? currentStock,
+    num? currentStock,
     String? productImageUrl,
     List<String>? productImages,
     double? purchasePrice,
@@ -210,6 +210,36 @@ class BusinessProfile {
   final String? status;
   final DateTime? trialStart;
   final DateTime? trialEnd;
+  // Plan & Quota settings
+  final String? planId;
+  final int? maxProducts;
+  final int? maxUsers;
+  final int? maxStorageImages;
+  final bool onboardingCompleted;
+  final String? customShopUrl;
+  final String? whatsappNumber;
+  final String? instagramUrl;
+  final String? facebookUrl;
+  final String? googleMapsUrl;
+
+  bool get isExpired {
+    final s = (status ?? 'ACTIVE').toUpperCase();
+    if (s == 'EXPIRED') return true;
+    if (s == 'TRIAL' && trialEnd != null && trialEnd!.isBefore(DateTime.now())) {
+      return true;
+    }
+    return false;
+  }
+
+  bool get isSuspended => (status ?? '').toUpperCase() == 'SUSPENDED';
+  bool get isPending => (status ?? '').toUpperCase() == 'PENDING';
+  bool get isWritable => !isExpired && !isSuspended && !isPending;
+
+  int? get daysRemainingInTrial {
+    if (trialEnd == null) return null;
+    final diff = trialEnd!.difference(DateTime.now()).inDays;
+    return diff < 0 ? 0 : diff;
+  }
 
   BusinessProfile({
     required this.id,
@@ -241,6 +271,16 @@ class BusinessProfile {
     this.status,
     this.trialStart,
     this.trialEnd,
+    this.planId,
+    this.maxProducts,
+    this.maxUsers,
+    this.maxStorageImages,
+    this.onboardingCompleted = false,
+    this.customShopUrl,
+    this.whatsappNumber,
+    this.instagramUrl,
+    this.facebookUrl,
+    this.googleMapsUrl,
   });
 
   factory BusinessProfile.fromJson(Map<String, dynamic> json) {
@@ -282,6 +322,16 @@ class BusinessProfile {
       trialEnd: json['trial_end'] != null
           ? DateTime.parse(json['trial_end'] as String)
           : null,
+      planId: json['plan_id'] as String?,
+      maxProducts: json['max_products'] as int?,
+      maxUsers: json['max_users'] as int?,
+      maxStorageImages: json['max_storage_images'] as int?,
+      onboardingCompleted: json['onboarding_completed'] as bool? ?? false,
+      customShopUrl: json['custom_shop_url'] as String?,
+      whatsappNumber: json['whatsapp_number'] as String?,
+      instagramUrl: json['instagram_url'] as String?,
+      facebookUrl: json['facebook_url'] as String?,
+      googleMapsUrl: json['google_maps_url'] as String?,
     );
   }
 
@@ -316,6 +366,16 @@ class BusinessProfile {
       if (status != null) 'status': status,
       if (trialStart != null) 'trial_start': trialStart!.toIso8601String(),
       if (trialEnd != null) 'trial_end': trialEnd!.toIso8601String(),
+      if (planId != null) 'plan_id': planId,
+      if (maxProducts != null) 'max_products': maxProducts,
+      if (maxUsers != null) 'max_users': maxUsers,
+      if (maxStorageImages != null) 'max_storage_images': maxStorageImages,
+      'onboarding_completed': onboardingCompleted,
+      if (customShopUrl != null) 'custom_shop_url': customShopUrl,
+      if (whatsappNumber != null) 'whatsapp_number': whatsappNumber,
+      if (instagramUrl != null) 'instagram_url': instagramUrl,
+      if (facebookUrl != null) 'facebook_url': facebookUrl,
+      if (googleMapsUrl != null) 'google_maps_url': googleMapsUrl,
     };
   }
 }
@@ -487,4 +547,65 @@ class Customer {
       if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
     };
   }
+}
+
+class SubscriptionInfo {
+  final String? planId;
+  final String planName;
+  final String status;
+  final int? maxProducts;
+  final int? maxUsers;
+  final int? maxStorageImages;
+  final Map<String, dynamic> features;
+  final DateTime? trialEnd;
+  final DateTime? renewsAt;
+  final DateTime? expiresAt;
+  final bool isTrial;
+  final int? daysRemaining;
+
+  const SubscriptionInfo({
+    this.planId,
+    this.planName = 'Trial Plan',
+    this.status = 'TRIAL',
+    this.maxProducts,
+    this.maxUsers,
+    this.maxStorageImages,
+    this.features = const {},
+    this.trialEnd,
+    this.renewsAt,
+    this.expiresAt,
+    this.isTrial = true,
+    this.daysRemaining,
+  });
+
+  bool get isExpired {
+    final s = status.toUpperCase();
+    if (s == 'EXPIRED') return true;
+    if (s == 'TRIAL' && trialEnd != null && trialEnd!.isBefore(DateTime.now())) {
+      return true;
+    }
+    if (expiresAt != null && expiresAt!.isBefore(DateTime.now())) {
+      return true;
+    }
+    return false;
+  }
+
+  bool get isSuspended => status.toUpperCase() == 'SUSPENDED';
+  bool get isPending => status.toUpperCase() == 'PENDING';
+  bool get isWritable => !isExpired && !isSuspended && !isPending;
+  bool hasFeature(String key) => features[key] == true;
+}
+
+class QuotaCheckResult {
+  final bool allowed;
+  final String? message;
+  final int currentCount;
+  final int? maxAllowed;
+
+  const QuotaCheckResult({
+    required this.allowed,
+    this.message,
+    this.currentCount = 0,
+    this.maxAllowed,
+  });
 }

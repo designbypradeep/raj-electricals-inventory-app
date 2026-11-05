@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
@@ -2686,9 +2687,9 @@ class SupabaseService {
                 .eq('business_id', businessId)
                 .maybeSingle();
             if (existing != null) {
-              final int current = (existing['current_stock'] as int?) ?? 0;
+              final num current = (existing['current_stock'] as num?) ?? 0;
               // Reverse: if movement was 'in' (we added), now subtract; if 'out' (we removed), now add
-              final int newStock = type == 'in' ? current - qty : current + qty;
+              final num newStock = type == 'in' ? current - qty : current + qty;
               await _client
                   .from('products')
                   .update({'current_stock': newStock})
@@ -2720,9 +2721,9 @@ class SupabaseService {
                   .eq('business_id', businessId)
                   .maybeSingle();
               if (existing != null) {
-                final int current = (existing['current_stock'] as int?) ?? 0;
+                final num current = (existing['current_stock'] as num?) ?? 0;
                 // Out items had previously increased stock; now subtract
-                final int newStock = current - qty;
+                final num newStock = current - qty;
                 await _client
                     .from('products')
                     .update({'current_stock': newStock})
@@ -2748,9 +2749,9 @@ class SupabaseService {
                   .eq('business_id', businessId)
                   .maybeSingle();
               if (existing != null) {
-                final int current = (existing['current_stock'] as int?) ?? 0;
+                final num current = (existing['current_stock'] as num?) ?? 0;
                 // In items had previously decreased stock; now add back
-                final int newStock = current + qty;
+                final num newStock = current + qty;
                 await _client
                     .from('products')
                     .update({'current_stock': newStock})
@@ -3298,8 +3299,8 @@ class SupabaseService {
             .eq('business_id', businessId)
             .maybeSingle();
         if (existing != null) {
-          final int current = (existing['current_stock'] as int?) ?? 0;
-          final int newStock = current + qtyPieces;
+          final num current = (existing['current_stock'] as num?) ?? 0;
+          final num newStock = current + qtyPieces;
           await _client
               .from('products')
               .update({'current_stock': newStock})
@@ -3897,7 +3898,11 @@ class SupabaseService {
     required String url,
     required String anonKey,
   }) async {
-    await Supabase.initialize(url: url, anonKey: anonKey, debug: false);
+    await Supabase.initialize(
+      url: url,
+      anonKey: anonKey,
+      debug: kDebugMode,
+    );
     _client = Supabase.instance.client;
   }
 
@@ -4445,8 +4450,8 @@ class SupabaseService {
               .eq('business_id', businessId)
               .maybeSingle();
           if (existing != null) {
-            final int current = (existing['current_stock'] as int?) ?? 0;
-            final int newStock = current + qtyPieces;
+            final num current = (existing['current_stock'] as num?) ?? 0;
+            final num newStock = current + qtyPieces;
             await _client
                 .from('products')
                 .update({'current_stock': newStock})
@@ -4504,8 +4509,8 @@ class SupabaseService {
               .eq('business_id', businessId)
               .maybeSingle();
           if (existing != null) {
-            final int current = (existing['current_stock'] as int?) ?? 0;
-            final int newStock = current - qtyPieces;
+            final num current = (existing['current_stock'] as num?) ?? 0;
+            final num newStock = current - qtyPieces;
             await _client
                 .from('products')
                 .update({'current_stock': newStock})
@@ -4633,7 +4638,7 @@ class SupabaseService {
       final response = await _client
           .from('returns')
           .select(
-            '*, sales(id, customer_name, created_at), return_items(*, products(*))',
+            '*, sales:sales!returns_original_sale_id_fkey(id, customer_name, created_at), return_items(*, products(*))',
           )
           .eq('business_id', businessId)
           .order('created_at', ascending: false);
@@ -4967,6 +4972,206 @@ class SupabaseService {
     await _client.auth.signInWithOtp(email: email);
   }
 
+  // Sign in with Google (OAuth)
+  static Future<bool> signInWithGoogle({String? redirectTo}) async {
+    try {
+      final callback = redirectTo ??
+          (appFlavor == 'shop'
+              ? 'io.supabase.rajinventory://shop-login-callback'
+              : 'io.supabase.rajinventory://login-callback');
+      return await _client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: callback,
+        authScreenLaunchMode: LaunchMode.externalApplication,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error initiating Google sign in: $e');
+      }
+      rethrow;
+    }
+  }
+
+  static String? _lastHandledAuthCode;
+
+  // Handle OAuth callback URL if received via deep link
+  static Future<AuthSessionUrlResponse?> handleAuthCallbackUrl(Uri uri) async {
+    try {
+      final code = uri.queryParameters['code'];
+      if (code != null && code == _lastHandledAuthCode) {
+        if (kDebugMode) {
+          print('[Supabase] Auth code already being handled, skipping duplicate.');
+        }
+        return null;
+      }
+      if (code != null) {
+        _lastHandledAuthCode = code;
+      }
+      final response = await _client.auth.getSessionFromUrl(uri);
+      if (kDebugMode) {
+        print('[Supabase] Successfully obtained session from URL: ${response.session.user.email}');
+      }
+      return response;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error handling auth callback URL: $e');
+      }
+      return null;
+    }
+  }
+
+  // Auth State Stream
+  static Stream<AuthState> get onAuthStateChange => _client.auth.onAuthStateChange;
+
+  // Create Storefront Order (shop_orders + shop_order_items)
+  static Future<Map<String, dynamic>?> createShopOrder({
+    required String businessId,
+    String? customerId,
+    String? customerName,
+    String? customerPhone,
+    String? paymentMethod,
+    String? transactionId,
+    String? paymentProofUrl,
+    required double totalAmount,
+    String? notes,
+    int? saleId,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    try {
+      final token = 'trk_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
+      final orderRes = await _client
+          .from('shop_orders')
+          .insert({
+            'business_id': businessId,
+            if (customerId != null) 'customer_id': customerId,
+            if (customerName != null) 'customer_name': customerName,
+            if (customerPhone != null) 'customer_phone': customerPhone,
+            'payment_method': paymentMethod ?? 'upi',
+            if (transactionId != null) 'transaction_id': transactionId,
+            if (paymentProofUrl != null) 'payment_proof_url': paymentProofUrl,
+            'total_amount': totalAmount,
+            'status': 'payment_pending',
+            'tracking_token': token,
+            if (notes != null) 'notes': notes,
+            if (saleId != null) 'sale_id': saleId,
+          })
+          .select()
+          .single();
+
+      final orderId = (orderRes['id'] as num).toInt();
+
+      if (items.isNotEmpty) {
+        final orderItems = items.map((it) => {
+          'order_id': orderId,
+          'product_id': it['product_id'],
+          'quantity': it['quantity'],
+          'price_per_unit': it['price_per_unit'],
+          if (it['unit'] != null) 'unit': it['unit'],
+        }).toList();
+
+        await _client.from('shop_order_items').insert(orderItems);
+      }
+
+      return Map<String, dynamic>.from(orderRes);
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error creating shop order: $e');
+      }
+      return null;
+    }
+  }
+
+  // Get Storefront Orders for Customer
+  static Future<List<Map<String, dynamic>>> getShopOrdersForCustomer({
+    required String customerId,
+    required String businessId,
+  }) async {
+    try {
+      final res = await _client
+          .from('shop_orders')
+          .select('*, shop_order_items(*, products(*))')
+          .eq('business_id', businessId)
+          .eq('customer_id', customerId)
+          .order('created_at', ascending: false);
+
+      return (res as List).map((e) => Map<String, dynamic>.from(e)).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error fetching customer shop orders: $e');
+      }
+      return [];
+    }
+  }
+
+  // Track Order by Token or ID
+  static Future<Map<String, dynamic>?> trackShopOrder({
+    required String query,
+    required String businessId,
+  }) async {
+    try {
+      final trimmed = query.trim();
+      final idNum = int.tryParse(trimmed);
+
+      var req = _client
+          .from('shop_orders')
+          .select('*, shop_order_items(*, products(*))');
+      if (businessId.isNotEmpty) {
+        req = req.eq('business_id', businessId);
+      }
+
+      dynamic res;
+      if (idNum != null) {
+        res = await req.or('tracking_token.eq.$trimmed,id.eq.$idNum,sale_id.eq.$idNum').limit(1).maybeSingle();
+      } else {
+        res = await req.eq('tracking_token', trimmed).limit(1).maybeSingle();
+      }
+
+      if (res != null) {
+        return Map<String, dynamic>.from(res);
+      }
+
+      // Fallback: check sales table by ID or transaction_id
+      try {
+        var saleReq = _client.from('sales').select('*, sale_items(*, products(*))');
+        if (businessId.isNotEmpty) {
+          saleReq = saleReq.eq('business_id', businessId);
+        }
+        dynamic saleRes;
+        if (idNum != null) {
+          saleRes = await saleReq.eq('id', idNum).limit(1).maybeSingle();
+        } else {
+          saleRes = await saleReq.eq('transaction_id', trimmed).limit(1).maybeSingle();
+        }
+        if (saleRes != null) {
+          final items = (saleRes['sale_items'] as List? ?? []).map((si) => {
+            'product_name': si['products']?['name'] ?? 'Product',
+            'quantity': si['quantity'] ?? 1,
+            'unit_price': (si['price_per_unit'] ?? si['unit_price'] ?? 0.0) as num,
+            'total_price': (si['total_price'] ?? 0.0) as num,
+          }).toList();
+          return {
+            'id': saleRes['id'],
+            'tracking_token': saleRes['transaction_id'] ?? 'SALE-${saleRes['id']}',
+            'status': saleRes['status'] ?? 'completed',
+            'total_amount': saleRes['total_amount'] ?? saleRes['final_amount'] ?? 0.0,
+            'created_at': saleRes['sale_date'] ?? saleRes['created_at'],
+            'customer_name': saleRes['customer_name'] ?? 'Customer',
+            'customer_phone': saleRes['customer_phone'],
+            'payment_method': saleRes['payment_method'],
+            'shop_order_items': items,
+          };
+        }
+      } catch (_) {}
+
+      return null;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error tracking shop order: $e');
+      }
+      return null;
+    }
+  }
+
   // Create or get business profile
   static Future<supabase_models.BusinessProfile?> getOrCreateBusinessProfile({
     required String businessName,
@@ -5068,6 +5273,186 @@ class SupabaseService {
     }
   }
 
+  // Subscription & Quotas
+  static Future<supabase_models.SubscriptionInfo> getSubscriptionInfo([
+    String? businessId,
+  ]) async {
+    final bId = businessId ?? getCurrentBusinessId();
+    if (bId == null) {
+      return const supabase_models.SubscriptionInfo(status: 'ACTIVE');
+    }
+
+    try {
+      final profile =
+          _currentBusinessProfile ?? await getCurrentBusinessProfile();
+
+      // Check business_subscriptions
+      dynamic subsRes;
+      try {
+        subsRes = await _client
+            .from('business_subscriptions')
+            .select()
+            .eq('business_id', bId)
+            .order('created_at', ascending: false);
+      } catch (_) {}
+
+      final subsList = (subsRes as List?) ?? [];
+      Map<String, dynamic>? activeSub;
+      for (final s in subsList) {
+        final st = (s['status'] as String? ?? '').toLowerCase();
+        if (['active', 'trialing', 'past_due', 'cancelled'].contains(st)) {
+          activeSub = Map<String, dynamic>.from(s as Map);
+          break;
+        }
+      }
+      if (activeSub == null && subsList.isNotEmpty) {
+        activeSub = Map<String, dynamic>.from(subsList.first as Map);
+      }
+
+      String? planId = activeSub != null
+          ? activeSub['plan_id']?.toString()
+          : profile?.planId;
+      String subStatus = activeSub != null
+          ? (activeSub['status']?.toString().toUpperCase() ?? 'TRIAL')
+          : (profile?.status?.toUpperCase() ?? 'TRIAL');
+
+      // Check if trial has expired based on trialEnd
+      final trialEnd = profile?.trialEnd;
+      if (subStatus == 'TRIAL' || subStatus == 'TRIALING') {
+        if (trialEnd != null && trialEnd.isBefore(DateTime.now())) {
+          subStatus = 'EXPIRED';
+        }
+      }
+
+      Map<String, dynamic>? planData;
+      if (planId != null) {
+        try {
+          final pRes = await _client
+              .from('subscription_plans')
+              .select()
+              .eq('id', planId)
+              .maybeSingle();
+          if (pRes != null) {
+            planData = Map<String, dynamic>.from(pRes as Map);
+          }
+        } catch (_) {}
+      }
+
+      final planName =
+          planData?['display_name'] as String? ??
+          (planId != null ? 'Inventoza Plan' : 'Trial Plan');
+      final planMaxProducts = planData?['max_products'] as int?;
+      final planMaxUsers = planData?['max_users'] as int?;
+      final planMaxImages = planData?['max_storage_images'] as int?;
+
+      Map<String, dynamic> features = {};
+      final rawFeatures = planData?['features'];
+      if (rawFeatures is Map) {
+        features = Map<String, dynamic>.from(rawFeatures);
+      }
+
+      int? resolveLimit(int? override, int? planLimit) {
+        if (planLimit == null) return override;
+        if (override == null) return planLimit;
+        return override > planLimit ? override : planLimit;
+      }
+
+      final effectiveMaxProducts = resolveLimit(
+        profile?.maxProducts,
+        planMaxProducts,
+      );
+      final effectiveMaxUsers = resolveLimit(profile?.maxUsers, planMaxUsers);
+      final effectiveMaxImages = resolveLimit(
+        profile?.maxStorageImages,
+        planMaxImages,
+      );
+
+      final renewsAt = activeSub?['renews_at'] != null
+          ? DateTime.tryParse(activeSub!['renews_at'])
+          : null;
+      final expiresAt = activeSub?['expires_at'] != null
+          ? DateTime.tryParse(activeSub!['expires_at'])
+          : null;
+
+      final isTrial = subStatus == 'TRIAL' || subStatus == 'TRIALING';
+      int? daysRemaining;
+      if (isTrial && trialEnd != null) {
+        final diff = trialEnd.difference(DateTime.now()).inDays;
+        daysRemaining = diff < 0 ? 0 : diff;
+      }
+
+      return supabase_models.SubscriptionInfo(
+        planId: planId,
+        planName: planName,
+        status: subStatus,
+        maxProducts: effectiveMaxProducts,
+        maxUsers: effectiveMaxUsers,
+        maxStorageImages: effectiveMaxImages,
+        features: features,
+        trialEnd: trialEnd,
+        renewsAt: renewsAt,
+        expiresAt: expiresAt,
+        isTrial: isTrial,
+        daysRemaining: daysRemaining,
+      );
+    } catch (e) {
+      if (kDebugMode) print('Error getting subscription info: $e');
+      return const supabase_models.SubscriptionInfo(status: 'ACTIVE');
+    }
+  }
+
+  static Future<supabase_models.QuotaCheckResult> checkProductQuota([
+    String? businessId,
+  ]) async {
+    final bId = businessId ?? getCurrentBusinessId();
+    if (bId == null) {
+      return const supabase_models.QuotaCheckResult(
+        allowed: false,
+        message: 'No business selected',
+      );
+    }
+
+    try {
+      final subInfo = await getSubscriptionInfo(bId);
+      if (!subInfo.isWritable) {
+        return supabase_models.QuotaCheckResult(
+          allowed: false,
+          message: subInfo.isSuspended
+              ? 'Your account has been suspended. Please contact support.'
+              : 'Your trial or subscription has expired. Please upgrade to continue.',
+          currentCount: 0,
+          maxAllowed: subInfo.maxProducts,
+        );
+      }
+
+      final res = await _client
+          .from('products')
+          .select('id')
+          .eq('business_id', bId)
+          .neq('status', 'archived');
+      final count = (res as List).length;
+
+      if (subInfo.maxProducts != null && count >= subInfo.maxProducts!) {
+        return supabase_models.QuotaCheckResult(
+          allowed: false,
+          message:
+              'Product limit reached ($count/${subInfo.maxProducts}). Please upgrade your plan on Inventoza web to add more products.',
+          currentCount: count,
+          maxAllowed: subInfo.maxProducts,
+        );
+      }
+
+      return supabase_models.QuotaCheckResult(
+        allowed: true,
+        currentCount: count,
+        maxAllowed: subInfo.maxProducts,
+      );
+    } catch (e) {
+      if (kDebugMode) print('Quota check error: $e');
+      return const supabase_models.QuotaCheckResult(allowed: true);
+    }
+  }
+
   static Future<supabase_models.Product?> createProduct({
     required String name,
     String? brand,
@@ -5082,7 +5467,9 @@ class SupabaseService {
     String? itemCode, // NEW
   }) async {
     final businessId = getCurrentBusinessId();
-    if (businessId == null) return null;
+    if (businessId == null) {
+      throw Exception('No business selected. Please log in again.');
+    }
 
     try {
       // Decide cover image URL (first http/https reference)
@@ -5138,7 +5525,10 @@ class SupabaseService {
       if (kDebugMode) {
         print('Error creating product: $e');
       }
-      return null;
+      if (e is PostgrestException) {
+        throw Exception(e.message);
+      }
+      rethrow;
     }
   }
 
@@ -5499,15 +5889,28 @@ class SupabaseService {
     }
 
     try {
-      final response = await _client
-          .from('sales')
-          .select('*, sales_items(*, products(*))')
-          .eq('business_id', businessId)
-          .order('created_at', ascending: false);
+      final List<Sale> allSales = [];
+      const int pageSize = 1000;
+      int from = 0;
 
-      return (response as List)
-          .map((json) => Sale.fromJson(Map<String, dynamic>.from(json)))
-          .toList();
+      while (true) {
+        final response = await _client
+            .from('sales')
+            .select('*, sales_items(*, products(*))')
+            .eq('business_id', businessId)
+            .order('created_at', ascending: false)
+            .range(from, from + pageSize - 1);
+
+        final list = (response as List)
+            .map((json) => Sale.fromJson(Map<String, dynamic>.from(json)))
+            .toList();
+        allSales.addAll(list);
+
+        if (list.length < pageSize) break;
+        from += pageSize;
+      }
+
+      return allSales;
     } catch (e) {
       if (kDebugMode) {
         print('Error fetching sales: $e');
@@ -5530,13 +5933,28 @@ class SupabaseService {
     }
 
     try {
-      final response = await _client
-          .from('purchases')
-          .select('*, purchase_items(*, products(*))')
-          .eq('business_id', businessId)
-          .order('created_at', ascending: false);
+      final List<Purchase> allPurchases = [];
+      const int pageSize = 1000;
+      int from = 0;
 
-      return (response as List).map((json) => Purchase.fromJson(json)).toList();
+      while (true) {
+        final response = await _client
+            .from('purchases')
+            .select('*, purchase_items(*, products(*))')
+            .eq('business_id', businessId)
+            .order('created_at', ascending: false)
+            .range(from, from + pageSize - 1);
+
+        final list = (response as List)
+            .map((json) => Purchase.fromJson(json))
+            .toList();
+        allPurchases.addAll(list);
+
+        if (list.length < pageSize) break;
+        from += pageSize;
+      }
+
+      return allPurchases;
     } catch (e) {
       if (kDebugMode) {
         print('Error fetching purchases: $e');
@@ -5612,13 +6030,14 @@ class SupabaseService {
         // Calculate quantity to add with unit conversion (SvelteKit logic)
         int quantityToAdd = quantity;
         if (unit == product['unit_type_wholesale']) {
-          final itemsPerUnit = product['items_per_wholesale_unit'] as int? ?? 1;
+          final itemsPerUnit =
+              (product['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
           quantityToAdd = quantity * itemsPerUnit;
         }
 
         // Update stock using the calculated quantity
-        final currentStock = product['current_stock'] as int;
-        final newStock = currentStock + quantityToAdd;
+        final num currentStock = (product['current_stock'] as num?) ?? 0;
+        final num newStock = currentStock + quantityToAdd;
 
         await _client
             .from('products')

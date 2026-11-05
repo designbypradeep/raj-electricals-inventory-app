@@ -6,6 +6,14 @@
         <activity
             android:name=".MainActivity">
             
+            <!-- OAuth callback for Shop Google Sign-In -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="io.supabase.rajinventory" android:host="shop-login-callback"/>
+            </intent-filter>
+
             <!-- Custom Scheme: myshop://store/slug -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

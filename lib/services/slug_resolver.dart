@@ -41,23 +41,31 @@ class SlugResolver {
         .where((slug) => slug.isNotEmpty);
   }
 
-  /// Parse slug from URI: myshop://store/{slug} or https://myapp.com/store/{slug}
+  /// Parse slug from URI: https://inventoza.com/s/{slug}, myshop://store/{slug}, etc.
   String? _parseSlugFromUri(Uri uri) {
-    // Handling path segments: /store/my-shop-slug
-    // Assuming structure is /store/{slug}
     final segments = uri.pathSegments;
 
-    // 1. Standard Path: /store/slug (https://... or myshop:/store/slug)
+    // 1. Inventoza SvelteKit Path: /s/{slug} (e.g. https://inventoza.com/s/raj-electricals)
+    if (segments.length >= 2 && segments[0] == 's') {
+      return segments[1];
+    }
+    // 2. Legacy / Store Path: /store/{slug}
     if (segments.length >= 2 && segments[0] == 'store') {
       return segments[1];
     }
-    // 2. Custom Scheme Host: myshop://store/slug (host is 'store')
-    if (uri.host == 'store' && segments.isNotEmpty) {
+    // 3. Custom Scheme Host: myshop://store/slug or inventoza://s/slug
+    if ((uri.host == 'store' || uri.host == 's') && segments.isNotEmpty) {
       return segments[0];
     }
-    // Handling Query Param fallback: ?shop=my-shop-slug
+    // 4. Query Parameter fallbacks: ?id=slug or ?shop=slug or ?slug=slug
+    if (uri.queryParameters.containsKey('id')) {
+      return uri.queryParameters['id'];
+    }
     if (uri.queryParameters.containsKey('shop')) {
       return uri.queryParameters['shop'];
+    }
+    if (uri.queryParameters.containsKey('slug')) {
+      return uri.queryParameters['slug'];
     }
     return null;
   }

@@ -28,6 +28,7 @@ import '../services/voice_search_service.dart';
 import 'package:app_links/app_links.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
+import '../widgets/shop_account_sheets.dart';
 
 class ShopPage extends StatefulWidget {
   final AppDatabase db;
@@ -110,6 +111,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   // App Links
   late AppLinks _appLinks;
   StreamSubscription<Uri>? _linkSubscription;
+  StreamSubscription<AuthState>? _authSubscription;
 
   // Pagination State
   int _page = 1;
@@ -141,6 +143,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     });
     _initSpeech();
     _initDeepLinks();
+
+    // Listen to Supabase auth state changes (Google Sign-In / Sign-Out)
+    _authSubscription = SupabaseService.onAuthStateChange.listen((data) {
+      if (mounted) setState(() {});
+    });
 
     // Auto-refresh when back online
     ConnectivityService().isOnline.addListener(_onConnectivityChanged);
@@ -220,7 +227,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
       final newProducts = (result['products'] as List)
           .cast<Map<String, dynamic>>();
-      final total = result['total'] as int;
+      final total = (result['total'] as num?)?.toInt() ?? 0;
 
       // Extract categories from *loaded* products?
       // With pagination, we might miss categories if we only check loaded ones.
@@ -328,6 +335,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   Future<void> _handleDeepLink(Uri uri) async {
+    // Check if deep link is Supabase OAuth callback
+    if (uri.scheme == 'io.supabase.rajinventory' || uri.scheme == 'inventoza') {
+      try {
+        await SupabaseService.handleAuthCallbackUrl(uri);
+        if (mounted) setState(() {});
+      } catch (e) {
+        debugPrint('[Shop] Auth callback deep link error: $e');
+      }
+      return;
+    }
+
     // Expected format: https://rajelectricals.com/store/<slug> or myshop://store/<slug>
     if (uri.pathSegments.contains('store')) {
       final index = uri.pathSegments.indexOf('store');
@@ -1230,6 +1248,30 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     Map<String, dynamic> product,
     int qty,
   ) async {
+    if (_businessProfile != null && !_businessProfile!.isWritable) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text('Store Temporarily Unavailable'),
+            content: const Text(
+              'Online checkout for this store is currently paused. Please contact the store directly.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
     if (!ConnectivityService().isOnline.value) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1247,7 +1289,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       }
       return;
     }
-    final int stock = (product['stock'] as int?) ?? 0;
+    final num stock = (product['stock'] as num?) ?? 0;
     if (stock <= 0) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -1339,6 +1381,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     Map<String, dynamic> product,
     int qty,
   ) {
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    ShopCustomerStorage.loadSavedProfile().then((prof) {
+      if (prof['name']?.isNotEmpty == true && nameCtrl.text.isEmpty) {
+        nameCtrl.text = prof['name']!;
+      }
+      if (prof['phone']?.isNotEmpty == true && phoneCtrl.text.isEmpty) {
+        phoneCtrl.text = prof['phone']!;
+      }
+    });
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1389,6 +1442,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             final bool disableScroll = h >= 720;
 
             return SingleChildScrollView(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
               physics: disableScroll
                   ? const NeverScrollableScrollPhysics()
                   : null,
@@ -1424,7 +1480,43 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ).textTheme.bodySmall?.color?.withValues(alpha: 0.8),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
+                    // Customer Details Inputs
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: nameCtrl,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: InputDecoration(
+                              labelText: 'Your Name (optional)',
+                              hintText: 'e.g. Ramesh',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              prefixIcon: const Icon(Icons.person_outline, size: 18),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: phoneCtrl,
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            decoration: InputDecoration(
+                              labelText: 'Phone / WhatsApp',
+                              hintText: '10 digits',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              prefixIcon: const Icon(Icons.phone_outlined, size: 18),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
                     if (showQr) ...[
                       Center(
                         child: Container(
@@ -1459,14 +1551,61 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       const SizedBox(height: 8),
                     ],
                     Text(
-                      'Pay via UPI app or scan QR from another phone, then upload the payment screenshot for verification.',
+                      'Pay directly using your installed UPI app, or scan the QR code from another device.',
                       style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                         color: Theme.of(
                           ctx,
                         ).textTheme.bodySmall?.color?.withValues(alpha: 0.9),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          HapticFeedback.lightImpact();
+                          final uri = Uri.parse(upiUri);
+                          try {
+                            final launched = await _tryLaunchUri(uri);
+                            if (!launched) {
+                              final qp = uri.query;
+                              final intentUri = Uri.parse('intent://pay?$qp#Intent;scheme=upi;end');
+                              final intentLaunched = await _tryLaunchUri(intentUri);
+                              if (!intentLaunched && ctx.mounted) {
+                                setSheetState(() => showQr = true);
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('No UPI app detected. QR code shown above.'),
+                                  ),
+                                );
+                              }
+                            }
+                          } catch (_) {
+                            if (ctx.mounted) {
+                              setSheetState(() => showQr = true);
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Could not open UPI app. QR code shown above.'),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Theme.of(ctx).colorScheme.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: const Icon(Icons.flash_on, size: 18),
+                        label: const Text(
+                          'Pay via UPI App (GPay, PhonePe, Paytm)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
@@ -1483,6 +1622,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               final file = await _pickPaymentScreenshot();
                               if (file == null) return;
                               if (mounted) Navigator.of(ctx).pop();
+                              final name = nameCtrl.text.trim().isNotEmpty
+                                  ? nameCtrl.text.trim()
+                                  : 'Walk-in Customer';
+                              final phone = phoneCtrl.text.trim().isNotEmpty
+                                  ? phoneCtrl.text.trim()
+                                  : null;
                               await _completeBuyNowSaleWithProof(
                                 ctx,
                                 checkoutId,
@@ -1490,10 +1635,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                 product,
                                 qty,
                                 file,
+                                customerName: name,
+                                customerPhone: phone,
                               );
                             },
                             icon: const Icon(Icons.upload_file),
-                            label: const Text('Upload Payment Screenshot'),
+                            label: const Text('Upload Proof'),
                           ),
                         ),
                       ],
@@ -1831,6 +1978,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     ConnectivityService().isOnline.removeListener(_onConnectivityChanged);
     _searchDebounce?.cancel();
     _linkSubscription?.cancel();
+    _authSubscription?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
     _minPriceCtl.dispose();
@@ -1994,35 +2142,65 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               builder: (context, setModalState) {
                 if (_cartItems.isEmpty) {
                   return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.shopping_cart_outlined,
-                          size: 80,
-                          color: Theme.of(context).disabledColor,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Your cart is empty',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(
-                                color: Theme.of(context).disabledColor,
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 100,
+                            height: 100,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.shopping_bag_outlined,
+                              size: 48,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          Text(
+                            'Your Cart is Empty',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Looks like you haven\'t added any items to your cart yet.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          FilledButton.icon(
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              if (isTab) {
+                                setState(() => _bottomNavIndex = 0);
+                              } else {
+                                Navigator.of(context).pop();
+                              }
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                        ),
-                        const SizedBox(height: 8),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            if (isTab) {
-                              setState(() => _bottomNavIndex = 0); // Go home
-                            } else {
-                              Navigator.of(context).pop();
-                            }
-                          },
-                          icon: const Icon(Icons.arrow_back),
-                          label: const Text('Start Shopping'),
-                        ),
-                      ],
+                            ),
+                            icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                            label: const Text(
+                              'Explore Products',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }
@@ -2039,8 +2217,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     final String name = item['name'] ?? 'Unknown Item';
                     final double price =
                         (item['price'] as num?)?.toDouble() ?? 0.0;
-                    final int qty = (item['qty'] as int?) ?? 1;
-                    final int stock = (item['stock'] as int?) ?? 0;
+                    final int qty = (item['qty'] as num?)?.toInt() ?? 1;
+                    final num stock = (item['stock'] as num?) ?? 0;
                     final double totalItemPrice = price * qty;
 
                     return Container(
@@ -2171,7 +2349,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                                 _cartCount = _cartItems.fold(
                                                   0,
                                                   (sum, it) =>
-                                                      sum + (it['qty'] as int),
+                                                      sum + ((it['qty'] as num?)?.toInt() ?? 0),
                                                 );
                                               });
                                               setState(() {});
@@ -2205,8 +2383,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                                             0,
                                                             (sum, it) =>
                                                                 sum +
-                                                                (it['qty']
-                                                                    as int),
+                                                                ((it['qty'] as num?)?.toInt() ?? 0),
                                                           );
                                                     });
                                                     setState(() {});
@@ -2500,6 +2677,30 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   Future<void> _proceedToCheckout(BuildContext context) async {
+    if (_businessProfile != null && !_businessProfile!.isWritable) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text('Store Temporarily Unavailable'),
+            content: const Text(
+              'Online checkout for this store is currently paused. Please contact the store directly.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
     if (!ConnectivityService().isOnline.value) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2834,6 +3035,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     String checkoutId,
     double total,
   ) {
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    ShopCustomerStorage.loadSavedProfile().then((prof) {
+      if (prof['name']?.isNotEmpty == true && nameCtrl.text.isEmpty) {
+        nameCtrl.text = prof['name']!;
+      }
+      if (prof['phone']?.isNotEmpty == true && phoneCtrl.text.isEmpty) {
+        phoneCtrl.text = prof['phone']!;
+      }
+    });
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2882,6 +3094,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             final bool disableScroll = h >= 720;
 
             return SingleChildScrollView(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
               physics: disableScroll
                   ? const NeverScrollableScrollPhysics()
                   : null,
@@ -2918,7 +3133,43 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ).textTheme.bodySmall?.color?.withValues(alpha: 0.8),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
+                    // Customer Details Inputs
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: nameCtrl,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: InputDecoration(
+                              labelText: 'Your Name (optional)',
+                              hintText: 'e.g. Ramesh',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              prefixIcon: const Icon(Icons.person_outline, size: 18),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: phoneCtrl,
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            decoration: InputDecoration(
+                              labelText: 'Phone / WhatsApp',
+                              hintText: '10 digits',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              prefixIcon: const Icon(Icons.phone_outlined, size: 18),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
                     if (showQr) ...[
                       Center(
                         child: Container(
@@ -2953,14 +3204,62 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       const SizedBox(height: 8),
                     ],
                     Text(
-                      'Pay via UPI app or scan QR from another phone, then upload the payment screenshot for verification.',
+                      'Pay directly using your installed UPI app, or scan the QR code from another device.',
                       style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                         color: Theme.of(
                           ctx,
                         ).textTheme.bodySmall?.color?.withValues(alpha: 0.9),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          HapticFeedback.lightImpact();
+                          final uri = Uri.parse(upiUri);
+                          try {
+                            final launched = await _tryLaunchUri(uri);
+                            if (!launched) {
+                              final intentUri = Uri.parse(
+                                'intent://pay?$qp#Intent;scheme=upi;end',
+                              );
+                              final intentLaunched = await _tryLaunchUri(intentUri);
+                              if (!intentLaunched && ctx.mounted) {
+                                setSheetState(() => showQr = true);
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('No UPI app detected. QR code shown above.'),
+                                  ),
+                                );
+                              }
+                            }
+                          } catch (_) {
+                            if (ctx.mounted) {
+                              setSheetState(() => showQr = true);
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Could not open UPI app. QR code shown above.'),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Theme.of(ctx).colorScheme.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: const Icon(Icons.flash_on, size: 18),
+                        label: const Text(
+                          'Pay via UPI App (GPay, PhonePe, Paytm)',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
@@ -2977,37 +3276,26 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               final file = await _pickPaymentScreenshot();
                               if (file == null) return;
                               if (mounted) Navigator.of(ctx).pop();
+                              final name = nameCtrl.text.trim().isNotEmpty
+                                  ? nameCtrl.text.trim()
+                                  : 'Walk-in Customer';
+                              final phone = phoneCtrl.text.trim().isNotEmpty
+                                  ? phoneCtrl.text.trim()
+                                  : null;
                               await _completeCartSaleWithProof(
                                 context,
                                 checkoutId,
                                 total,
                                 file,
+                                customerName: name,
+                                customerPhone: phone,
                               );
                             },
                             icon: const Icon(Icons.upload_file),
-                            label: const Text('Upload Payment Screenshot'),
+                            label: const Text('Upload Proof'),
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 8),
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: () async {
-                          // Allow user to open another UPI app
-                          bool launched = await _tryLaunchUri(
-                            Uri.parse(upiUri),
-                          );
-                          if (!launched) {
-                            final intentUri = Uri.parse(
-                              'intent://pay?$qp#Intent;scheme=upi;end',
-                            );
-                            await _tryLaunchUri(intentUri);
-                          }
-                        },
-                        icon: const Icon(Icons.open_in_new),
-                        label: const Text('Open in another UPI app'),
-                      ),
                     ),
                   ],
                 ),
@@ -3071,8 +3359,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     BuildContext context,
     String checkoutId,
     double total,
-    File proof,
-  ) async {
+    File proof, {
+    String customerName = 'Walk-in Customer',
+    String? customerPhone,
+  }) async {
     // Capture state objects before async gap
     final navigator = Navigator.of(context);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -3098,7 +3388,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       final proofUrl = await _uploadPaymentProof(proof, checkoutId);
 
       final saleId = await SupabaseService.createSaleWithItems(
-        customerName: 'Walk-in Customer',
+        customerName: customerName,
+        customerPhone: customerPhone,
         paymentMethod: 'upi',
         totalAmount: total,
         transactionId: checkoutId,
@@ -3109,12 +3400,63 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       );
 
       if (saleId != null) {
+        if (customerName.isNotEmpty && customerName != 'Walk-in Customer') {
+          ShopCustomerStorage.saveProfile(
+            name: customerName,
+            phone: customerPhone ?? '',
+          );
+        }
+
+        String trackingToken = 'trk_$checkoutId';
+        int orderId = saleId;
+        if (_currentBusinessId != null) {
+          try {
+            final shopOrder = await SupabaseService.createShopOrder(
+              businessId: _currentBusinessId!,
+              customerId: SupabaseService.currentUser?.id,
+              customerName: customerName,
+              customerPhone: customerPhone,
+              paymentMethod: 'upi',
+              transactionId: checkoutId,
+              paymentProofUrl: proofUrl,
+              totalAmount: total,
+              saleId: saleId,
+              items: _cartItems.map((e) => {
+                'product_id': e['id'],
+                'product_name': e['name'] ?? 'Item',
+                'quantity': (e['qty'] as num?)?.toInt() ?? 1,
+                'unit_price': (e['price'] as num).toDouble(),
+                'total_price': ((e['price'] as num).toDouble()) * ((e['qty'] as num?)?.toInt() ?? 1),
+              }).toList(),
+            );
+            if (shopOrder != null) {
+              if (shopOrder['id'] != null) orderId = shopOrder['id'] as int;
+              if (shopOrder['tracking_token'] != null) {
+                trackingToken = shopOrder['tracking_token'] as String;
+              }
+            }
+          } catch (e) {
+            debugPrint('[Shop] createShopOrder cart error: $e');
+          }
+        }
+
+        await ShopCustomerStorage.saveOrderLocally(
+          orderId: orderId,
+          trackingToken: trackingToken,
+          customerName: customerName,
+          customerPhone: customerPhone,
+          totalAmount: total,
+          status: 'pending',
+          createdAt: DateTime.now().toIso8601String(),
+          items: List<Map<String, dynamic>>.from(_cartItems),
+        );
+
         // Build receipt items
         final receiptItems = _cartItems
             .map(
               (e) => ReceiptItem(
                 name: e['name'] ?? 'Item',
-                quantity: e['qty'] as int,
+                quantity: (e['qty'] as num?)?.toInt() ?? 1,
                 pricePerUnit: (e['price'] as num).toDouble(),
               ),
             )
@@ -3122,8 +3464,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
         final receipt = ReceiptData(
           saleId: saleId.toString(),
-          customerName: 'Walk-in Customer',
-          customerPhone: null,
+          customerName: customerName,
+          customerPhone: customerPhone,
           items: receiptItems,
           subTotal: total,
           discount: 0,
@@ -3147,9 +3489,24 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(
-              'Payment submitted for verification. Sale ID: $saleId',
+              'Order submitted for verification! (ID: #$orderId)',
             ),
-            backgroundColor: Colors.orange,
+            backgroundColor: const Color(0xFF059669),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'Track Order',
+              textColor: Colors.white,
+              onPressed: () {
+                ShopAccountSheets.showTrackOrderSheet(
+                  context,
+                  businessId: _currentBusinessId,
+                  businessName: _businessName,
+                  businessPhone: _businessProfile?.phone,
+                  businessWhatsapp: _businessProfile?.phone,
+                  initialQuery: trackingToken,
+                );
+              },
+            ),
           ),
         );
       } else {
@@ -3178,8 +3535,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     double total,
     Map<String, dynamic> product,
     int qty,
-    File proof,
-  ) async {
+    File proof, {
+    String customerName = 'Walk-in Customer',
+    String? customerPhone,
+  }) async {
     // Capture state to safely use across async gaps
     final navigator = Navigator.of(context);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -3200,7 +3559,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       ];
 
       final saleId = await SupabaseService.createSaleWithItems(
-        customerName: 'Walk-in Customer',
+        customerName: customerName,
+        customerPhone: customerPhone,
         paymentMethod: 'upi',
         totalAmount: total,
         transactionId: checkoutId,
@@ -3211,10 +3571,69 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       );
 
       if (saleId != null) {
+        if (customerName.isNotEmpty && customerName != 'Walk-in Customer') {
+          ShopCustomerStorage.saveProfile(
+            name: customerName,
+            phone: customerPhone ?? '',
+          );
+        }
+
+        String trackingToken = 'trk_$checkoutId';
+        int orderId = saleId;
+        if (_currentBusinessId != null) {
+          try {
+            final shopOrder = await SupabaseService.createShopOrder(
+              businessId: _currentBusinessId!,
+              customerId: SupabaseService.currentUser?.id,
+              customerName: customerName,
+              customerPhone: customerPhone,
+              paymentMethod: 'upi',
+              transactionId: checkoutId,
+              paymentProofUrl: proofUrl,
+              totalAmount: total,
+              saleId: saleId,
+              items: [
+                {
+                  'product_id': product['id'],
+                  'product_name': product['name'] ?? 'Item',
+                  'quantity': qty,
+                  'unit_price': price,
+                  'total_price': total,
+                }
+              ],
+            );
+            if (shopOrder != null) {
+              if (shopOrder['id'] != null) orderId = shopOrder['id'] as int;
+              if (shopOrder['tracking_token'] != null) {
+                trackingToken = shopOrder['tracking_token'] as String;
+              }
+            }
+          } catch (e) {
+            debugPrint('[Shop] createShopOrder buy-now error: $e');
+          }
+        }
+
+        await ShopCustomerStorage.saveOrderLocally(
+          orderId: orderId,
+          trackingToken: trackingToken,
+          customerName: customerName,
+          customerPhone: customerPhone,
+          totalAmount: total,
+          status: 'pending',
+          createdAt: DateTime.now().toIso8601String(),
+          items: [
+            {
+              'name': product['name'] ?? 'Item',
+              'qty': qty,
+              'price': price,
+            }
+          ],
+        );
+
         final receipt = ReceiptData(
           saleId: saleId.toString(),
-          customerName: 'Walk-in Customer',
-          customerPhone: null,
+          customerName: customerName,
+          customerPhone: customerPhone,
           items: [
             ReceiptItem(
               name: product['name'] ?? 'Item',
@@ -3237,9 +3656,24 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text(
-              'Payment submitted for verification. Sale ID: $saleId',
+              'Order placed & submitted for verification! (ID: #$orderId)',
             ),
-            backgroundColor: Colors.orange,
+            backgroundColor: const Color(0xFF059669),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'Track Order',
+              textColor: Colors.white,
+              onPressed: () {
+                ShopAccountSheets.showTrackOrderSheet(
+                  context,
+                  businessId: _currentBusinessId,
+                  businessName: _businessName,
+                  businessPhone: _businessProfile?.phone,
+                  businessWhatsapp: _businessProfile?.phone,
+                  initialQuery: trackingToken,
+                );
+              },
+            ),
           ),
         );
       } else {
@@ -3353,96 +3787,144 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (isMobile) ...[
-              // Compact title + count on mobile
+              // Row 1: Header row with Category Title, Count Badge, and Filter toggle
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Text(
-                      'All Products',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                  Row(
+                    children: [
+                      Text(
+                        _selectedCategory == 'all'
+                            ? 'All Products'
+                            : _selectedCategory[0].toUpperCase() + _selectedCategory.substring(1),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 17,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${_filteredProducts.length}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    '${_filteredProducts.length}',
-                    style: TextStyle(
-                      color: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
+                  InkWell(
+                    onTap: () => setState(() => _filtersExpanded = !_filtersExpanded),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: _filtersExpanded
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: _filtersExpanded
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).dividerColor.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.tune_rounded,
+                            size: 14,
+                            color: _filtersExpanded
+                                ? Colors.white
+                                : Theme.of(context).colorScheme.onSurface,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _filtersExpanded ? 'Hide' : 'Filters',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _filtersExpanded
+                                  ? Colors.white
+                                  : Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
-            ],
 
-            // Category (mobile-only; desktop Category lives in pinned header)
-            if (isMobile)
+              // Row 2: Category chips horizontal bar
               Container(
                 key: _categoriesKey,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _categories.contains(_selectedCategory)
-                            ? _selectedCategory
-                            : _categories.first,
-                        // initialValue: _selectedCategory, // Removed to rely on 'value' for updates
-                        items: _categories
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c,
-                                child: Text(
-                                  c[0].toUpperCase() + c.substring(1),
-                                ),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(() {
-                          _selectedCategory = v ?? 'all';
-                          _scrollToProducts();
-                        }),
-                        decoration: InputDecoration(
-                          labelText: 'Category',
-                          filled: true,
-                          fillColor: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(alpha: 0.4),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(
-                              UITokens.radius,
+                height: 36,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _categories.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, idx) {
+                    final cat = _categories[idx];
+                    final isSelected = _selectedCategory.toLowerCase() == cat.toLowerCase();
+                    final label = cat == 'all'
+                        ? 'All'
+                        : cat[0].toUpperCase() + cat.substring(1);
+
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setState(() {
+                            _selectedCategory = cat;
+                            _scrollToProducts();
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).dividerColor.withValues(alpha: 0.2),
                             ),
-                            borderSide: BorderSide(
-                              color: Theme.of(
-                                context,
-                              ).dividerColor.withValues(alpha: 0.2),
+                          ),
+                          child: Center(
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                color: isSelected
+                                    ? Colors.white
+                                    : Theme.of(context).colorScheme.onSurface,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
               ),
-            const SizedBox(height: 12),
-
-            // Collapsible toggle (mobile)
-            if (isMobile)
-              Align(
-                alignment: Alignment.centerRight,
-                child: OutlinedButton.icon(
-                  onPressed: () =>
-                      setState(() => _filtersExpanded = !_filtersExpanded),
-                  icon: Icon(
-                    _filtersExpanded ? Icons.expand_less : Icons.expand_more,
-                  ),
-                  label: Text(
-                    _filtersExpanded ? 'Hide Filters' : 'Show Filters',
-                  ),
-                ),
-              ),
+              const SizedBox(height: 8),
+            ],
 
             if (filtersExpanded)
               // Brand, Spec, Color
@@ -3955,10 +4437,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       const double horizontalPadding = 32; // SliverPadding left+right
       const double crossSpacing = 14; // grid crossAxisSpacing
 
-      // Adaptive count based on desired minimum tile width (~300px on desktop)
-      int crossAxisCount = (maxW / 300).floor();
-      if (crossAxisCount < 1) crossAxisCount = 1;
-      if (crossAxisCount > 6) crossAxisCount = 6;
+      int crossAxisCount;
+      if (maxW < 600) {
+        crossAxisCount = 2;
+      } else if (maxW < 900) {
+        crossAxisCount = 3;
+      } else if (maxW < 1200) {
+        crossAxisCount = 4;
+      } else {
+        crossAxisCount = (maxW / 260).floor().clamp(4, 6);
+      }
 
       // Compute effective tile width after padding and spacing
       final double tileWidth =
@@ -3967,16 +4455,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
       // Derive aspect ratio (w/h). Smaller widths need taller cards to avoid overflow.
       double childAspectRatio;
-      if (tileWidth < 240) {
+      if (tileWidth < 185) {
+        childAspectRatio = 0.63;
+      } else if (tileWidth < 240) {
         childAspectRatio = 0.66;
       } else if (tileWidth < 280) {
-        childAspectRatio = 0.69;
+        childAspectRatio = 0.70;
       } else if (tileWidth < 340) {
         childAspectRatio = 0.74;
-      } else if (tileWidth < 420) {
-        childAspectRatio = 0.80;
       } else {
-        childAspectRatio = 0.85;
+        childAspectRatio = 0.80;
       }
       return SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -4085,9 +4573,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   Widget _buildProductCard(BuildContext context, Map<String, dynamic> product) {
-    final isOutOfStock = product['stock'] == 0;
+    final stockVal = (product['stock'] as num?)?.toInt() ?? 0;
+    final isOutOfStock = stockVal <= 0;
     final isWishlisted = _wishlist.contains(product['id']);
-    final isLowStock = !isOutOfStock && (product['stock'] as int? ?? 0) <= 5;
+    final isLowStock = !isOutOfStock && stockVal <= 5;
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
@@ -4095,7 +4584,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       (item) => item['id'] == product['id'],
       orElse: () => {'qty': 0},
     );
-    final quantityInCart = cartItem['qty'] as int;
+    final quantityInCart = (cartItem['qty'] as num?)?.toInt() ?? 0;
 
     return Card(
       color: cs.surface,
@@ -4116,24 +4605,73 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Container(
-                    color: Colors
-                        .white, // reliable background for product standard images
-                    child: Hero(
-                      tag: 'pimg-${product['id']}',
-                      child: CachedNetworkImage(
-                        imageUrl: product['image'] ?? '',
-                        fit: BoxFit
-                            .contain, // Contain usually looks better for products
-                        placeholder: (c, _) => Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                  Builder(
+                    builder: (context) {
+                      final rawImg = product['image'];
+                      final hasImage = rawImg != null &&
+                          rawImg.toString().trim().isNotEmpty &&
+                          rawImg.toString().trim() != 'null';
+
+                      if (!hasImage) {
+                        return Container(
+                          color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 32,
+                                  color: cs.onSurfaceVariant.withValues(alpha: 0.35),
+                                ),
+                                const SizedBox(height: 4),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  child: Text(
+                                    (product['category'] ?? 'Product').toString(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      return Container(
+                        color: Colors.white,
+                        child: Hero(
+                          tag: 'pimg-${product['id']}',
+                          child: CachedNetworkImage(
+                            imageUrl: rawImg.toString(),
+                            fit: BoxFit.contain,
+                            placeholder: (c, _) => const Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                            errorWidget: (c, _, __) => Container(
+                              color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                              child: Center(
+                                child: Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 32,
+                                  color: cs.onSurfaceVariant.withValues(alpha: 0.35),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                        errorWidget: (c, _, __) => Icon(
-                          Icons.broken_image_outlined,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
 
                   // Subtle gradient at bottom for text contrast if needed?
@@ -4168,7 +4706,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     top: 8,
                     right: 8,
                     child: Material(
-                      color: Colors.white.withValues(alpha: 0.9),
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.black.withValues(alpha: 0.5)
+                          : Colors.white.withValues(alpha: 0.9),
                       shape: const CircleBorder(),
                       child: InkWell(
                         customBorder: const CircleBorder(),
@@ -4179,8 +4719,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             isWishlisted
                                 ? Icons.favorite
                                 : Icons.favorite_border,
-                            size: 18,
-                            color: isWishlisted ? Colors.red : Colors.grey,
+                            size: 16,
+                            color: isWishlisted
+                                ? Colors.red
+                                : (Theme.of(context).brightness == Brightness.dark
+                                    ? Colors.white70
+                                    : Colors.grey.shade700),
                           ),
                         ),
                       ),
@@ -4217,7 +4761,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
             // Details Section
             Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -4257,81 +4801,99 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        _currencyFormat.format(product['price'] ?? 0),
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: cs.onSurface,
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _currencyFormat.format(product['price'] ?? 0),
+                            style: textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: cs.onSurface,
+                            ),
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 6),
 
-                      // Add Button
+                      // Add Button / Stepper
                       if (!isOutOfStock)
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 200),
                           child: quantityInCart > 0
                               ? Container(
-                                  height: 36,
+                                  height: 32,
                                   decoration: BoxDecoration(
                                     color: cs.primaryContainer,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
                                   child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      IconButton(
-                                        icon: Icon(
-                                          Icons.remove,
-                                          size: 16,
-                                          color: cs.onPrimaryContainer,
+                                      InkWell(
+                                        borderRadius: const BorderRadius.horizontal(
+                                          left: Radius.circular(8),
                                         ),
-                                        onPressed: () => _updateCart(
+                                        onTap: () => _updateCart(
                                           product,
                                           quantityInCart - 1,
                                         ),
-                                        padding: EdgeInsets.zero,
-                                        constraints: BoxConstraints(
-                                          minWidth: 24,
-                                          minHeight: 24,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 7,
+                                            vertical: 5,
+                                          ),
+                                          child: Icon(
+                                            Icons.remove,
+                                            size: 14,
+                                            color: cs.onPrimaryContainer,
+                                          ),
                                         ),
                                       ),
-                                      Text(
-                                        '$quantityInCart',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                          color: cs.onPrimaryContainer,
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 3,
+                                        ),
+                                        child: Text(
+                                          '$quantityInCart',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: cs.onPrimaryContainer,
+                                          ),
                                         ),
                                       ),
-                                      IconButton(
-                                        icon: Icon(
-                                          Icons.add,
-                                          size: 16,
-                                          color: cs.onPrimaryContainer,
+                                      InkWell(
+                                        borderRadius: const BorderRadius.horizontal(
+                                          right: Radius.circular(8),
                                         ),
-                                        onPressed: () => _updateCart(
+                                        onTap: () => _updateCart(
                                           product,
                                           quantityInCart + 1,
                                         ),
-                                        padding: EdgeInsets.zero,
-                                        constraints: BoxConstraints(
-                                          minWidth: 24,
-                                          minHeight: 24,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 7,
+                                            vertical: 5,
+                                          ),
+                                          child: Icon(
+                                            Icons.add,
+                                            size: 14,
+                                            color: cs.onPrimaryContainer,
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
                                 )
                               : SizedBox(
-                                  height: 36,
+                                  height: 32,
                                   child: FilledButton(
                                     onPressed: () =>
                                         _addToCart(context, product),
                                     style: FilledButton.styleFrom(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 16,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
                                       ),
                                       visualDensity: VisualDensity.compact,
                                       shape: RoundedRectangleBorder(
@@ -4399,9 +4961,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           (item) => item['id'] == product['id'],
           orElse: () => {'qty': 0},
         );
-        int qty = (cartItem['qty'] as int) > 0 ? (cartItem['qty'] as int) : 1;
+        final int cartQty = (cartItem['qty'] as num?)?.toInt() ?? 0;
+        int qty = cartQty > 0 ? cartQty : 1;
 
-        final int stoRck = (product['stock'] as int?) ?? 0;
+        final int stoRck = (product['stock'] as num?)?.toInt() ?? 0;
         final String desc = (product['description'] as String?)?.trim() ?? '';
         final specs = _parseSpecs(desc);
 
@@ -4417,7 +4980,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           builder: (context, setSheetState) {
             // Re-bind current product data
             final int pId = currentProduct['id'];
-            final int stock = (currentProduct['stock'] as int?) ?? 0;
+            final num stock = (currentProduct['stock'] as num?) ?? 0;
             final double price =
                 (currentProduct['price'] as num?)?.toDouble() ?? 0.0;
             final String name = currentProduct['name'] ?? 'Product';
@@ -5116,7 +5679,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       final spec = (product['spec'] ?? '').toString();
       final color = (product['color'] ?? '').toString().toLowerCase();
       final price = (product['price'] as num?)?.toDouble() ?? 0.0;
-      final stock = (product['stock'] as int?) ?? 0;
+      final stock = (product['stock'] as num?)?.toInt() ?? 0;
 
       final matchesSearch =
           true; // Trust server-side search results for wider matches
@@ -5356,6 +5919,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   } else if (index == 3) {
                     // Cart
                     _openCart(context);
+                  } else if (index == 4) {
+                    // Account & Orders
+                    ShopAccountSheets.showAccountSheet(
+                      context,
+                      businessId: _currentBusinessId,
+                      businessName: _businessName,
+                      businessPhone: _businessProfile?.phone,
+                      businessWhatsapp: _businessProfile?.phone,
+                      onStateChanged: () => setState(() {}),
+                    );
                   }
                 },
                 destinations: const [
@@ -5379,6 +5952,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     selectedIcon: Icon(Icons.local_mall_rounded, size: 24),
                     label: 'Cart',
                   ),
+                  NavigationDestination(
+                    icon: Icon(Icons.person_outline, size: 24),
+                    selectedIcon: Icon(Icons.person, size: 24),
+                    label: 'Account',
+                  ),
                 ],
               ),
             )
@@ -5394,19 +5972,22 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   Widget _buildSliverAppBar(BuildContext context, bool isDesktop) {
     return SliverAppBar(
       pinned: true,
-      toolbarHeight: isDesktop ? 80 : 150,
-      collapsedHeight: isDesktop ? 80 : 150,
-      expandedHeight: isDesktop ? 120 : 200,
+      toolbarHeight: isDesktop ? 80 : 118,
+      collapsedHeight: isDesktop ? 80 : 118,
+      expandedHeight: isDesktop ? 80 : 118,
       backgroundColor: Theme.of(context).cardColor,
       flexibleSpace: FlexibleSpaceBar(
+        expandedTitleScale: 1.0,
         titlePadding: EdgeInsets.zero,
         title: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: isDesktop ? 24 : 16,
-            vertical: isDesktop ? 12 : 6,
+          padding: EdgeInsets.only(
+            left: isDesktop ? 24 : 16,
+            right: isDesktop ? 24 : 16,
+            top: isDesktop ? 12 : 6,
+            bottom: isDesktop ? 12 : 8,
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(
@@ -5509,7 +6090,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             ),
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
                   // Business Name
                   Expanded(
                     child: Column(
@@ -5519,9 +6100,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         Text(
                           _businessName,
                           style: TextStyle(
-                            fontSize: isDesktop ? 22 : 20,
+                            fontSize: isDesktop ? 20 : 16,
                             fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
+                            letterSpacing: -0.3,
                             color: Theme.of(
                               context,
                             ).textTheme.titleLarge?.color,
@@ -5529,51 +6110,85 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        const SizedBox(height: 2),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF10B981),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Verified Store',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  letterSpacing: 0.1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
+                  const SizedBox(width: 8),
                   // Cart Icon
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
                       Container(
+                        width: 40,
+                        height: 40,
                         decoration: BoxDecoration(
                           color: Theme.of(context)
                               .colorScheme
                               .surfaceContainerHighest
-                              .withValues(alpha: 0.5),
+                              .withValues(alpha: 0.4),
                           shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Theme.of(context).dividerColor.withValues(alpha: 0.12),
+                          ),
                         ),
                         child: IconButton(
-                          icon: const Icon(Icons.shopping_cart_outlined),
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.shopping_cart_outlined, size: 20),
                           onPressed: () => _openCart(context),
-                          iconSize: 24,
                           color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       if (_cartCount > 0)
                         Positioned(
-                          right: 4,
-                          top: 4,
+                          right: -2,
+                          top: -2,
                           child: Container(
-                            padding: const EdgeInsets.all(4),
+                            padding: const EdgeInsets.all(3),
                             decoration: BoxDecoration(
                               color: Theme.of(context).colorScheme.primary,
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: Theme.of(context).cardColor,
-                                width: 2,
+                                width: 1.5,
                               ),
                             ),
                             constraints: const BoxConstraints(
-                              minWidth: 20,
-                              minHeight: 20,
+                              minWidth: 18,
+                              minHeight: 18,
                             ),
                             child: Text(
                               '$_cartCount',
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 10,
+                                fontSize: 9,
                                 fontWeight: FontWeight.bold,
                               ),
                               textAlign: TextAlign.center,
@@ -5582,16 +6197,65 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ),
                     ],
                   ),
+                  const SizedBox(width: 8),
+                  // Customer Account & Profile
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withValues(alpha: 0.4),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Theme.of(context).dividerColor.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      tooltip: 'Account & Orders',
+                      icon: SupabaseService.currentUser != null
+                          ? CircleAvatar(
+                              radius: 13,
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              child: Text(
+                                ((SupabaseService.currentUser?.userMetadata?['name'] ??
+                                         SupabaseService.currentUser?.email ??
+                                         'U') as String)
+                                    .substring(0, 1)
+                                    .toUpperCase(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            )
+                          : const Icon(Icons.person_outline, size: 20),
+                      onPressed: () {
+                        ShopAccountSheets.showAccountSheet(
+                          context,
+                          businessId: _currentBusinessId,
+                          businessName: _businessName,
+                          businessPhone: _businessProfile?.phone,
+                          businessWhatsapp: _businessProfile?.phone,
+                          onStateChanged: () => setState(() {}),
+                        );
+                      },
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
                 ],
               ),
               // Search Bar (mobile only)
               if (MediaQuery.of(context).size.width <= 600)
                 Container(
-                  height: 48,
-                  margin: const EdgeInsets.only(top: 12),
+                  height: 44,
+                  margin: const EdgeInsets.only(top: 8),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(22),
                     border: Border.all(
                       color: Theme.of(
                         context,
@@ -5703,14 +6367,14 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                   decoration: InputDecoration(
                                     hintText: _isListening
                                         ? 'Listening...'
-                                        : 'Search products...',
+                                        : 'Search items...',
                                     hintStyle: TextStyle(
                                       color: Theme.of(context)
                                           .textTheme
                                           .bodyMedium
                                           ?.color
                                           ?.withValues(alpha: 0.5),
-                                      fontSize: 15,
+                                      fontSize: 14,
                                     ),
                                     border: InputBorder.none,
                                     isDense: true,
@@ -5804,8 +6468,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-              if (MediaQuery.of(context).size.width <= 600)
-                SizedBox(height: (_isScrolled) ? 28 : 12),
             ],
           ),
         ),
@@ -5973,7 +6635,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     BuildContext context,
     Map<String, dynamic> product,
   ) {
-    final isOutOfStock = (product['stock'] as int? ?? 0) == 0;
+    final isOutOfStock = ((product['stock'] as num?)?.toInt() ?? 0) <= 0;
     final isWishlisted = _wishlist.contains(product['id']);
     final isDesktop = MediaQuery.of(context).size.width > 900;
     final cs = Theme.of(context).colorScheme;
@@ -5984,7 +6646,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         ? (product['brand'] as String)
         : 'Generic';
     final String category = (product['category'] as String?) ?? 'General';
-    final int stock = (product['stock'] as int?) ?? 0;
+    final num stock = (product['stock'] as num?) ?? 0;
     final double price = (product['price'] as num?)?.toDouble() ?? 0.0;
 
     return Card(
