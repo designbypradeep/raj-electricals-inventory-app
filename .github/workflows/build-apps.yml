@@ -45,26 +45,29 @@ jobs:
           sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = com.example.rajElectricalsInventoryApp;/PRODUCT_BUNDLE_IDENTIFIER = ${{ matrix.bundle_id }};/g' ios/Runner.xcodeproj/project.pbxproj
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName '${{ matrix.display_name }}'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string '${{ matrix.display_name }}'" ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c "Set :CFBundleName '${{ matrix.display_name }}'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Add :CFBundleName string '${{ matrix.display_name }}'" ios/Runner/Info.plist
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
 
       - name: Get Flutter dependencies
         run: flutter pub get
 
       - name: Build iOS Application (Release, Unsigned)
-        run: flutter build ipa --release --no-codesign --dart-define=APP_TYPE=${{ matrix.app_type }}
+        run: flutter build ios --release --no-codesign --dart-define=APP_TYPE=${{ matrix.app_type }}
 
       - name: Package Payload into IPA
         run: |
-          mkdir -p build/ios/Payload
-          cp -r build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app build/ios/Payload/
-          cd build/ios
+          mkdir -p build/ios/iphoneos/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
+          cd build/ios/iphoneos
           zip -r -9 ${{ matrix.app_name }}.ipa Payload
-          cd ../..
+          cd ../../..
 
       - name: Upload iOS IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: build/ios/${{ matrix.app_name }}.ipa
+          path: build/ios/iphoneos/${{ matrix.app_name }}.ipa
           retention-days: 14
 
   # ==========================================
