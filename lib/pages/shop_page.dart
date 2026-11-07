@@ -61,6 +61,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   final bool _isGridView = true;
   int _cartCount = 0;
   final List<Map<String, dynamic>> _cartItems = [];
+  late AnimationController _cartBadgeAnimController;
+  late Animation<double> _cartBadgeScaleAnimation;
   final List<int> _wishlist = [];
   final List<int> _recentlyViewed = [];
   bool _isLoadingProducts = true;
@@ -148,6 +150,35 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     super.initState();
     _mobileSearchFocusNode = FocusNode();
     _currencyFormat = NumberFormat.currency(locale: 'en_IN', symbol: '₹');
+
+    // Cart badge bounce animation controller
+    _cartBadgeAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+    _cartBadgeScaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 1.0,
+          end: 1.4,
+        ).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 45,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 1.4,
+          end: 0.95,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 30,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(
+          begin: 0.95,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 25,
+      ),
+    ]).animate(_cartBadgeAnimController);
     _searchController.addListener(() {
       // Debounce handled by listener in build or manual calls?
       // Actually the text field calls onChanged: _onSearchChanged
@@ -1264,6 +1295,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     Map<String, dynamic> product,
     int qty,
   ) async {
+    HapticFeedback.mediumImpact();
     if (_businessProfile != null && !_businessProfile!.isWritable) {
       if (mounted) {
         showDialog(
@@ -1508,9 +1540,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               labelText: 'Your Name (optional)',
                               hintText: 'e.g. Ramesh',
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              prefixIcon: const Icon(Icons.person_outline, size: 18),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.person_outline,
+                                size: 18,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                             ),
                           ),
                         ),
@@ -1519,14 +1559,24 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           child: TextField(
                             controller: phoneCtrl,
                             keyboardType: TextInputType.phone,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
                             decoration: InputDecoration(
                               labelText: 'Phone / WhatsApp',
                               hintText: '10 digits',
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              prefixIcon: const Icon(Icons.phone_outlined, size: 18),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.phone_outlined,
+                                size: 18,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                             ),
                           ),
                         ),
@@ -1585,13 +1635,19 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             final launched = await _tryLaunchUri(uri);
                             if (!launched) {
                               final qp = uri.query;
-                              final intentUri = Uri.parse('intent://pay?$qp#Intent;scheme=upi;end');
-                              final intentLaunched = await _tryLaunchUri(intentUri);
+                              final intentUri = Uri.parse(
+                                'intent://pay?$qp#Intent;scheme=upi;end',
+                              );
+                              final intentLaunched = await _tryLaunchUri(
+                                intentUri,
+                              );
                               if (!intentLaunched && ctx.mounted) {
                                 setSheetState(() => showQr = true);
                                 ScaffoldMessenger.of(ctx).showSnackBar(
                                   const SnackBar(
-                                    content: Text('No UPI app detected. QR code shown above.'),
+                                    content: Text(
+                                      'No UPI app detected. QR code shown above.',
+                                    ),
                                   ),
                                 );
                               }
@@ -1601,7 +1657,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               setSheetState(() => showQr = true);
                               ScaffoldMessenger.of(ctx).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Could not open UPI app. QR code shown above.'),
+                                  content: Text(
+                                    'Could not open UPI app. QR code shown above.',
+                                  ),
                                 ),
                               );
                             }
@@ -1617,7 +1675,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         icon: const Icon(Icons.flash_on, size: 18),
                         label: const Text(
                           'Pay via UPI App (GPay, PhonePe, Paytm)',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ),
@@ -1686,6 +1747,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         final controller = PageController(initialPage: current);
         bool showHints = true;
         bool hideScheduled = false;
+        bool isZoomed = false;
         return Dialog(
           backgroundColor: Colors.black,
           insetPadding: EdgeInsets.zero,
@@ -1712,6 +1774,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           duration: const Duration(milliseconds: 200),
                           curve: Curves.easeInOut,
                         );
+                        HapticFeedback.selectionClick();
                         setState(() {});
                       }
                     } else if (e.logicalKey == LogicalKeyboardKey.arrowLeft) {
@@ -1722,18 +1785,21 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           duration: const Duration(milliseconds: 200),
                           curve: Curves.easeInOut,
                         );
+                        HapticFeedback.selectionClick();
                         setState(() {});
                       }
                     } else if (e.logicalKey == LogicalKeyboardKey.home) {
                       if (current != 0) {
                         current = 0;
                         controller.jumpToPage(current);
+                        HapticFeedback.selectionClick();
                         setState(() {});
                       }
                     } else if (e.logicalKey == LogicalKeyboardKey.end) {
                       if (current != images.length - 1) {
                         current = images.length - 1;
                         controller.jumpToPage(current);
+                        HapticFeedback.selectionClick();
                         setState(() {});
                       }
                     } else if (e.logicalKey == LogicalKeyboardKey.escape) {
@@ -1750,28 +1816,27 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   children: [
                     PageView.builder(
                       controller: controller,
-                      onPageChanged: (i) => setState(() => current = i),
+                      physics: isZoomed
+                          ? const NeverScrollableScrollPhysics()
+                          : const BouncingScrollPhysics(),
+                      onPageChanged: (i) {
+                        HapticFeedback.selectionClick();
+                        setState(() {
+                          current = i;
+                          isZoomed = false;
+                        });
+                      },
                       itemCount: images.length,
                       itemBuilder: (context, index) {
                         final url = images[index];
-                        return Center(
-                          child: InteractiveViewer(
-                            minScale: 1.0,
-                            maxScale: 4.0,
-                            child: Image.network(
-                              url,
-                              headers: const {
-                                'User-Agent':
-                                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                              },
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => const Icon(
-                                Icons.image_not_supported,
-                                color: Colors.white70,
-                                size: 48,
-                              ),
-                            ),
-                          ),
+                        return _ZoomableImageViewerItem(
+                          imageUrl: url,
+                          onDismiss: () => Navigator.of(ctx).pop(),
+                          onZoomChanged: (zoomed) {
+                            if (isZoomed != zoomed) {
+                              setState(() => isZoomed = zoomed);
+                            }
+                          },
                         );
                       },
                     ),
@@ -1991,6 +2056,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _cartBadgeAnimController.dispose();
     ConnectivityService().isOnline.removeListener(_onConnectivityChanged);
     _searchDebounce?.cancel();
     _linkSubscription?.cancel();
@@ -2167,7 +2233,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             width: 100,
                             height: 100,
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.1),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
@@ -2179,17 +2247,21 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           const SizedBox(height: 20),
                           Text(
                             'Your Cart is Empty',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'Looks like you haven\'t added any items to your cart yet.',
                             textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
-                            ),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.color
+                                      ?.withValues(alpha: 0.7),
+                                ),
                           ),
                           const SizedBox(height: 24),
                           FilledButton.icon(
@@ -2202,17 +2274,30 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               }
                             },
                             style: FilledButton.styleFrom(
-                              backgroundColor: Theme.of(context).colorScheme.primary,
-                              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                              backgroundColor: Theme.of(
+                                context,
+                              ).colorScheme.primary,
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.onPrimary,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 28,
+                                vertical: 14,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                            icon: const Icon(
+                              Icons.shopping_bag_outlined,
+                              size: 18,
+                            ),
                             label: const Text(
                               'Explore Products',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
                             ),
                           ),
                         ],
@@ -2356,6 +2441,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                             ),
                                             padding: EdgeInsets.zero,
                                             onPressed: () {
+                                              HapticFeedback.selectionClick();
                                               setModalState(() {
                                                 if (item['qty'] > 1) {
                                                   item['qty']--;
@@ -2365,7 +2451,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                                 _cartCount = _cartItems.fold(
                                                   0,
                                                   (sum, it) =>
-                                                      sum + ((it['qty'] as num?)?.toInt() ?? 0),
+                                                      sum +
+                                                      ((it['qty'] as num?)
+                                                              ?.toInt() ??
+                                                          0),
                                                 );
                                               });
                                               setState(() {});
@@ -2392,15 +2481,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                             padding: EdgeInsets.zero,
                                             onPressed: qty < stock
                                                 ? () {
+                                                    HapticFeedback.selectionClick();
                                                     setModalState(() {
                                                       item['qty']++;
-                                                      _cartCount = _cartItems
-                                                          .fold(
-                                                            0,
-                                                            (sum, it) =>
-                                                                sum +
-                                                                ((it['qty'] as num?)?.toInt() ?? 0),
-                                                          );
+                                                      _cartCount = _cartItems.fold(
+                                                        0,
+                                                        (sum, it) =>
+                                                            sum +
+                                                            ((it['qty'] as num?)
+                                                                    ?.toInt() ??
+                                                                0),
+                                                      );
                                                     });
                                                     setState(() {});
                                                   }
@@ -3161,9 +3252,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               labelText: 'Your Name (optional)',
                               hintText: 'e.g. Ramesh',
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              prefixIcon: const Icon(Icons.person_outline, size: 18),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.person_outline,
+                                size: 18,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                             ),
                           ),
                         ),
@@ -3172,14 +3271,24 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           child: TextField(
                             controller: phoneCtrl,
                             keyboardType: TextInputType.phone,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
                             decoration: InputDecoration(
                               labelText: 'Phone / WhatsApp',
                               hintText: '10 digits',
                               isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              prefixIcon: const Icon(Icons.phone_outlined, size: 18),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              prefixIcon: const Icon(
+                                Icons.phone_outlined,
+                                size: 18,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                             ),
                           ),
                         ),
@@ -3240,12 +3349,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               final intentUri = Uri.parse(
                                 'intent://pay?$qp#Intent;scheme=upi;end',
                               );
-                              final intentLaunched = await _tryLaunchUri(intentUri);
+                              final intentLaunched = await _tryLaunchUri(
+                                intentUri,
+                              );
                               if (!intentLaunched && ctx.mounted) {
                                 setSheetState(() => showQr = true);
                                 ScaffoldMessenger.of(ctx).showSnackBar(
                                   const SnackBar(
-                                    content: Text('No UPI app detected. QR code shown above.'),
+                                    content: Text(
+                                      'No UPI app detected. QR code shown above.',
+                                    ),
                                   ),
                                 );
                               }
@@ -3255,7 +3368,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               setSheetState(() => showQr = true);
                               ScaffoldMessenger.of(ctx).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Could not open UPI app. QR code shown above.'),
+                                  content: Text(
+                                    'Could not open UPI app. QR code shown above.',
+                                  ),
                                 ),
                               );
                             }
@@ -3271,7 +3386,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         icon: const Icon(Icons.flash_on, size: 18),
                         label: const Text(
                           'Pay via UPI App (GPay, PhonePe, Paytm)',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ),
@@ -3437,13 +3555,19 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               paymentProofUrl: proofUrl,
               totalAmount: total,
               saleId: saleId,
-              items: _cartItems.map((e) => {
-                'product_id': e['id'],
-                'product_name': e['name'] ?? 'Item',
-                'quantity': (e['qty'] as num?)?.toInt() ?? 1,
-                'unit_price': (e['price'] as num).toDouble(),
-                'total_price': ((e['price'] as num).toDouble()) * ((e['qty'] as num?)?.toInt() ?? 1),
-              }).toList(),
+              items: _cartItems
+                  .map(
+                    (e) => {
+                      'product_id': e['id'],
+                      'product_name': e['name'] ?? 'Item',
+                      'quantity': (e['qty'] as num?)?.toInt() ?? 1,
+                      'unit_price': (e['price'] as num).toDouble(),
+                      'total_price':
+                          ((e['price'] as num).toDouble()) *
+                          ((e['qty'] as num?)?.toInt() ?? 1),
+                    },
+                  )
+                  .toList(),
             );
             if (shopOrder != null) {
               if (shopOrder['id'] != null) orderId = shopOrder['id'] as int;
@@ -3504,9 +3628,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         navigator.pop(); // Pop loading dialog
         scaffoldMessenger.showSnackBar(
           SnackBar(
-            content: Text(
-              'Order submitted for verification! (ID: #$orderId)',
-            ),
+            content: Text('Order submitted for verification! (ID: #$orderId)'),
             backgroundColor: const Color(0xFF059669),
             duration: const Duration(seconds: 8),
             action: SnackBarAction(
@@ -3615,7 +3737,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   'quantity': qty,
                   'unit_price': price,
                   'total_price': total,
-                }
+                },
               ],
             );
             if (shopOrder != null) {
@@ -3638,11 +3760,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           status: 'pending',
           createdAt: DateTime.now().toIso8601String(),
           items: [
-            {
-              'name': product['name'] ?? 'Item',
-              'qty': qty,
-              'price': price,
-            }
+            {'name': product['name'] ?? 'Item', 'qty': qty, 'price': price},
           ],
         );
 
@@ -3746,6 +3864,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     Map<String, dynamic> product, {
     int qty = 1,
   }) {
+    HapticFeedback.lightImpact();
     final existingIndex = _cartItems.indexWhere(
       (item) => item['id'] == product['id'],
     );
@@ -3774,10 +3893,48 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       );
     });
 
+    _cartBadgeAnimController.forward(from: 0.0);
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          '${product['name']} added to cart${qty > 1 ? ' (x$qty)' : ''}',
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: isDark
+            ? const Color(0xFF242426)
+            : const Color(0xFF1E293B),
+        duration: const Duration(seconds: 2),
+        content: Row(
+          children: [
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Color(0xFF4ADE80),
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${product['name']} added to cart${qty > 1 ? ' (x$qty)' : ''}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        action: SnackBarAction(
+          label: 'VIEW CART',
+          textColor: const Color(0xFF38BDF8),
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            _openCart(context);
+          },
         ),
       ),
     );
@@ -3812,17 +3969,24 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       Text(
                         _selectedCategory == 'all'
                             ? 'All Products'
-                            : _selectedCategory[0].toUpperCase() + _selectedCategory.substring(1),
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 17,
-                        ),
+                            : _selectedCategory[0].toUpperCase() +
+                                  _selectedCategory.substring(1),
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 17,
+                            ),
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
@@ -3837,19 +4001,28 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     ],
                   ),
                   InkWell(
-                    onTap: () => setState(() => _filtersExpanded = !_filtersExpanded),
+                    onTap: () =>
+                        setState(() => _filtersExpanded = !_filtersExpanded),
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: _filtersExpanded
                             ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                            : Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: _filtersExpanded
                               ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).dividerColor.withValues(alpha: 0.2),
+                              : Theme.of(
+                                  context,
+                                ).dividerColor.withValues(alpha: 0.2),
                         ),
                       ),
                       child: Row(
@@ -3891,7 +4064,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   separatorBuilder: (_, __) => const SizedBox(width: 8),
                   itemBuilder: (context, idx) {
                     final cat = _categories[idx];
-                    final isSelected = _selectedCategory.toLowerCase() == cat.toLowerCase();
+                    final isSelected =
+                        _selectedCategory.toLowerCase() == cat.toLowerCase();
                     final label = cat == 'all'
                         ? 'All'
                         : cat[0].toUpperCase() + cat.substring(1);
@@ -3909,16 +4083,24 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         borderRadius: BorderRadius.circular(10),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 180),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? Theme.of(context).colorScheme.primary
-                                : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                : Theme.of(context)
+                                      .colorScheme
+                                      .surfaceContainerHighest
+                                      .withValues(alpha: 0.5),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: isSelected
                                   ? Theme.of(context).colorScheme.primary
-                                  : Theme.of(context).dividerColor.withValues(alpha: 0.2),
+                                  : Theme.of(
+                                      context,
+                                    ).dividerColor.withValues(alpha: 0.2),
                             ),
                           ),
                           child: Center(
@@ -3926,7 +4108,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               label,
                               style: TextStyle(
                                 fontSize: 12,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
                                 color: isSelected
                                     ? Colors.white
                                     : Theme.of(context).colorScheme.onSurface,
@@ -4624,13 +4808,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   Builder(
                     builder: (context) {
                       final rawImg = product['image'];
-                      final hasImage = rawImg != null &&
+                      final hasImage =
+                          rawImg != null &&
                           rawImg.toString().trim().isNotEmpty &&
                           rawImg.toString().trim() != 'null';
 
                       if (!hasImage) {
                         return Container(
-                          color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                          color: cs.surfaceContainerHighest.withValues(
+                            alpha: 0.5,
+                          ),
                           child: Center(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
@@ -4638,19 +4825,26 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                 Icon(
                                   Icons.inventory_2_outlined,
                                   size: 32,
-                                  color: cs.onSurfaceVariant.withValues(alpha: 0.35),
+                                  color: cs.onSurfaceVariant.withValues(
+                                    alpha: 0.35,
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
                                 Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
                                   child: Text(
-                                    (product['category'] ?? 'Product').toString(),
+                                    (product['category'] ?? 'Product')
+                                        .toString(),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
-                                      color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                                      color: cs.onSurfaceVariant.withValues(
+                                        alpha: 0.5,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -4671,16 +4865,22 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               child: SizedBox(
                                 width: 22,
                                 height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               ),
                             ),
                             errorWidget: (c, _, __) => Container(
-                              color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+                              color: cs.surfaceContainerHighest.withValues(
+                                alpha: 0.5,
+                              ),
                               child: Center(
                                 child: Icon(
                                   Icons.inventory_2_outlined,
                                   size: 32,
-                                  color: cs.onSurfaceVariant.withValues(alpha: 0.35),
+                                  color: cs.onSurfaceVariant.withValues(
+                                    alpha: 0.35,
+                                  ),
                                 ),
                               ),
                             ),
@@ -4738,9 +4938,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             size: 16,
                             color: isWishlisted
                                 ? Colors.red
-                                : (Theme.of(context).brightness == Brightness.dark
-                                    ? Colors.white70
-                                    : Colors.grey.shade700),
+                                : (Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.white70
+                                      : Colors.grey.shade700),
                           ),
                         ),
                       ),
@@ -4847,9 +5048,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       InkWell(
-                                        borderRadius: const BorderRadius.horizontal(
-                                          left: Radius.circular(8),
-                                        ),
+                                        borderRadius:
+                                            const BorderRadius.horizontal(
+                                              left: Radius.circular(8),
+                                            ),
                                         onTap: () => _updateCart(
                                           product,
                                           quantityInCart - 1,
@@ -4880,9 +5082,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                         ),
                                       ),
                                       InkWell(
-                                        borderRadius: const BorderRadius.horizontal(
-                                          right: Radius.circular(8),
-                                        ),
+                                        borderRadius:
+                                            const BorderRadius.horizontal(
+                                              right: Radius.circular(8),
+                                            ),
                                         onTap: () => _updateCart(
                                           product,
                                           quantityInCart + 1,
@@ -4979,10 +5182,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         final int cartQty = (cartItem['qty'] as num?)?.toInt() ?? 0;
         int qty = cartQty > 0 ? cartQty : 1;
 
-        final int stoRck = (product['stock'] as num?)?.toInt() ?? 0;
         final String desc = (product['description'] as String?)?.trim() ?? '';
         final descData = _parseDescriptionData(desc);
-        final specs = descData.specs;
 
         final PageController pageController = PageController();
         int currentImage = 0;
@@ -5003,7 +5204,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             final String desc =
                 (currentProduct['description'] as String?)?.trim() ?? '';
             final descData = _parseDescriptionData(desc);
-            final specs = descData.specs;
             final List<dynamic> variants =
                 (currentProduct['variants'] as List<dynamic>?) ?? [];
 
@@ -5093,347 +5293,409 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           top: 24,
                           bottom: MediaQuery.of(context).viewInsets.bottom + 16,
                         ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Image carousel
-                          if (images.isNotEmpty) ...[
-                            SizedBox(
-                              height: 220,
-                              child: GestureDetector(
-                                onTap: () => _openImageGallery(
-                                  context,
-                                  images,
-                                  currentImage,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Image carousel
+                            if (images.isNotEmpty) ...[
+                              SizedBox(
+                                height: 220,
+                                child: GestureDetector(
+                                  onTap: () => _openImageGallery(
+                                    context,
+                                    images,
+                                    currentImage,
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: PageView.builder(
+                                      controller: pageController,
+                                      itemCount: images.length,
+                                      onPageChanged: (i) {
+                                        HapticFeedback.selectionClick();
+                                        setSheetState(() {
+                                          currentImage = i;
+                                        });
+                                      },
+                                      itemBuilder: (context, index) {
+                                        final url = images[index];
+                                        return Container(
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            border: Border.all(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .outline
+                                                  .withValues(alpha: 0.1),
+                                            ),
+                                          ),
+                                          child: Image.network(
+                                            url,
+                                            headers: const {
+                                              'User-Agent':
+                                                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                            },
+                                            fit: BoxFit.contain,
+                                            errorBuilder: (_, __, ___) =>
+                                                Center(
+                                                  child: Icon(
+                                                    Icons.image_not_supported,
+                                                    size: 32,
+                                                    color: Colors.grey
+                                                        .withValues(alpha: 0.4),
+                                                  ),
+                                                ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
                                 ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: PageView.builder(
-                                    controller: pageController,
-                                    itemCount: images.length,
-                                    onPageChanged: (i) => setSheetState(() {
-                                      currentImage = i;
-                                    }),
-                                    itemBuilder: (context, index) {
-                                      final url = images[index];
-                                      return Container(
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          border: Border.all(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .outline
-                                                .withValues(alpha: 0.1),
+                              ),
+                              const SizedBox(height: 8),
+                              if (images.length > 1)
+                                Center(
+                                  child: Wrap(
+                                    spacing: 6,
+                                    children: [
+                                      for (int i = 0; i < images.length; i++)
+                                        Container(
+                                          width: 8,
+                                          height: 8,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: i == currentImage
+                                                ? Theme.of(
+                                                    context,
+                                                  ).colorScheme.primary
+                                                : Theme.of(context).dividerColor
+                                                      .withValues(alpha: 0.5),
                                           ),
                                         ),
-                                        child: Image.network(
-                                          url,
-                                          headers: const {
-                                            'User-Agent':
-                                                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                          },
-                                          fit: BoxFit.contain,
-                                          errorBuilder: (_, __, ___) => Center(
-                                            child: Icon(
-                                              Icons.image_not_supported,
-                                              size: 32,
-                                              color: Colors.grey.withValues(
-                                                alpha: 0.4,
+                                    ],
+                                  ),
+                                ),
+                              const SizedBox(height: 12),
+                            ] else ...[
+                              Container(
+                                height: 280,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: Theme.of(context).colorScheme.outline
+                                        .withValues(alpha: 0.1),
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.image,
+                                    size: 64,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant
+                                        .withValues(alpha: 0.4),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+
+                            // Title, price & stock
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    name,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          height: 1.2,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Text(
+                                  _currencyFormat.format(price),
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        (stock > 0 ? Colors.green : Colors.red)
+                                            .withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    stock > 0
+                                        ? 'In stock: $stock'
+                                        : 'Out of stock',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: stock > 0
+                                          ? Colors.green
+                                          : Colors.red,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            const SizedBox(height: 8),
+                            // Variant Selector
+                            if (variants.length > 1) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'Available Colors',
+                                style: Theme.of(context).textTheme.labelMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).disabledColor,
+                                    ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  for (final v in variants)
+                                    InkWell(
+                                      onTap: () {
+                                        HapticFeedback.selectionClick();
+                                        switchVariant(v['id'] as int);
+                                      },
+                                      borderRadius: BorderRadius.circular(24),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 4,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: (v['id'] == pId)
+                                                ? Theme.of(context).primaryColor
+                                                : Colors.transparent,
+                                            width: 2,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            24,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: 24,
+                                              height: 24,
+                                              decoration: BoxDecoration(
+                                                color: _stringToColor(
+                                                  v['color'],
+                                                ),
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: Colors.grey.withValues(
+                                                    alpha: 0.3,
+                                                  ),
+                                                ),
                                               ),
                                             ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              v['color'],
+                                              style: TextStyle(
+                                                fontWeight: (v['id'] == pId)
+                                                    ? FontWeight.bold
+                                                    : FontWeight.normal,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                if ((currentProduct['brand'] as String?)
+                                        ?.isNotEmpty ==
+                                    true)
+                                  Builder(
+                                    builder: (context) {
+                                      final color = _stringToColor(
+                                        currentProduct['brand'] as String,
+                                      );
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: color.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          border: Border.all(
+                                            color: color.withValues(alpha: 0.2),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          (currentProduct['brand'] as String)
+                                              .toUpperCase(),
+                                          style: TextStyle(
+                                            color: color,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.5,
                                           ),
                                         ),
                                       );
                                     },
                                   ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            if (images.length > 1)
-                              Center(
-                                child: Wrap(
-                                  spacing: 6,
-                                  children: [
-                                    for (int i = 0; i < images.length; i++)
-                                      Container(
-                                        width: 8,
-                                        height: 8,
+                                if ((currentProduct['category'] as String?)
+                                        ?.isNotEmpty ==
+                                    true)
+                                  Builder(
+                                    builder: (context) {
+                                      final color = _stringToColor(
+                                        currentProduct['category'] as String,
+                                      );
+                                      return Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
                                         decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: i == currentImage
-                                              ? Theme.of(
-                                                  context,
-                                                ).colorScheme.primary
-                                              : Theme.of(context).dividerColor
-                                                    .withValues(alpha: 0.5),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            const SizedBox(height: 12),
-                          ] else ...[
-                            Container(
-                              height: 280,
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.outline.withValues(alpha: 0.1),
-                                ),
-                              ),
-                              child: Center(
-                                child: Icon(
-                                  Icons.image,
-                                  size: 64,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant
-                                      .withValues(alpha: 0.4),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-
-                          // Title, price & stock
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  name,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineSmall
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                        height: 1.2,
-                                      ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Text(
-                                _currencyFormat.format(price),
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: (stock > 0 ? Colors.green : Colors.red)
-                                      .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  stock > 0
-                                      ? 'In stock: $stock'
-                                      : 'Out of stock',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: stock > 0
-                                        ? Colors.green
-                                        : Colors.red,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          const SizedBox(height: 8),
-                          // Variant Selector
-                          if (variants.length > 1) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Available Colors',
-                              style: Theme.of(context).textTheme.labelMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: Theme.of(context).disabledColor,
-                                  ),
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 12,
-                              children: [
-                                for (final v in variants)
-                                  InkWell(
-                                    onTap: () => switchVariant(v['id'] as int),
-                                    borderRadius: BorderRadius.circular(24),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: (v['id'] == pId)
-                                              ? Theme.of(context).primaryColor
-                                              : Colors.transparent,
-                                          width: 2,
-                                        ),
-                                        borderRadius: BorderRadius.circular(24),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Container(
-                                            width: 24,
-                                            height: 24,
-                                            decoration: BoxDecoration(
-                                              color: _stringToColor(v['color']),
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: Colors.grey.withValues(
-                                                  alpha: 0.3,
-                                                ),
-                                              ),
-                                            ),
+                                          color: color.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
                                           ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            v['color'],
-                                            style: TextStyle(
-                                              fontWeight: (v['id'] == pId)
-                                                  ? FontWeight.bold
-                                                  : FontWeight.normal,
-                                              fontSize: 13,
-                                            ),
+                                          border: Border.all(
+                                            color: color.withValues(alpha: 0.2),
                                           ),
-                                          const SizedBox(width: 6),
-                                        ],
-                                      ),
-                                    ),
+                                        ),
+                                        child: Text(
+                                          currentProduct['category'] as String,
+                                          style: TextStyle(
+                                            color: color,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
                               ],
                             ),
-                            const SizedBox(height: 12),
-                          ],
-
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              if ((currentProduct['brand'] as String?)
-                                      ?.isNotEmpty ==
-                                  true)
-                                Builder(
-                                  builder: (context) {
-                                    final color = _stringToColor(
-                                      currentProduct['brand'] as String,
-                                    );
-                                    return Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: color.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: color.withValues(alpha: 0.2),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        (currentProduct['brand'] as String)
-                                            .toUpperCase(),
-                                        style: TextStyle(
-                                          color: color,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              if ((currentProduct['category'] as String?)
-                                      ?.isNotEmpty ==
-                                  true)
-                                Builder(
-                                  builder: (context) {
-                                    final color = _stringToColor(
-                                      currentProduct['category'] as String,
-                                    );
-                                    return Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: color.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: color.withValues(alpha: 0.2),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        currentProduct['category'] as String,
-                                        style: TextStyle(
-                                          color: color,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
+                            if (descData.isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              _buildDescriptionSection(context, descData),
                             ],
-                          ),
-                          if (descData.isNotEmpty) ...[
                             const SizedBox(height: 16),
-                            _buildDescriptionSection(context, descData),
-                          ],
-                          const SizedBox(height: 16),
-                          if (_cartItems.any((i) => i['id'] == pId)) ...[
-                            Row(
-                              children: [
-                                const Text(
-                                  'Quantity',
-                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(width: 12),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .surfaceContainerHighest
-                                        .withValues(alpha: 0.5),
-                                    borderRadius: BorderRadius.circular(12),
+                            if (_cartItems.any((i) => i['id'] == pId)) ...[
+                              Row(
+                                children: [
+                                  const Text(
+                                    'Quantity',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        onPressed:
-                                            (qty > 1 ||
-                                                _cartItems.any(
-                                                  (i) => i['id'] == pId,
-                                                ))
-                                            ? () {
-                                                if (qty > 1) {
-                                                  setSheetState(() => qty--);
+                                  const SizedBox(width: 12),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerHighest
+                                          .withValues(alpha: 0.5),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          onPressed:
+                                              (qty > 1 ||
+                                                  _cartItems.any(
+                                                    (i) => i['id'] == pId,
+                                                  ))
+                                              ? () {
+                                                  HapticFeedback.selectionClick();
+                                                  if (qty > 1) {
+                                                    setSheetState(() => qty--);
+                                                    if (_cartItems.any(
+                                                      (i) => i['id'] == pId,
+                                                    )) {
+                                                      _updateCart(
+                                                        currentProduct,
+                                                        qty,
+                                                      );
+                                                    }
+                                                  } else {
+                                                    // Remove from cart
+                                                    _updateCart(
+                                                      currentProduct,
+                                                      0,
+                                                    );
+                                                    // Reset local qty to 1 for "Add" state
+                                                    setSheetState(
+                                                      () => qty = 1,
+                                                    );
+                                                  }
+                                                }
+                                              : null,
+                                          icon: const Icon(Icons.remove),
+                                          tooltip: 'Decrease quantity',
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                          ),
+                                          child: Text(
+                                            '$qty',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 18,
+                                            ),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          onPressed:
+                                              (stock == 0 || qty >= stock)
+                                              ? null
+                                              : () {
+                                                  HapticFeedback.selectionClick();
+                                                  setSheetState(() => qty++);
                                                   if (_cartItems.any(
                                                     (i) => i['id'] == pId,
                                                   )) {
@@ -5442,180 +5704,149 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                                       qty,
                                                     );
                                                   }
-                                                } else {
-                                                  // Remove from cart
-                                                  _updateCart(
-                                                    currentProduct,
-                                                    0,
-                                                  );
-                                                  // Reset local qty to 1 for "Add" state
-                                                  setSheetState(() => qty = 1);
-                                                }
-                                              }
-                                            : null,
-                                        icon: const Icon(Icons.remove),
-                                        tooltip: 'Decrease quantity',
-                                      ),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
+                                                },
+                                          icon: const Icon(Icons.add),
+                                          tooltip: 'Increase quantity',
                                         ),
-                                        child: Text(
-                                          '$qty',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 18,
-                                          ),
-                                        ),
-                                      ),
-                                      IconButton(
-                                        onPressed: (stock == 0 || qty >= stock)
-                                            ? null
-                                            : () {
-                                                setSheetState(() => qty++);
-                                                if (_cartItems.any(
+                                      ],
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    'Total: ${_currencyFormat.format(price * qty)}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: FilledButton.tonalIcon(
+                                    onPressed: (stock == 0)
+                                        ? null
+                                        : () {
+                                            HapticFeedback.lightImpact();
+                                            final isInCart = _cartItems.any(
+                                              (i) => i['id'] == pId,
+                                            );
+                                            if (isInCart) {
+                                              _updateCart(currentProduct, 0);
+                                              Navigator.of(context).pop();
+                                            } else {
+                                              _addToCart(
+                                                context,
+                                                currentProduct,
+                                                qty: qty,
+                                              );
+                                              Navigator.of(context).pop();
+                                            }
+                                          },
+                                    style: _cartItems.any((i) => i['id'] == pId)
+                                        ? FilledButton.styleFrom(
+                                            backgroundColor: Theme.of(
+                                              context,
+                                            ).colorScheme.errorContainer,
+                                            foregroundColor: Theme.of(
+                                              context,
+                                            ).colorScheme.onErrorContainer,
+                                          )
+                                        : null,
+                                    icon: Icon(
+                                      _cartItems.any((i) => i['id'] == pId)
+                                          ? Icons.remove_shopping_cart
+                                          : Icons.add_shopping_cart,
+                                    ),
+                                    label: Text(
+                                      stock == 0
+                                          ? 'Out of Stock'
+                                          : (_cartItems.any(
                                                   (i) => i['id'] == pId,
-                                                )) {
-                                                  _updateCart(
-                                                    currentProduct,
-                                                    qty,
-                                                  );
-                                                }
-                                              },
-                                        icon: const Icon(Icons.add),
-                                        tooltip: 'Increase quantity',
-                                      ),
-                                    ],
+                                                )
+                                                ? 'Remove from Cart'
+                                                : 'Add to Cart'),
+                                    ),
                                   ),
                                 ),
-                                const Spacer(),
-                                Text(
-                                  'Total: ${_currencyFormat.format(price * qty)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: FilledButton.icon(
+                                    onPressed: (stock == 0)
+                                        ? null
+                                        : () {
+                                            HapticFeedback.mediumImpact();
+                                            Navigator.of(context).pop();
+                                            _buyNow(
+                                              context,
+                                              currentProduct,
+                                              qty,
+                                            );
+                                          },
+                                    icon: const Icon(Icons.flash_on),
+                                    label: const Text('Buy Now'),
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
                           ],
-                          Row(
-                            children: [
-                              Expanded(
-                                child: FilledButton.tonalIcon(
-                                  onPressed: (stock == 0)
-                                      ? null
-                                      : () {
-                                          final isInCart = _cartItems.any(
-                                            (i) => i['id'] == pId,
-                                          );
-                                          if (isInCart) {
-                                            _updateCart(currentProduct, 0);
-                                            Navigator.of(context).pop();
-                                          } else {
-                                            _addToCart(
-                                              context,
-                                              currentProduct,
-                                              qty: qty,
-                                            );
-                                            Navigator.of(context).pop();
-                                          }
-                                        },
-                                  style: _cartItems.any((i) => i['id'] == pId)
-                                      ? FilledButton.styleFrom(
-                                          backgroundColor: Theme.of(
-                                            context,
-                                          ).colorScheme.errorContainer,
-                                          foregroundColor: Theme.of(
-                                            context,
-                                          ).colorScheme.onErrorContainer,
-                                        )
-                                      : null,
-                                  icon: Icon(
-                                    _cartItems.any((i) => i['id'] == pId)
-                                        ? Icons.remove_shopping_cart
-                                        : Icons.add_shopping_cart,
-                                  ),
-                                  label: Text(
-                                    stock == 0
-                                        ? 'Out of Stock'
-                                        : (_cartItems.any((i) => i['id'] == pId)
-                                              ? 'Remove from Cart'
-                                              : 'Add to Cart'),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: (stock == 0)
-                                      ? null
-                                      : () {
-                                          Navigator.of(context).pop();
-                                          _buyNow(context, currentProduct, qty);
-                                        },
-                                  icon: const Icon(Icons.flash_on),
-                                  label: const Text('Buy Now'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                    // Top iOS-style drag handle pill
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: 24,
-                      child: Center(
-                        child: Container(
-                          width: 38,
-                          height: 4.5,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .dividerColor
-                                .withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(2.5),
+                      // Top iOS-style drag handle pill
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        height: 24,
+                        child: Center(
+                          child: Container(
+                            width: 38,
+                            height: 4.5,
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).dividerColor.withValues(alpha: 0.35),
+                              borderRadius: BorderRadius.circular(2.5),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      top: 10,
-                      right: 12,
-                      child: IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close),
-                        style: IconButton.styleFrom(
-                          backgroundColor: Theme.of(
-                            context,
-                          ).colorScheme.surface.withValues(alpha: 0.8),
+                      Positioned(
+                        top: 10,
+                        right: 12,
+                        child: IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.surface.withValues(alpha: 0.8),
+                          ),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      top: 56,
-                      right: 12,
-                      child: IconButton.filledTonal(
-                        onPressed: () => _shareProduct(currentProduct),
-                        icon: const Icon(Icons.share, size: 20),
-                        tooltip: 'Share Product',
-                        style: IconButton.styleFrom(
-                          backgroundColor: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(alpha: 0.8),
+                      Positioned(
+                        top: 56,
+                        right: 12,
+                        child: IconButton.filledTonal(
+                          onPressed: () => _shareProduct(currentProduct),
+                          icon: const Icon(Icons.share, size: 20),
+                          tooltip: 'Share Product',
+                          style: IconButton.styleFrom(
+                            backgroundColor: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest
+                                .withValues(alpha: 0.8),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          );
+                    ],
+                  ),
+                );
+              },
+            );
           },
         );
       },
@@ -5672,8 +5903,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         // Check for **Key** Value pattern (e.g. "**Type** 10-Way..." or "**Type  ** 10-Way...")
         final boldMatch = RegExp(r'^\*\*(.+?)\*\*\s*(.*)$').firstMatch(line);
         if (boldMatch != null) {
-          final cleanK = boldMatch.group(1)?.replaceAll(RegExp(r'[*_`#:]'), '').trim() ?? '';
-          final cleanV = boldMatch.group(2)?.replaceAll(RegExp(r'^\*+|\*+$'), '').trim() ?? '';
+          final cleanK =
+              boldMatch.group(1)?.replaceAll(RegExp(r'[*_`#:]'), '').trim() ??
+              '';
+          final cleanV =
+              boldMatch.group(2)?.replaceAll(RegExp(r'^\*+|\*+$'), '').trim() ??
+              '';
           if (cleanK.isNotEmpty && cleanK.length <= 40 && cleanV.isNotEmpty) {
             key = cleanK;
             value = cleanV;
@@ -5789,7 +6024,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             h,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               height: 1.4,
-                              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.9),
+                              color: theme.textTheme.bodyMedium?.color
+                                  ?.withValues(alpha: 0.9),
                             ),
                           ),
                         ),
@@ -5862,16 +6098,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             ? cs.surfaceContainerHighest.withValues(alpha: 0.3)
             : cs.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.dividerColor.withValues(alpha: 0.12),
-        ),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.12)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Table(
-        columnWidths: const {
-          0: FlexColumnWidth(1.1),
-          1: FlexColumnWidth(2.0),
-        },
+        columnWidths: const {0: FlexColumnWidth(1.1), 1: FlexColumnWidth(2.0)},
         defaultVerticalAlignment: TableCellVerticalAlignment.middle,
         children: [
           for (int i = 0; i < specs.length; i++)
@@ -5879,8 +6110,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               decoration: BoxDecoration(
                 color: i.isEven
                     ? (isDark
-                        ? cs.surfaceContainerHighest.withValues(alpha: 0.2)
-                        : cs.surfaceContainerLow.withValues(alpha: 0.4))
+                          ? cs.surfaceContainerHighest.withValues(alpha: 0.2)
+                          : cs.surfaceContainerLow.withValues(alpha: 0.4))
                     : Colors.transparent,
                 border: i < specs.length - 1
                     ? Border(
@@ -5902,7 +6133,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 12.5,
-                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
+                      color: theme.textTheme.bodyMedium?.color?.withValues(
+                        alpha: 0.7,
+                      ),
                       letterSpacing: -0.1,
                     ),
                   ),
@@ -6204,6 +6437,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                 selectedIndex: _bottomNavIndex,
                 onDestinationSelected: (index) {
+                  HapticFeedback.selectionClick();
                   setState(() => _bottomNavIndex = index);
                   if (index == 0) {
                     // Home
@@ -6236,28 +6470,42 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     );
                   }
                 },
-                destinations: const [
-                  NavigationDestination(
+                destinations: [
+                  const NavigationDestination(
                     icon: Icon(Icons.home_outlined, size: 24),
                     selectedIcon: Icon(Icons.home_rounded, size: 24),
                     label: 'Home',
                   ),
-                  NavigationDestination(
+                  const NavigationDestination(
                     icon: Icon(Icons.filter_alt_outlined, size: 24),
                     selectedIcon: Icon(Icons.filter_alt_rounded, size: 24),
                     label: 'Filter',
                   ),
-                  NavigationDestination(
+                  const NavigationDestination(
                     icon: Icon(Icons.search_outlined, size: 24),
                     selectedIcon: Icon(Icons.search_rounded, size: 24),
                     label: 'Search',
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.local_mall_outlined, size: 24),
-                    selectedIcon: Icon(Icons.local_mall_rounded, size: 24),
+                    icon: ScaleTransition(
+                      scale: _cartBadgeScaleAnimation,
+                      child: Badge(
+                        isLabelVisible: _cartCount > 0,
+                        label: Text('$_cartCount'),
+                        child: const Icon(Icons.local_mall_outlined, size: 24),
+                      ),
+                    ),
+                    selectedIcon: ScaleTransition(
+                      scale: _cartBadgeScaleAnimation,
+                      child: Badge(
+                        isLabelVisible: _cartCount > 0,
+                        label: Text('$_cartCount'),
+                        child: const Icon(Icons.local_mall_rounded, size: 24),
+                      ),
+                    ),
                     label: 'Cart',
                   ),
-                  NavigationDestination(
+                  const NavigationDestination(
                     icon: Icon(Icons.person_outline, size: 24),
                     selectedIcon: Icon(Icons.person, size: 24),
                     label: 'Account',
@@ -6446,111 +6694,130 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Cart Icon
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(alpha: 0.4),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Theme.of(context).dividerColor.withValues(alpha: 0.12),
-                          ),
-                        ),
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          icon: const Icon(Icons.shopping_cart_outlined, size: 20),
-                          onPressed: () => _openCart(context),
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                      if (_cartCount > 0)
-                        Positioned(
-                          right: -2,
-                          top: -2,
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Theme.of(context).cardColor,
-                                width: 1.5,
-                              ),
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 18,
-                              minHeight: 18,
-                            ),
-                            child: Text(
-                              '$_cartCount',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              textAlign: TextAlign.center,
+                  if (isDesktop) ...[
+                    const SizedBox(width: 8),
+                    // Cart Icon (Desktop / Tablet)
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest
+                                .withValues(alpha: 0.4),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Theme.of(
+                                context,
+                              ).dividerColor.withValues(alpha: 0.12),
                             ),
                           ),
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            icon: const Icon(
+                              Icons.shopping_cart_outlined,
+                              size: 20,
+                            ),
+                            onPressed: () => _openCart(context),
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(width: 8),
-                  // Customer Account & Profile
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withValues(alpha: 0.4),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Theme.of(context).dividerColor.withValues(alpha: 0.12),
-                      ),
-                    ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      tooltip: 'Account & Orders',
-                      icon: SupabaseService.currentUser != null
-                          ? CircleAvatar(
-                              radius: 13,
-                              backgroundColor: Theme.of(context).colorScheme.primary,
-                              child: Text(
-                                ((SupabaseService.currentUser?.userMetadata?['name'] ??
-                                         SupabaseService.currentUser?.email ??
-                                         'U') as String)
-                                    .substring(0, 1)
-                                    .toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
+                        if (_cartCount > 0)
+                          Positioned(
+                            right: -2,
+                            top: -2,
+                            child: ScaleTransition(
+                              scale: _cartBadgeScaleAnimation,
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Theme.of(context).cardColor,
+                                    width: 1.5,
+                                  ),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 18,
+                                  minHeight: 18,
+                                ),
+                                child: Text(
+                                  '$_cartCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
                                 ),
                               ),
-                            )
-                          : const Icon(Icons.person_outline, size: 20),
-                      onPressed: () {
-                        ShopAccountSheets.showAccountSheet(
-                          context,
-                          businessId: _currentBusinessId,
-                          businessName: _businessName,
-                          businessPhone: _businessProfile?.phone,
-                          businessWhatsapp: _businessProfile?.phone,
-                          onStateChanged: () => setState(() {}),
-                        );
-                      },
-                      color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    // Customer Account & Profile (Desktop / Tablet)
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.4),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Theme.of(
+                            context,
+                          ).dividerColor.withValues(alpha: 0.12),
+                        ),
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        tooltip: 'Account & Orders',
+                        icon: SupabaseService.currentUser != null
+                            ? CircleAvatar(
+                                radius: 13,
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primary,
+                                child: Text(
+                                  ((SupabaseService
+                                                  .currentUser
+                                                  ?.userMetadata?['name'] ??
+                                              SupabaseService
+                                                  .currentUser
+                                                  ?.email ??
+                                              'U')
+                                          as String)
+                                      .substring(0, 1)
+                                      .toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              )
+                            : const Icon(Icons.person_outline, size: 20),
+                        onPressed: () {
+                          ShopAccountSheets.showAccountSheet(
+                            context,
+                            businessId: _currentBusinessId,
+                            businessName: _businessName,
+                            businessPhone: _businessProfile?.phone,
+                            businessWhatsapp: _businessProfile?.phone,
+                            onStateChanged: () => setState(() {}),
+                          );
+                        },
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
                 ],
               ),
               // Search Bar (mobile only)
@@ -7678,11 +7945,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   Widget _buildFloatingCart(BuildContext context) {
-    return FloatingActionButton.extended(
-      onPressed: () => _openCart(context),
-      icon: const Icon(Icons.shopping_cart),
-      label: Text('Cart ($_cartCount)'),
-      backgroundColor: Theme.of(context).colorScheme.primary,
+    return ScaleTransition(
+      scale: _cartBadgeScaleAnimation,
+      child: FloatingActionButton.extended(
+        onPressed: () {
+          HapticFeedback.selectionClick();
+          _openCart(context);
+        },
+        icon: const Icon(Icons.shopping_cart),
+        label: Text('Cart ($_cartCount)'),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+      ),
     );
   }
 
@@ -8184,5 +8457,141 @@ class _SimpleHeaderDelegate extends SliverPersistentHeaderDelegate {
     return maxHeight != oldDelegate.maxHeight ||
         minHeight != oldDelegate.minHeight ||
         child != oldDelegate.child;
+  }
+}
+
+class _ZoomableImageViewerItem extends StatefulWidget {
+  final String imageUrl;
+  final VoidCallback? onDismiss;
+  final ValueChanged<bool>? onZoomChanged;
+
+  const _ZoomableImageViewerItem({
+    required this.imageUrl,
+    this.onDismiss,
+    this.onZoomChanged,
+  });
+
+  @override
+  State<_ZoomableImageViewerItem> createState() =>
+      _ZoomableImageViewerItemState();
+}
+
+class _ZoomableImageViewerItemState extends State<_ZoomableImageViewerItem>
+    with SingleTickerProviderStateMixin {
+  late TransformationController _transformationController;
+  late AnimationController _animController;
+  Animation<Matrix4>? _zoomAnimation;
+  TapDownDetails? _doubleTapDetails;
+  double _verticalDragOffset = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _transformationController = TransformationController();
+    _animController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 240),
+        )..addListener(() {
+          if (_zoomAnimation != null) {
+            _transformationController.value = _zoomAnimation!.value;
+          }
+        });
+  }
+
+  @override
+  void dispose() {
+    _transformationController.dispose();
+    _animController.dispose();
+    super.dispose();
+  }
+
+  bool get _isZoomed {
+    final matrix = _transformationController.value;
+    return (matrix.getMaxScaleOnAxis() - 1.0).abs() > 0.05;
+  }
+
+  void _onDoubleTap() {
+    HapticFeedback.selectionClick();
+    final currentMatrix = _transformationController.value;
+    final Matrix4 targetMatrix;
+
+    if (!_isZoomed) {
+      final position = _doubleTapDetails?.localPosition ?? Offset.zero;
+      targetMatrix = Matrix4.diagonal3Values(2.5, 2.5, 1.0)
+        ..setTranslationRaw(-position.dx * 1.5, -position.dy * 1.5, 0.0);
+    } else {
+      targetMatrix = Matrix4.identity();
+    }
+
+    _zoomAnimation = Matrix4Tween(begin: currentMatrix, end: targetMatrix)
+        .animate(
+          CurvedAnimation(parent: _animController, curve: Curves.easeOutCubic),
+        );
+
+    _animController.forward(from: 0.0).then((_) {
+      widget.onZoomChanged?.call(_isZoomed);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onDoubleTapDown: (details) => _doubleTapDetails = details,
+      onDoubleTap: _onDoubleTap,
+      onVerticalDragUpdate: !_isZoomed
+          ? (details) {
+              if ((details.primaryDelta != null && details.primaryDelta! > 0) ||
+                  _verticalDragOffset > 0) {
+                setState(() {
+                  _verticalDragOffset += details.primaryDelta ?? 0;
+                  if (_verticalDragOffset < 0) _verticalDragOffset = 0;
+                });
+              }
+            }
+          : null,
+      onVerticalDragEnd: !_isZoomed
+          ? (details) {
+              if (_verticalDragOffset > 90) {
+                HapticFeedback.lightImpact();
+                widget.onDismiss?.call();
+              } else {
+                setState(() {
+                  _verticalDragOffset = 0;
+                });
+              }
+            }
+          : null,
+      child: Transform.translate(
+        offset: Offset(0, _verticalDragOffset),
+        child: InteractiveViewer(
+          transformationController: _transformationController,
+          minScale: 1.0,
+          maxScale: 4.5,
+          clipBehavior: Clip.none,
+          boundaryMargin: const EdgeInsets.all(28),
+          onInteractionEnd: (_) {
+            widget.onZoomChanged?.call(_isZoomed);
+          },
+          child: Center(
+            child: Image.network(
+              widget.imageUrl,
+              headers: const {
+                'User-Agent':
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              },
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Center(
+                child: Icon(
+                  Icons.image_not_supported,
+                  color: Colors.white70,
+                  size: 48,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
