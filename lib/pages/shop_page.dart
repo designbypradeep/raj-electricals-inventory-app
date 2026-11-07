@@ -4898,6 +4898,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         int orderId = saleId;
         if (_currentBusinessId != null) {
           try {
+            final activePhone = customerPhone ??
+                _savedCustomerProfile?['phone'] ??
+                'N/A';
+            final fulfillmentNotes = _deliveryMethod == 'delivery'
+                ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}'
+                : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection';
+
             final shopOrder = await SupabaseService.createShopOrder(
               businessId: _currentBusinessId!,
               customerId: SupabaseService.currentUser?.id,
@@ -4907,6 +4914,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               transactionId: checkoutId,
               paymentProofUrl: proofUrl,
               totalAmount: total,
+              notes: fulfillmentNotes,
               saleId: saleId,
               items: [
                 {
