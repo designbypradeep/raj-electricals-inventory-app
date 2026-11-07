@@ -1608,7 +1608,7 @@ class _ProfileSheetState extends State<_ProfileSheet> {
       _latitude = position.latitude.toString();
       _longitude = position.longitude.toString();
 
-      final placemarks = await placemarkFromCoordinates(
+      final placemarks = await Geocoding().placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );
