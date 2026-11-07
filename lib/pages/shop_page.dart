@@ -2371,8 +2371,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
                 return ListView.separated(
                   controller: scrollController,
-                  padding: const EdgeInsets.all(16),
-                  separatorBuilder: (_, _) => const SizedBox(height: 16),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
+                  separatorBuilder: (_, _) => const SizedBox(height: 14),
                   itemCount: _cartItems.length,
                   itemBuilder: (context, index) {
                     final item = _cartItems[index];
@@ -2387,16 +2387,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
                     return Container(
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
+                        color: Theme.of(context).colorScheme.surfaceContainer,
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: Theme.of(
                             context,
-                          ).dividerColor.withValues(alpha: 0.15),
+                          ).dividerColor.withValues(alpha: 0.1),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
+                            color: Colors.black.withValues(alpha: 0.06),
                             blurRadius: 10,
                             offset: const Offset(0, 3),
                           ),
@@ -2406,50 +2406,60 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Product Image Thumbnail
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              width: 76,
-                              height: 76,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                  color: Theme.of(
-                                    context,
-                                  ).dividerColor.withValues(alpha: 0.12),
+                          // Product Image Thumbnail (Tappable to view details)
+                          GestureDetector(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              final prod = _products.firstWhere(
+                                (p) => p['id'] == item['id'],
+                                orElse: () => item,
+                              );
+                              _viewProduct(context, prod);
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                width: 76,
+                                height: 76,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border.all(
+                                    color: Theme.of(
+                                      context,
+                                    ).dividerColor.withValues(alpha: 0.12),
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: imageUrl != null && imageUrl.isNotEmpty
-                                  ? CachedNetworkImage(
-                                      imageUrl: imageUrl,
-                                      fit: BoxFit.contain,
-                                      placeholder: (_, __) => Center(
-                                        child: SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Theme.of(
-                                              context,
-                                            ).colorScheme.primary,
+                                child: imageUrl != null && imageUrl.isNotEmpty
+                                    ? CachedNetworkImage(
+                                        imageUrl: imageUrl,
+                                        fit: BoxFit.contain,
+                                        placeholder: (_, __) => Center(
+                                          child: SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      errorWidget: (_, __, ___) => Icon(
-                                        Icons.image_not_supported,
-                                        size: 28,
-                                        color: Colors.grey.withValues(
-                                          alpha: 0.5,
+                                        errorWidget: (_, __, ___) => Icon(
+                                          Icons.image_not_supported,
+                                          size: 28,
+                                          color: Colors.grey.withValues(
+                                            alpha: 0.5,
+                                          ),
                                         ),
+                                      )
+                                    : Icon(
+                                        Icons.image_outlined,
+                                        size: 32,
+                                        color: Theme.of(context).disabledColor,
                                       ),
-                                    )
-                                  : Icon(
-                                      Icons.image_outlined,
-                                      size: 32,
-                                      color: Theme.of(context).disabledColor,
-                                    ),
+                              ),
                             ),
                           ),
                           const SizedBox(width: 14),
@@ -2464,18 +2474,28 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Expanded(
-                                      child: Text(
-                                        name,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleSmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 14,
-                                              height: 1.25,
-                                            ),
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          HapticFeedback.selectionClick();
+                                          final prod = _products.firstWhere(
+                                            (p) => p['id'] == item['id'],
+                                            orElse: () => item,
+                                          );
+                                          _viewProduct(context, prod);
+                                        },
+                                        child: Text(
+                                          name,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleSmall
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 14,
+                                                height: 1.25,
+                                              ),
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 4),
@@ -2536,13 +2556,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                           Text(
                                             '₹${price.toStringAsFixed(2)} each',
                                             style: TextStyle(
-                                              fontSize: 11,
+                                              fontSize: 11.5,
                                               fontWeight: FontWeight.w500,
-                                              color: Theme.of(context)
-                                                  .textTheme
-                                                  .bodySmall
-                                                  ?.color
-                                                  ?.withValues(alpha: 0.65),
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
                                             ),
                                           ),
                                       ],
@@ -3032,13 +3050,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     return [minP, maxP];
   }
 
-  void _confirmClearCart(BuildContext context) {
+  void _confirmClearCart(BuildContext context, [VoidCallback? onCleared]) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Clear Cart?'),
+        title: const Text('Clear Shopping Cart?'),
         content: const Text(
-          'Are you sure you want to remove all items from your shopping cart?',
+          'Are you sure you want to remove all items from your cart?',
         ),
         actions: [
           TextButton(
@@ -3057,6 +3075,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 _cartItems.clear();
                 _cartCount = 0;
               });
+              onCleared?.call();
             },
             child: const Text('Clear Cart'),
           ),
