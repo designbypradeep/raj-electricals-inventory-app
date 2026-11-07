@@ -3900,12 +3900,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
+        dismissDirection: DismissDirection.horizontal,
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         backgroundColor: isDark
             ? const Color(0xFF242426)
             : const Color(0xFF1E293B),
-        duration: const Duration(seconds: 2),
+        duration: const Duration(milliseconds: 2200),
         content: Row(
           children: [
             const Icon(
@@ -3913,7 +3914,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               color: Color(0xFF4ADE80),
               size: 20,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
                 '${product['name']} added to cart${qty > 1 ? ' (x$qty)' : ''}',
@@ -3926,15 +3927,40 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            const SizedBox(width: 6),
+            InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                _openCart(context);
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Text(
+                  'VIEW CART',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.close, color: Colors.white70, size: 16),
+              ),
+            ),
           ],
-        ),
-        action: SnackBarAction(
-          label: 'VIEW CART',
-          textColor: const Color(0xFF38BDF8),
-          onPressed: () {
-            HapticFeedback.selectionClick();
-            _openCart(context);
-          },
         ),
       ),
     );
