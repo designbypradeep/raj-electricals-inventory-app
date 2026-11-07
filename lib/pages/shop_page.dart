@@ -63,6 +63,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   final List<Map<String, dynamic>> _cartItems = [];
   late AnimationController _cartBadgeAnimController;
   late Animation<double> _cartBadgeScaleAnimation;
+
+  // Delivery Method: 'delivery' | 'pickup'
+  String _deliveryMethod = 'delivery';
+
+  double get _deliveryFee {
+    if (_deliveryMethod == 'pickup') return 0.0;
+    final charge = _businessProfile?.deliveryCharge;
+    return (charge != null && charge > 0) ? charge : 0.0;
+  }
+
+  double get _finalPayableTotal => _calculateTotal() + _deliveryFee;
   final List<int> _wishlist = [];
   final List<int> _recentlyViewed = [];
   bool _isLoadingProducts = true;
@@ -2671,7 +2682,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           // Footer with Order Breakdown
           if (_cartItems.isNotEmpty)
             Container(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 border: Border(
@@ -2693,6 +2704,142 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Delivery Method Selector (Home Delivery vs Store Pickup)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(
+                            context,
+                          ).dividerColor.withValues(alpha: 0.12),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                setState(() => _deliveryMethod = 'delivery');
+                              },
+                              borderRadius: BorderRadius.circular(9),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _deliveryMethod == 'delivery'
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.local_shipping_outlined,
+                                      size: 15,
+                                      color: _deliveryMethod == 'delivery'
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.onPrimary
+                                          : Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall?.color,
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      (_businessProfile?.deliveryCharge !=
+                                                  null &&
+                                              _businessProfile!
+                                                      .deliveryCharge! >
+                                                  0)
+                                          ? 'Delivery (₹${_businessProfile!.deliveryCharge!.toStringAsFixed(0)})'
+                                          : 'Delivery (FREE)',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight:
+                                            _deliveryMethod == 'delivery'
+                                            ? FontWeight.bold
+                                            : FontWeight.w600,
+                                        color: _deliveryMethod == 'delivery'
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimary
+                                            : Theme.of(
+                                                context,
+                                              ).textTheme.bodySmall?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                setState(() => _deliveryMethod = 'pickup');
+                              },
+                              borderRadius: BorderRadius.circular(9),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _deliveryMethod == 'pickup'
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.storefront_outlined,
+                                      size: 15,
+                                      color: _deliveryMethod == 'pickup'
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.onPrimary
+                                          : Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall?.color,
+                                    ),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      'Store Pickup (FREE)',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: _deliveryMethod == 'pickup'
+                                            ? FontWeight.bold
+                                            : FontWeight.w600,
+                                        color: _deliveryMethod == 'pickup'
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.onPrimary
+                                            : Theme.of(
+                                                context,
+                                              ).textTheme.bodySmall?.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                     // Subtotal Row
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2724,7 +2871,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Delivery Fee',
+                          _deliveryMethod == 'delivery'
+                              ? 'Home Delivery Fee'
+                              : 'Store Pickup Fee',
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(
                                 color: Theme.of(context)
@@ -2735,27 +2884,36 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                 fontSize: 13,
                               ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFF10B981,
-                            ).withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'FREE',
-                            style: TextStyle(
-                              color: Color(0xFF10B981),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.5,
+                        if (_deliveryFee > 0)
+                          Text(
+                            '₹${_deliveryFee.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF10B981,
+                              ).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'FREE',
+                              style: TextStyle(
+                                color: Color(0xFF10B981),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ),
-                        ),
                       ],
                     ),
                     const Padding(
@@ -2788,7 +2946,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           ],
                         ),
                         Text(
-                          '₹${_calculateTotal().toStringAsFixed(2)}',
+                          '₹${_finalPayableTotal.toStringAsFixed(2)}',
                           style: TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w900,
@@ -2831,7 +2989,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '•  ₹${_calculateTotal().toStringAsFixed(2)}',
+                              '•  ₹${_finalPayableTotal.toStringAsFixed(2)}',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
@@ -3233,6 +3391,26 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         const Divider(height: 32),
 
                         // Bill Details
+                        if (_deliveryFee > 0) ...[
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Delivery Fee (${_deliveryMethod == 'delivery' ? 'Home Delivery' : 'Pickup'})',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                                Text(
+                                  '₹${_deliveryFee.toStringAsFixed(2)}',
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Divider(height: 16),
+                        ],
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -3242,7 +3420,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                   ?.copyWith(fontWeight: FontWeight.bold),
                             ),
                             Text(
-                              _currencyFormat.format(_calculateTotal()),
+                              _currencyFormat.format(_finalPayableTotal),
                               style: Theme.of(context).textTheme.headlineSmall
                                   ?.copyWith(
                                     fontWeight: FontWeight.w800,
@@ -3367,7 +3545,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       if (payeeName.length > 20) {
         payeeName = payeeName.substring(0, 20);
       }
-      final total = _calculateTotal();
+      final total = _finalPayableTotal;
       final checkoutId = 'RE-${DateTime.now().millisecondsSinceEpoch}';
 
       if (!_isValidUpiVpa(upiId)) {

@@ -81,7 +81,8 @@ class Product {
       status: json['status'] as String?,
       unitTypeSingle: json['unit_type_single'] as String? ?? 'Piece',
       unitTypeWholesale: json['unit_type_wholesale'] as String?,
-      itemsPerWholesaleUnit: (json['items_per_wholesale_unit'] as num?)?.toInt() ?? 1,
+      itemsPerWholesaleUnit:
+          (json['items_per_wholesale_unit'] as num?)?.toInt() ?? 1,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -221,11 +222,18 @@ class BusinessProfile {
   final String? instagramUrl;
   final String? facebookUrl;
   final String? googleMapsUrl;
+  // Delivery settings
+  final double? deliveryCharge;
+  final int? deliveryRadiusKm;
+  final String? allowedDeliveryPincodes;
+  final String? deliveryPolicy;
 
   bool get isExpired {
     final s = (status ?? 'ACTIVE').toUpperCase();
     if (s == 'EXPIRED') return true;
-    if (s == 'TRIAL' && trialEnd != null && trialEnd!.isBefore(DateTime.now())) {
+    if (s == 'TRIAL' &&
+        trialEnd != null &&
+        trialEnd!.isBefore(DateTime.now())) {
       return true;
     }
     return false;
@@ -281,6 +289,10 @@ class BusinessProfile {
     this.instagramUrl,
     this.facebookUrl,
     this.googleMapsUrl,
+    this.deliveryCharge,
+    this.deliveryRadiusKm,
+    this.allowedDeliveryPincodes,
+    this.deliveryPolicy,
   });
 
   factory BusinessProfile.fromJson(Map<String, dynamic> json) {
@@ -332,6 +344,10 @@ class BusinessProfile {
       instagramUrl: json['instagram_url'] as String?,
       facebookUrl: json['facebook_url'] as String?,
       googleMapsUrl: json['google_maps_url'] as String?,
+      deliveryCharge: (json['delivery_charge'] as num?)?.toDouble(),
+      deliveryRadiusKm: (json['delivery_radius_km'] as num?)?.toInt(),
+      allowedDeliveryPincodes: json['allowed_delivery_pincodes'] as String?,
+      deliveryPolicy: json['delivery_policy'] as String?,
     );
   }
 
@@ -376,6 +392,11 @@ class BusinessProfile {
       if (instagramUrl != null) 'instagram_url': instagramUrl,
       if (facebookUrl != null) 'facebook_url': facebookUrl,
       if (googleMapsUrl != null) 'google_maps_url': googleMapsUrl,
+      if (deliveryCharge != null) 'delivery_charge': deliveryCharge,
+      if (deliveryRadiusKm != null) 'delivery_radius_km': deliveryRadiusKm,
+      if (allowedDeliveryPincodes != null)
+        'allowed_delivery_pincodes': allowedDeliveryPincodes,
+      if (deliveryPolicy != null) 'delivery_policy': deliveryPolicy,
     };
   }
 }
@@ -581,7 +602,9 @@ class SubscriptionInfo {
   bool get isExpired {
     final s = status.toUpperCase();
     if (s == 'EXPIRED') return true;
-    if (s == 'TRIAL' && trialEnd != null && trialEnd!.isBefore(DateTime.now())) {
+    if (s == 'TRIAL' &&
+        trialEnd != null &&
+        trialEnd!.isBefore(DateTime.now())) {
       return true;
     }
     if (expiresAt != null && expiresAt!.isBefore(DateTime.now())) {
