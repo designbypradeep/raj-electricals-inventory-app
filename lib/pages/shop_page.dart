@@ -30,6 +30,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import '../widgets/shop_account_sheets.dart';
 
+// Holds parsed components of a product description
+class _ProductDescriptionData {
+  final List<MapEntry<String, String>> specs;
+  final List<String> highlights;
+  final List<String> narrative;
+
+  const _ProductDescriptionData({
+    required this.specs,
+    required this.highlights,
+    required this.narrative,
+  });
+
+  bool get isEmpty => specs.isEmpty && highlights.isEmpty && narrative.isEmpty;
+  bool get isNotEmpty => !isEmpty;
+}
+
 class ShopPage extends StatefulWidget {
   final AppDatabase db;
   const ShopPage({super.key, required this.db});
@@ -4966,7 +4982,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
         final int stoRck = (product['stock'] as num?)?.toInt() ?? 0;
         final String desc = (product['description'] as String?)?.trim() ?? '';
-        final specs = _parseSpecs(desc);
+        final descData = _parseDescriptionData(desc);
+        final specs = descData.specs;
 
         final PageController pageController = PageController();
         int currentImage = 0;
@@ -4986,7 +5003,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             final String name = currentProduct['name'] ?? 'Product';
             final String desc =
                 (currentProduct['description'] as String?)?.trim() ?? '';
-            final specs = _parseSpecs(desc);
+            final descData = _parseDescriptionData(desc);
+            final specs = descData.specs;
             final List<dynamic> variants =
                 (currentProduct['variants'] as List<dynamic>?) ?? [];
 
@@ -5371,31 +5389,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 16),
-                          if (specs.isNotEmpty) ...[
-                            Text(
-                              'Specifications',
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            _buildSpecsGrid(context, specs),
-                          ] else if (desc.isNotEmpty) ...[
-                            const Text(
-                              'About this item',
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              desc,
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.color
-                                    ?.withValues(alpha: 0.9),
-                              ),
-                            ),
+                          if (descData.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            _buildDescriptionSection(context, descData),
                           ],
                           const SizedBox(height: 16),
                           if (_cartItems.any((i) => i['id'] == pId)) ...[
@@ -5597,67 +5593,347 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     );
   }
 
-  // Parse description into key: value specs (one per line). Returns ordered list.
-  List<MapEntry<String, String>> _parseSpecs(String description) {
+  // Parse description into structured data (specifications, highlights, narrative)
+  _ProductDescriptionData _parseDescriptionData(String description) {
     final lines = description
         .split(RegExp(r"\r?\n"))
         .map((l) => l.trim())
         .where((l) => l.isNotEmpty)
         .toList();
+
     final specs = <MapEntry<String, String>>[];
-    for (final line in lines) {
-      final idx = line.indexOf(':');
-      if (idx <= 0) continue; // skip lines without key:value
-      final key = line.substring(0, idx).trim();
-      final value = line.substring(idx + 1).trim();
-      if (key.isEmpty || value.isEmpty) continue;
-      specs.add(MapEntry(key, value));
+    final highlights = <String>[];
+    final narrative = <String>[];
+
+    for (final rawLine in lines) {
+      String line = rawLine;
+
+      // Ignore section header labels like "Key Highlights:", "Specifications:", "Product Details:"
+      final isHeader = RegExp(
+        r'^(key\s+highlights|specifications|product\s+details|features|about\s+this\s+item|description)[\s:]*$',
+        caseSensitive: false,
+      ).hasMatch(line);
+      if (isHeader) continue;
+
+      // Check if line starts with a list bullet (*, -, •, +, 1., etc.)
+      final bulletMatch = RegExp(r'^(\*|\-|\+|•|\d+[\.)])\s*').firstMatch(line);
+      final bool hasBullet = bulletMatch != null;
+      if (hasBullet) {
+        line = line.substring(bulletMatch.end).trim();
+      }
+
+      String? key;
+      String? value;
+
+      // Check for Key: Value pattern
+      if (line.contains(':')) {
+        final idx = line.indexOf(':');
+        final rawK = line.substring(0, idx);
+        final rawV = line.substring(idx + 1);
+
+        // Strip markdown asterisks, underscores, backticks, colons
+        final cleanK = rawK.replaceAll(RegExp(r'[*_`#]'), '').trim();
+        final cleanV = rawV.replaceAll(RegExp(r'^\*+|\*+$'), '').trim();
+
+        if (cleanK.isNotEmpty && cleanK.length <= 40 && cleanV.isNotEmpty) {
+          key = cleanK;
+          value = cleanV;
+        }
+      } else {
+        // Check for **Key** Value pattern (e.g. "**Type** 10-Way..." or "**Type  ** 10-Way...")
+        final boldMatch = RegExp(r'^\*\*(.+?)\*\*\s*(.*)$').firstMatch(line);
+        if (boldMatch != null) {
+          final cleanK = boldMatch.group(1)?.replaceAll(RegExp(r'[*_`#:]'), '').trim() ?? '';
+          final cleanV = boldMatch.group(2)?.replaceAll(RegExp(r'^\*+|\*+$'), '').trim() ?? '';
+          if (cleanK.isNotEmpty && cleanK.length <= 40 && cleanV.isNotEmpty) {
+            key = cleanK;
+            value = cleanV;
+          }
+        }
+      }
+
+      if (key != null && value != null) {
+        specs.add(MapEntry(key, value));
+      } else if (hasBullet) {
+        final cleanHighlight = line.replaceAll(RegExp(r'^\*+|\*+$'), '').trim();
+        if (cleanHighlight.isNotEmpty) {
+          highlights.add(cleanHighlight);
+        }
+      } else {
+        narrative.add(line);
+      }
     }
-    return specs;
+
+    return _ProductDescriptionData(
+      specs: specs,
+      highlights: highlights,
+      narrative: narrative,
+    );
   }
 
-  // Build a neat two-column specs table
+  // Backwards-compatible helper
+  List<MapEntry<String, String>> _parseSpecs(String description) {
+    return _parseDescriptionData(description).specs;
+  }
+
+  // Full product description section with specifications, highlights & about text
+  Widget _buildDescriptionSection(
+    BuildContext context,
+    _ProductDescriptionData data,
+  ) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Specifications Table
+        if (data.specs.isNotEmpty) ...[
+          Row(
+            children: [
+              Icon(Icons.tune_rounded, size: 18, color: cs.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Specifications',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildSpecsGrid(context, data.specs),
+        ],
+
+        // 2. Key Highlights (bullets without key:value)
+        if (data.highlights.isNotEmpty) ...[
+          if (data.specs.isNotEmpty) const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(Icons.stars_rounded, size: 18, color: cs.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Key Highlights',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? cs.surfaceContainerHighest.withValues(alpha: 0.3)
+                  : cs.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: theme.dividerColor.withValues(alpha: 0.1),
+              ),
+            ),
+            child: Column(
+              children: [
+                for (final h in data.highlights)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5, right: 8),
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: cs.primary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            h,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              height: 1.4,
+                              color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.9),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+
+        // 3. Narrative Description
+        if (data.narrative.isNotEmpty) ...[
+          if (data.specs.isNotEmpty || data.highlights.isNotEmpty)
+            const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(Icons.info_outline_rounded, size: 18, color: cs.primary),
+              const SizedBox(width: 6),
+              Text(
+                'About this item',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? cs.surfaceContainerHighest.withValues(alpha: 0.25)
+                  : cs.surfaceContainerLowest,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: theme.dividerColor.withValues(alpha: 0.1),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (int i = 0; i < data.narrative.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 8),
+                  _buildFormattedRichText(context, data.narrative[i]),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // Build a neat two-column specs table with alternate row tinting and clean typography
   Widget _buildSpecsGrid(
     BuildContext context,
     List<MapEntry<String, String>> specs,
   ) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
+        color: isDark
+            ? cs.surfaceContainerHighest.withValues(alpha: 0.3)
+            : cs.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+          color: theme.dividerColor.withValues(alpha: 0.12),
         ),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Table(
-        columnWidths: const {0: IntrinsicColumnWidth(), 1: FlexColumnWidth()},
-        defaultVerticalAlignment: TableCellVerticalAlignment.top,
+        columnWidths: const {
+          0: FlexColumnWidth(1.1),
+          1: FlexColumnWidth(2.0),
+        },
+        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
         children: [
-          for (final e in specs)
+          for (int i = 0; i < specs.length; i++)
             TableRow(
+              decoration: BoxDecoration(
+                color: i.isEven
+                    ? (isDark
+                        ? cs.surfaceContainerHighest.withValues(alpha: 0.2)
+                        : cs.surfaceContainerLow.withValues(alpha: 0.4))
+                    : Colors.transparent,
+                border: i < specs.length - 1
+                    ? Border(
+                        bottom: BorderSide(
+                          color: theme.dividerColor.withValues(alpha: 0.08),
+                          width: 1,
+                        ),
+                      )
+                    : null,
+              ),
               children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(
-                    vertical: 6,
-                    horizontal: 4,
+                    vertical: 9,
+                    horizontal: 12,
                   ),
                   child: Text(
-                    e.key,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    specs[i].key,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12.5,
+                      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
+                      letterSpacing: -0.1,
+                    ),
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(
-                    vertical: 6,
-                    horizontal: 4,
+                    vertical: 9,
+                    horizontal: 12,
                   ),
-                  child: Text(e.value, softWrap: true),
+                  child: Text(
+                    specs[i].value,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 13,
+                      height: 1.35,
+                      color: theme.textTheme.bodyLarge?.color,
+                    ),
+                    softWrap: true,
+                  ),
                 ),
               ],
             ),
         ],
+      ),
+    );
+  }
+
+  // Helper to render inline markdown like **bold** cleanly in Flutter
+  Widget _buildFormattedRichText(BuildContext context, String text) {
+    final theme = Theme.of(context);
+    final baseStyle = TextStyle(
+      fontSize: 13.5,
+      height: 1.5,
+      color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.9),
+    );
+
+    final spans = <TextSpan>[];
+    final regex = RegExp(r'\*\*(.+?)\*\*');
+    int lastMatchEnd = 0;
+
+    for (final match in regex.allMatches(text)) {
+      if (match.start > lastMatchEnd) {
+        spans.add(TextSpan(text: text.substring(lastMatchEnd, match.start)));
+      }
+      spans.add(
+        TextSpan(
+          text: match.group(1),
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      );
+      lastMatchEnd = match.end;
+    }
+    if (lastMatchEnd < text.length) {
+      spans.add(TextSpan(text: text.substring(lastMatchEnd)));
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: baseStyle,
+        children: spans.isEmpty ? [TextSpan(text: text)] : spans,
       ),
     );
   }
