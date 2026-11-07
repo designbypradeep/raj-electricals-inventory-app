@@ -1810,16 +1810,28 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.check_circle_outline, size: 16, color: Color(0xFF10B981)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _locationStatusMessage!,
-                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
-                      ),
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle_outline, size: 16, color: Color(0xFF10B981)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _locationStatusMessage!,
+                            style: const TextStyle(fontSize: 11.5, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
                     ),
+                    if (_latitude != null && _longitude != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '📍 Device GPS Pin: Lat ${double.tryParse(_latitude!)?.toStringAsFixed(5)}, Lng ${double.tryParse(_longitude!)?.toStringAsFixed(5)}',
+                        style: TextStyle(fontSize: 10.5, color: theme.textTheme.bodySmall?.color),
+                      ),
+                    ],
                   ],
                 ),
               ),
