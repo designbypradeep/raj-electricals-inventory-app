@@ -2195,24 +2195,87 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             ),
           // Header
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Shopping Cart',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Shopping Cart',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    if (_cartCount > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '$_cartCount',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                // Close/Back Button
-                if (!isTab)
-                  IconButton.filledTonal(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                  )
-                else
-                  const SizedBox.shrink(), // No close button needed in tab
+                // Actions (Clear all if items exist, or close button in modal)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_cartItems.isNotEmpty)
+                      TextButton.icon(
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          _confirmClearCart(context);
+                        },
+                        icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                        label: const Text(
+                          'Clear',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.error,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    if (!isTab) ...[
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        icon: const Icon(Icons.close, size: 20),
+                        constraints: const BoxConstraints(
+                          minWidth: 36,
+                          minHeight: 36,
+                        ),
+                        padding: EdgeInsets.zero,
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),
@@ -2329,13 +2392,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         border: Border.all(
                           color: Theme.of(
                             context,
-                          ).dividerColor.withValues(alpha: 0.5),
+                          ).dividerColor.withValues(alpha: 0.15),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
                           ),
                         ],
                       ),
@@ -2343,88 +2406,158 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Product Image
-                          Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(12),
-                              image: imageUrl != null && imageUrl.isNotEmpty
-                                  ? DecorationImage(
-                                      image: CachedNetworkImageProvider(
-                                        imageUrl,
+                          // Product Image Thumbnail
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: 76,
+                              height: 76,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                  color: Theme.of(
+                                    context,
+                                  ).dividerColor.withValues(alpha: 0.12),
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: imageUrl != null && imageUrl.isNotEmpty
+                                  ? CachedNetworkImage(
+                                      imageUrl: imageUrl,
+                                      fit: BoxFit.contain,
+                                      placeholder: (_, __) => Center(
+                                        child: SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                          ),
+                                        ),
                                       ),
-                                      fit: BoxFit.cover,
+                                      errorWidget: (_, __, ___) => Icon(
+                                        Icons.image_not_supported,
+                                        size: 28,
+                                        color: Colors.grey.withValues(
+                                          alpha: 0.5,
+                                        ),
+                                      ),
                                     )
-                                  : null,
-                            ),
-                            child: imageUrl == null || imageUrl.isEmpty
-                                ? Center(
-                                    child: Icon(
-                                      Icons.image,
+                                  : Icon(
+                                      Icons.image_outlined,
                                       size: 32,
                                       color: Theme.of(context).disabledColor,
                                     ),
-                                  )
-                                : null,
+                            ),
                           ),
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 14),
 
-                          // Details
+                          // Details Column
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  name,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Unit Price: ₹${price.toStringAsFixed(2)}',
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(
-                                        color: Theme.of(context)
+                                // Title & Quick Delete Icon
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
                                             .textTheme
-                                            .bodySmall
-                                            ?.color
-                                            ?.withValues(alpha: 0.7),
+                                            .titleSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 14,
+                                              height: 1.25,
+                                            ),
                                       ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    InkWell(
+                                      onTap: () {
+                                        HapticFeedback.lightImpact();
+                                        setModalState(() {
+                                          _cartItems.removeAt(index);
+                                          _cartCount = _cartItems.fold(
+                                            0,
+                                            (sum, it) =>
+                                                sum +
+                                                ((it['qty'] as num?)?.toInt() ??
+                                                    0),
+                                          );
+                                        });
+                                        setState(() {});
+                                      },
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(4),
+                                        child: Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 19,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .error
+                                              .withValues(alpha: 0.7),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: 10),
+
+                                // Bottom Row: Price Breakdown & Stepper
                                 Row(
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    Text(
-                                      '₹${totalItemPrice.toStringAsFixed(2)}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '₹${totalItemPrice.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800,
                                             color: Theme.of(
                                               context,
-                                            ).primaryColor,
-                                            fontWeight: FontWeight.bold,
+                                            ).colorScheme.primary,
+                                            letterSpacing: -0.2,
                                           ),
+                                        ),
+                                        if (qty > 1)
+                                          Text(
+                                            '₹${price.toStringAsFixed(2)} each',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w500,
+                                              color: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.color
+                                                  ?.withValues(alpha: 0.65),
+                                            ),
+                                          ),
+                                      ],
                                     ),
-                                    // Qty Controls
+
+                                    // Stepper Pill
                                     Container(
                                       decoration: BoxDecoration(
                                         color: Theme.of(
                                           context,
                                         ).colorScheme.surfaceContainerHighest,
-                                        borderRadius: BorderRadius.circular(24),
+                                        borderRadius: BorderRadius.circular(20),
                                         border: Border.all(
-                                          color: Theme.of(
-                                            context,
-                                          ).dividerColor.withValues(alpha: 0.3),
+                                          color: Theme.of(context).dividerColor
+                                              .withValues(alpha: 0.25),
                                         ),
                                       ),
                                       child: Row(
@@ -2433,11 +2566,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                           IconButton(
                                             icon: const Icon(
                                               Icons.remove,
-                                              size: 18,
+                                              size: 16,
                                             ),
                                             constraints: const BoxConstraints(
-                                              minWidth: 36,
-                                              minHeight: 36,
+                                              minWidth: 32,
+                                              minHeight: 32,
                                             ),
                                             padding: EdgeInsets.zero,
                                             onPressed: () {
@@ -2460,23 +2593,26 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                               setState(() {});
                                             },
                                           ),
-                                          Text(
-                                            '$qty',
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Theme.of(
-                                                context,
-                                              ).colorScheme.onSurface,
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 4,
+                                            ),
+                                            child: Text(
+                                              '$qty',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                              ),
                                             ),
                                           ),
                                           IconButton(
                                             icon: const Icon(
                                               Icons.add,
-                                              size: 18,
+                                              size: 16,
                                             ),
                                             constraints: const BoxConstraints(
-                                              minWidth: 36,
-                                              minHeight: 36,
+                                              minWidth: 32,
+                                              minHeight: 32,
                                             ),
                                             padding: EdgeInsets.zero,
                                             onPressed: qty < stock
@@ -2514,18 +2650,22 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             ),
           ),
 
-          // Footer
+          // Footer with Order Breakdown
           if (_cartItems.isNotEmpty)
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 border: Border(
-                  top: BorderSide(color: Theme.of(context).dividerColor),
+                  top: BorderSide(
+                    color: Theme.of(
+                      context,
+                    ).dividerColor.withValues(alpha: 0.2),
+                  ),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
+                    color: Colors.black.withValues(alpha: 0.06),
                     offset: const Offset(0, -4),
                     blurRadius: 16,
                   ),
@@ -2535,28 +2675,117 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Subtotal Row
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Total Amount',
-                          style: Theme.of(context).textTheme.titleMedium,
+                          'Subtotal (${_cartItems.length} items, $_cartCount qty)',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.color
+                                    ?.withValues(alpha: 0.8),
+                                fontSize: 13,
+                              ),
                         ),
                         Text(
                           '₹${_calculateTotal().toStringAsFixed(2)}',
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 6),
+                    // Delivery Fee Row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Delivery Fee',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.color
+                                    ?.withValues(alpha: 0.8),
+                                fontSize: 13,
+                              ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF10B981,
+                            ).withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'FREE',
+                            style: TextStyle(
+                              color: Color(0xFF10B981),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Divider(height: 1),
+                    ),
+                    // Total Payable Row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Total Amount',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                            Text(
+                              'Inclusive of all taxes',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(context).disabledColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Text(
+                          '₹${_calculateTotal().toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: Theme.of(context).colorScheme.primary,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
                     SizedBox(
                       width: double.infinity,
-                      child: FilledButton.icon(
+                      child: FilledButton(
                         onPressed: () {
+                          HapticFeedback.mediumImpact();
                           if (isTab) {
                             _proceedToCheckout(context);
                           } else {
@@ -2565,15 +2794,35 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           }
                         },
                         style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                        icon: const Icon(Icons.payment),
-                        label: const Text(
-                          'Proceed to Checkout',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
                           ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.lock_outline_rounded, size: 18),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Proceed to Checkout',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '•  ₹${_calculateTotal().toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onPrimary.withValues(alpha: 0.9),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -2781,6 +3030,39 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     if (minP == double.infinity) minP = 0.0;
     if (maxP < minP) maxP = minP;
     return [minP, maxP];
+  }
+
+  void _confirmClearCart(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear Cart?'),
+        content: const Text(
+          'Are you sure you want to remove all items from your shopping cart?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () {
+              HapticFeedback.mediumImpact();
+              Navigator.of(ctx).pop();
+              setState(() {
+                _cartItems.clear();
+                _cartCount = 0;
+              });
+            },
+            child: const Text('Clear Cart'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _proceedToCheckout(BuildContext context) async {
