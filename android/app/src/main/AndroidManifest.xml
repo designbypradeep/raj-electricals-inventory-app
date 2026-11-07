@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Location access for customer address auto-detect & delivery pin -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Read access to user media on Android 13+ for image/file picking -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <!-- Backwards compatibility for Android 12 and below -->

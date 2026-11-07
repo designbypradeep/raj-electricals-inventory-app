@@ -4718,8 +4718,14 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             final activePhone = customerPhone ??
                 _savedCustomerProfile?['phone'] ??
                 'N/A';
+            String mapsLink = '';
+            if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
+                _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
+              mapsLink =
+                  ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
+            }
             final fulfillmentNotes = _deliveryMethod == 'delivery'
-                ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}'
+                ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}$mapsLink'
                 : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection';
 
             final shopOrder = await SupabaseService.createShopOrder(
@@ -4901,8 +4907,14 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             final activePhone = customerPhone ??
                 _savedCustomerProfile?['phone'] ??
                 'N/A';
+            String mapsLink = '';
+            if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
+                _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
+              mapsLink =
+                  ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
+            }
             final fulfillmentNotes = _deliveryMethod == 'delivery'
-                ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}'
+                ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}$mapsLink'
                 : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection';
 
             final shopOrder = await SupabaseService.createShopOrder(

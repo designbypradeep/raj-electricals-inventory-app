@@ -9,6 +9,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../services/receipt_service.dart';
 import '../models/sales_purchase_models.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 
 /// Storage helper for guest orders and delivery details on the customer device.
 class ShopCustomerStorage {
@@ -21,6 +23,8 @@ class ShopCustomerStorage {
   static const String _profileCityKey = 'inventoza_customer_city';
   static const String _profileStateKey = 'inventoza_customer_state';
   static const String _profilePincodeKey = 'inventoza_customer_pincode';
+  static const String _profileLatitudeKey = 'inventoza_customer_latitude';
+  static const String _profileLongitudeKey = 'inventoza_customer_longitude';
 
   static Future<Map<String, String>> loadSavedProfile() async {
     final prefs = await SharedPreferences.getInstance();
@@ -37,6 +41,8 @@ class ShopCustomerStorage {
     final city = prefs.getString(_profileCityKey) ?? '';
     final state = prefs.getString(_profileStateKey) ?? '';
     final pincode = prefs.getString(_profilePincodeKey) ?? '';
+    final latitude = prefs.getString(_profileLatitudeKey) ?? '';
+    final longitude = prefs.getString(_profileLongitudeKey) ?? '';
 
     return {
       'name': name,
@@ -47,6 +53,8 @@ class ShopCustomerStorage {
       'city': city,
       'state': state,
       'pincode': pincode,
+      'latitude': latitude,
+      'longitude': longitude,
       'email': googleEmail ?? '',
     };
   }
@@ -60,6 +68,8 @@ class ShopCustomerStorage {
     String? city,
     String? state,
     String? pincode,
+    String? latitude,
+    String? longitude,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_profileNameKey, name.trim());
@@ -70,6 +80,8 @@ class ShopCustomerStorage {
     if (city != null) await prefs.setString(_profileCityKey, city.trim());
     if (state != null) await prefs.setString(_profileStateKey, state.trim());
     if (pincode != null) await prefs.setString(_profilePincodeKey, pincode.trim());
+    if (latitude != null) await prefs.setString(_profileLatitudeKey, latitude.trim());
+    if (longitude != null) await prefs.setString(_profileLongitudeKey, longitude.trim());
   }
 
   static Future<List<Map<String, dynamic>>> loadLocalOrders() async {
@@ -1500,6 +1512,10 @@ class _ProfileSheetState extends State<_ProfileSheet> {
   final _pincodeCtrl = TextEditingController();
 
   bool _isSaving = false;
+  bool _isDetectingLocation = false;
+  String? _latitude;
+  String? _longitude;
+  String? _locationStatusMessage;
 
   @override
   void initState() {
@@ -1519,7 +1535,121 @@ class _ProfileSheetState extends State<_ProfileSheet> {
         _cityCtrl.text = p['city'] ?? '';
         _stateCtrl.text = p['state'] ?? '';
         _pincodeCtrl.text = p['pincode'] ?? '';
+        _latitude = p['latitude']?.isNotEmpty == true ? p['latitude'] : null;
+        _longitude = p['longitude']?.isNotEmpty == true ? p['longitude'] : null;
       });
+    }
+  }
+
+  Future<void> _detectLocation() async {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _isDetectingLocation = true;
+      _locationStatusMessage = null;
+    });
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          setState(() => _isDetectingLocation = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Location services are turned off on your device.'),
+              action: SnackBarAction(
+                label: 'Turn On',
+                textColor: Colors.white,
+                onPressed: () => Geolocator.openLocationSettings(),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            setState(() => _isDetectingLocation = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Location permission denied.')),
+            );
+          }
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          setState(() => _isDetectingLocation = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Location permission permanently denied in device settings.'),
+              action: SnackBarAction(
+                label: 'Settings',
+                textColor: Colors.white,
+                onPressed: () => Geolocator.openAppSettings(),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 12),
+        ),
+      );
+
+      _latitude = position.latitude.toString();
+      _longitude = position.longitude.toString();
+
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty && mounted) {
+        final place = placemarks.first;
+        final streetParts = [
+          place.street,
+          place.subLocality,
+          place.thoroughfare,
+        ].where((s) => s != null && s.trim().isNotEmpty && s != place.postalCode && s != place.locality).toSet().toList();
+
+        setState(() {
+          if (place.postalCode != null && place.postalCode!.isNotEmpty) {
+            _pincodeCtrl.text = place.postalCode!;
+          }
+          if (streetParts.isNotEmpty) {
+            _streetCtrl.text = streetParts.join(', ');
+          }
+          if (place.locality != null && place.locality!.isNotEmpty) {
+            _cityCtrl.text = place.locality!;
+          } else if (place.subAdministrativeArea != null && place.subAdministrativeArea!.isNotEmpty) {
+            _cityCtrl.text = place.subAdministrativeArea!;
+          }
+          if (place.administrativeArea != null && place.administrativeArea!.isNotEmpty) {
+            _stateCtrl.text = place.administrativeArea!;
+          }
+          _locationStatusMessage = 'Auto-filled from GPS. Please check and add your Flat / House number.';
+        });
+        HapticFeedback.lightImpact();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not detect location: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDetectingLocation = false);
+      }
     }
   }
 
@@ -1534,6 +1664,8 @@ class _ProfileSheetState extends State<_ProfileSheet> {
       city: _cityCtrl.text,
       state: _stateCtrl.text,
       pincode: _pincodeCtrl.text,
+      latitude: _latitude,
+      longitude: _longitude,
     );
     if (mounted) {
       setState(() => _isSaving = false);
@@ -1583,6 +1715,84 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                 IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
               ],
             ),
+            const SizedBox(height: 14),
+
+            // GPS Location Detection Button
+            OutlinedButton.icon(
+              onPressed: _isDetectingLocation ? null : _detectLocation,
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                side: BorderSide(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.5),
+                  width: 1.2,
+                ),
+                backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.05),
+              ),
+              icon: _isDetectingLocation
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      Icons.my_location_rounded,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+              label: Text(
+                _isDetectingLocation ? 'Detecting location from GPS...' : 'Use Current Location (GPS Auto-Fill)',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ),
+            if (_locationStatusMessage != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline, size: 16, color: Color(0xFF10B981)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _locationStatusMessage!,
+                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (_latitude != null && _longitude != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.pin_drop_outlined, size: 15, color: theme.colorScheme.primary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'GPS Pin Captured (Lat: ${double.tryParse(_latitude!)?.toStringAsFixed(4)}, Lng: ${double.tryParse(_longitude!)?.toStringAsFixed(4)})',
+                        style: TextStyle(fontSize: 11, color: theme.textTheme.bodySmall?.color),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
 
             TextField(
