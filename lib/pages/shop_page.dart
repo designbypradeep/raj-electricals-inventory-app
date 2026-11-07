@@ -74,6 +74,442 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   double get _finalPayableTotal => _calculateTotal() + _deliveryFee;
+
+  // Customer Profile & Delivery Address State
+  Map<String, String>? _savedCustomerProfile;
+
+  Future<void> _loadCustomerProfile() async {
+    final profile = await ShopCustomerStorage.loadSavedProfile();
+    if (mounted) {
+      setState(() {
+        _savedCustomerProfile = profile;
+      });
+    }
+  }
+
+  bool get _hasCustomerAddress {
+    if (_savedCustomerProfile == null) return false;
+    final house = _savedCustomerProfile!['house']?.trim() ?? '';
+    final street = _savedCustomerProfile!['street']?.trim() ?? '';
+    final city = _savedCustomerProfile!['city']?.trim() ?? '';
+    final pincode = _savedCustomerProfile!['pincode']?.trim() ?? '';
+    return (house.isNotEmpty || street.isNotEmpty || city.isNotEmpty) &&
+        pincode.isNotEmpty;
+  }
+
+  bool get _isDeliveryPincodeRestricted {
+    final allowed = _businessProfile?.allowedDeliveryPincodes?.trim() ?? '';
+    return allowed.isNotEmpty;
+  }
+
+  List<String> get _allowedDeliveryPincodesList {
+    final allowed = _businessProfile?.allowedDeliveryPincodes?.trim() ?? '';
+    if (allowed.isEmpty) return [];
+    return allowed
+        .split(',')
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+  }
+
+  bool get _isCustomerPincodeServiceable {
+    if (!_isDeliveryPincodeRestricted) return true;
+    final customerPincode = _savedCustomerProfile?['pincode']?.trim() ?? '';
+    if (customerPincode.isEmpty) return false;
+    return _allowedDeliveryPincodesList.contains(customerPincode);
+  }
+
+  String _formatCustomerAddress(Map<String, String>? profile) {
+    if (profile == null) return '';
+    final parts = [
+      profile['house'],
+      profile['street'],
+      profile['landmark'],
+      profile['city'],
+      profile['state'],
+    ].where((p) => p != null && p.trim().isNotEmpty).map((p) => p!.trim()).toList();
+
+    final pincode = profile['pincode']?.trim() ?? '';
+    if (parts.isEmpty && pincode.isEmpty) return '';
+    if (pincode.isNotEmpty) {
+      return '${parts.join(', ')} - $pincode';
+    }
+    return parts.join(', ');
+  }
+
+  Widget _buildDeliveryAddressCard(BuildContext context) {
+    final isRestricted = _isDeliveryPincodeRestricted;
+    final isServiceable = _isCustomerPincodeServiceable;
+    final hasAddress = _hasCustomerAddress;
+    final customerPincode = _savedCustomerProfile?['pincode']?.trim() ?? '';
+    final bool notServiceable = hasAddress && isRestricted && !isServiceable;
+
+    return Container(
+      key: const ValueKey('delivery_address_card'),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: notServiceable
+            ? Colors.red.withValues(alpha: 0.08)
+            : Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: notServiceable
+              ? Colors.red.withValues(alpha: 0.4)
+              : Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: hasAddress
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: (notServiceable
+                            ? Colors.red
+                            : Theme.of(context).colorScheme.primary)
+                        .withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.location_on_rounded,
+                    size: 16,
+                    color: notServiceable
+                        ? Colors.red
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _savedCustomerProfile?['name']
+                                          ?.trim()
+                                          .isNotEmpty ==
+                                      true
+                                  ? _savedCustomerProfile!['name']!.trim()
+                                  : 'Delivery Address',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (_savedCustomerProfile?['phone']
+                                  ?.trim()
+                                  .isNotEmpty ==
+                              true) ...[
+                            Text(
+                              ' • ${_savedCustomerProfile!['phone']!.trim()}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall?.color,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _formatCustomerAddress(_savedCustomerProfile),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          height: 1.25,
+                          color: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.color
+                              ?.withValues(alpha: 0.85),
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      if (notServiceable) ...[
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.error_outline_rounded,
+                              size: 13,
+                              color: Colors.red,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Delivery unavailable to $customerPincode. Choose Store Pickup.',
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else if (isRestricted) ...[
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              size: 13,
+                              color: Color(0xFF10B981),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Pincode $customerPincode is serviceable',
+                              style: const TextStyle(
+                                color: Color(0xFF10B981),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.local_shipping_outlined,
+                              size: 13,
+                              color: Color(0xFF10B981),
+                            ),
+                            const SizedBox(width: 4),
+                            const Text(
+                              'Standard doorstep delivery',
+                              style: TextStyle(
+                                color: Color(0xFF10B981),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                TextButton(
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    ShopAccountSheets.showProfileSheet(
+                      context,
+                      onSaved: () => _loadCustomerProfile(),
+                    );
+                  },
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    'Change',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.add_location_alt_outlined,
+                    size: 18,
+                    color: Colors.orange,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'No delivery address added',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                      Text(
+                        'Required to verify pincode & delivery',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).textTheme.bodySmall?.color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton.tonal(
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    ShopAccountSheets.showProfileSheet(
+                      context,
+                      onSaved: () => _loadCustomerProfile(),
+                    );
+                  },
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    '+ Add Address',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildStorePickupCard(BuildContext context) {
+    return Container(
+      key: const ValueKey('store_pickup_card'),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF10B981).withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF10B981).withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.storefront_rounded,
+              size: 16,
+              color: Color(0xFF10B981),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _businessName.isNotEmpty
+                            ? _businessName
+                            : 'Raj Electricals & Hardware',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12.5,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'FREE',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF10B981),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _businessProfile?.address?.isNotEmpty == true
+                      ? _businessProfile!.address!
+                      : 'Main Market, Ghaziabad, Uttar Pradesh',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.color
+                        ?.withValues(alpha: 0.85),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.bolt, size: 13, color: Colors.orange),
+                    const SizedBox(width: 3),
+                    const Text(
+                      'Ready in 15–30 mins',
+                      style: TextStyle(
+                        color: Colors.orange,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      ' • No address needed',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   final List<int> _wishlist = [];
   final List<int> _recentlyViewed = [];
   bool _isLoadingProducts = true;
@@ -201,10 +637,14 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     });
     _initSpeech();
     _initDeepLinks();
+    _loadCustomerProfile();
 
     // Listen to Supabase auth state changes (Google Sign-In / Sign-Out)
     _authSubscription = SupabaseService.onAuthStateChange.listen((data) {
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        _loadCustomerProfile();
+      }
     });
 
     // Auto-refresh when back online
@@ -1440,16 +1880,22 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     Map<String, dynamic> product,
     int qty,
   ) {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    ShopCustomerStorage.loadSavedProfile().then((prof) {
-      if (prof['name']?.isNotEmpty == true && nameCtrl.text.isEmpty) {
-        nameCtrl.text = prof['name']!;
-      }
-      if (prof['phone']?.isNotEmpty == true && phoneCtrl.text.isEmpty) {
-        phoneCtrl.text = prof['phone']!;
-      }
-    });
+    final nameCtrl = TextEditingController(
+      text: _savedCustomerProfile?['name'] ?? '',
+    );
+    final phoneCtrl = TextEditingController(
+      text: _savedCustomerProfile?['phone'] ?? '',
+    );
+    if (nameCtrl.text.isEmpty || phoneCtrl.text.isEmpty) {
+      ShopCustomerStorage.loadSavedProfile().then((prof) {
+        if (prof['name']?.isNotEmpty == true && nameCtrl.text.isEmpty) {
+          nameCtrl.text = prof['name']!;
+        }
+        if (prof['phone']?.isNotEmpty == true && phoneCtrl.text.isEmpty) {
+          phoneCtrl.text = prof['phone']!;
+        }
+      });
+    }
 
     showModalBottomSheet(
       context: context,
@@ -2706,7 +3152,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   children: [
                     // Delivery Method Selector (Home Delivery vs Store Pickup)
                     Container(
-                      margin: const EdgeInsets.only(bottom: 12),
+                      margin: const EdgeInsets.only(bottom: 10),
                       padding: const EdgeInsets.all(3),
                       decoration: BoxDecoration(
                         color: Theme.of(context)
@@ -2731,7 +3177,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               borderRadius: BorderRadius.circular(9),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 8,
+                                  vertical: 6,
+                                  horizontal: 4,
                                 ),
                                 decoration: BoxDecoration(
                                   color: _deliveryMethod == 'delivery'
@@ -2739,42 +3186,62 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                       : Colors.transparent,
                                   borderRadius: BorderRadius.circular(9),
                                 ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
-                                      Icons.local_shipping_outlined,
-                                      size: 15,
-                                      color: _deliveryMethod == 'delivery'
-                                          ? Theme.of(
-                                              context,
-                                            ).colorScheme.onPrimary
-                                          : Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall?.color,
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.local_shipping_outlined,
+                                          size: 14,
+                                          color: _deliveryMethod == 'delivery'
+                                              ? Theme.of(
+                                                  context,
+                                                ).colorScheme.onPrimary
+                                              : Theme.of(
+                                                  context,
+                                                ).textTheme.bodySmall?.color,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Home Delivery',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight:
+                                                _deliveryMethod == 'delivery'
+                                                ? FontWeight.bold
+                                                : FontWeight.w600,
+                                            color: _deliveryMethod == 'delivery'
+                                                ? Theme.of(
+                                                    context,
+                                                  ).colorScheme.onPrimary
+                                                : Theme.of(
+                                                    context,
+                                                  ).textTheme.bodySmall?.color,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(width: 5),
+                                    const SizedBox(height: 2),
                                     Text(
                                       (_businessProfile?.deliveryCharge !=
                                                   null &&
                                               _businessProfile!
                                                       .deliveryCharge! >
                                                   0)
-                                          ? 'Delivery (₹${_businessProfile!.deliveryCharge!.toStringAsFixed(0)})'
-                                          : 'Delivery (FREE)',
+                                          ? 'Standard • ₹${_businessProfile!.deliveryCharge!.toStringAsFixed(0)}'
+                                          : 'Standard • FREE',
                                       style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight:
-                                            _deliveryMethod == 'delivery'
-                                            ? FontWeight.bold
-                                            : FontWeight.w600,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w500,
                                         color: _deliveryMethod == 'delivery'
-                                            ? Theme.of(
-                                                context,
-                                              ).colorScheme.onPrimary
-                                            : Theme.of(
-                                                context,
-                                              ).textTheme.bodySmall?.color,
+                                            ? Theme.of(context)
+                                                .colorScheme
+                                                .onPrimary
+                                                .withValues(alpha: 0.85)
+                                            : Theme.of(context).disabledColor,
                                       ),
                                     ),
                                   ],
@@ -2792,7 +3259,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               borderRadius: BorderRadius.circular(9),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 8,
+                                  vertical: 6,
+                                  horizontal: 4,
                                 ),
                                 decoration: BoxDecoration(
                                   color: _deliveryMethod == 'pickup'
@@ -2800,35 +3268,56 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                       : Colors.transparent,
                                   borderRadius: BorderRadius.circular(9),
                                 ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
-                                      Icons.storefront_outlined,
-                                      size: 15,
-                                      color: _deliveryMethod == 'pickup'
-                                          ? Theme.of(
-                                              context,
-                                            ).colorScheme.onPrimary
-                                          : Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall?.color,
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.storefront_outlined,
+                                          size: 14,
+                                          color: _deliveryMethod == 'pickup'
+                                              ? Theme.of(
+                                                  context,
+                                                ).colorScheme.onPrimary
+                                              : Theme.of(
+                                                  context,
+                                                ).textTheme.bodySmall?.color,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Store Pickup',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight:
+                                                _deliveryMethod == 'pickup'
+                                                ? FontWeight.bold
+                                                : FontWeight.w600,
+                                            color: _deliveryMethod == 'pickup'
+                                                ? Theme.of(
+                                                    context,
+                                                  ).colorScheme.onPrimary
+                                                : Theme.of(
+                                                    context,
+                                                  ).textTheme.bodySmall?.color,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(width: 5),
+                                    const SizedBox(height: 2),
                                     Text(
-                                      'Store Pickup (FREE)',
+                                      'Instant • 15m (FREE)',
                                       style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: _deliveryMethod == 'pickup'
-                                            ? FontWeight.bold
-                                            : FontWeight.w600,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w500,
                                         color: _deliveryMethod == 'pickup'
-                                            ? Theme.of(
-                                                context,
-                                              ).colorScheme.onPrimary
-                                            : Theme.of(
-                                                context,
-                                              ).textTheme.bodySmall?.color,
+                                            ? Theme.of(context)
+                                                .colorScheme
+                                                .onPrimary
+                                                .withValues(alpha: 0.85)
+                                            : Theme.of(context).disabledColor,
                                       ),
                                     ),
                                   ],
@@ -2838,6 +3327,14 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           ),
                         ],
                       ),
+                    ),
+
+                    // Fulfillment Context Card (Delivery Address & Pincode Status vs Store Pickup Info)
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: _deliveryMethod == 'delivery'
+                          ? _buildDeliveryAddressCard(context)
+                          : _buildStorePickupCard(context),
                     ),
 
                     // Subtotal Row
@@ -2962,6 +3459,46 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       child: FilledButton(
                         onPressed: () {
                           HapticFeedback.mediumImpact();
+                          if (_deliveryMethod == 'delivery') {
+                            if (!_hasCustomerAddress) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Please add your delivery address for Home Delivery, or choose Store Pickup.',
+                                  ),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                              ShopAccountSheets.showProfileSheet(
+                                context,
+                                onSaved: () => _loadCustomerProfile(),
+                              );
+                              return;
+                            }
+                            if (_isDeliveryPincodeRestricted &&
+                                !_isCustomerPincodeServiceable) {
+                              final pcode =
+                                  _savedCustomerProfile?['pincode'] ?? '';
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Delivery not available to pincode $pcode. Choose Store Pickup or change your address.',
+                                  ),
+                                  backgroundColor: Colors.red.shade700,
+                                  action: SnackBarAction(
+                                    label: 'Store Pickup',
+                                    textColor: Colors.white,
+                                    onPressed: () {
+                                      setState(
+                                        () => _deliveryMethod = 'pickup',
+                                      );
+                                    },
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+                          }
                           if (isTab) {
                             _proceedToCheckout(context);
                           } else {
@@ -3353,6 +3890,112 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       controller: scrollController,
                       padding: const EdgeInsets.all(24),
                       children: [
+                        // Delivery Method & Address/Pickup Confirmation Banner
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 20),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest
+                                .withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .dividerColor
+                                  .withValues(alpha: 0.15),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  _deliveryMethod == 'delivery'
+                                      ? Icons.local_shipping_outlined
+                                      : Icons.storefront_outlined,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          _deliveryMethod == 'delivery'
+                                              ? 'Home Delivery'
+                                              : 'Store Pickup',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13.5,
+                                          ),
+                                        ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: const Color(
+                                              0xFF10B981,
+                                            ).withValues(alpha: 0.15),
+                                            borderRadius:
+                                                BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            _deliveryMethod == 'delivery'
+                                                ? (_deliveryFee > 0
+                                                    ? '₹${_deliveryFee.toStringAsFixed(0)}'
+                                                    : 'FREE')
+                                                : '⚡ READY IN 15-30M',
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w800,
+                                              color: Color(0xFF10B981),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      _deliveryMethod == 'delivery'
+                                          ? (_hasCustomerAddress
+                                              ? '${_savedCustomerProfile?['name']?.isNotEmpty == true ? "${_savedCustomerProfile!['name']} • " : ""}${_formatCustomerAddress(_savedCustomerProfile)}'
+                                              : 'Standard Doorstep Delivery')
+                                          : (_businessProfile?.address?.isNotEmpty == true
+                                              ? '$_businessName • ${_businessProfile!.address!}'
+                                              : 'Raj Electricals & Hardware, Ghaziabad'),
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        height: 1.25,
+                                        color: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.color
+                                            ?.withValues(alpha: 0.8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                         Text(
                           'Order Summary',
                           style: Theme.of(context).textTheme.titleMedium
@@ -3621,16 +4264,22 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     String checkoutId,
     double total,
   ) {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    ShopCustomerStorage.loadSavedProfile().then((prof) {
-      if (prof['name']?.isNotEmpty == true && nameCtrl.text.isEmpty) {
-        nameCtrl.text = prof['name']!;
-      }
-      if (prof['phone']?.isNotEmpty == true && phoneCtrl.text.isEmpty) {
-        phoneCtrl.text = prof['phone']!;
-      }
-    });
+    final nameCtrl = TextEditingController(
+      text: _savedCustomerProfile?['name'] ?? '',
+    );
+    final phoneCtrl = TextEditingController(
+      text: _savedCustomerProfile?['phone'] ?? '',
+    );
+    if (nameCtrl.text.isEmpty || phoneCtrl.text.isEmpty) {
+      ShopCustomerStorage.loadSavedProfile().then((prof) {
+        if (prof['name']?.isNotEmpty == true && nameCtrl.text.isEmpty) {
+          nameCtrl.text = prof['name']!;
+        }
+        if (prof['phone']?.isNotEmpty == true && phoneCtrl.text.isEmpty) {
+          phoneCtrl.text = prof['phone']!;
+        }
+      });
+    }
 
     showModalBottomSheet(
       context: context,
@@ -3719,7 +4368,49 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ).textTheme.bodySmall?.color?.withValues(alpha: 0.8),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    Container(
+                      margin: const EdgeInsets.only(top: 8, bottom: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _deliveryMethod == 'delivery'
+                                ? Icons.local_shipping_outlined
+                                : Icons.storefront_outlined,
+                            size: 15,
+                            color: Theme.of(ctx).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _deliveryMethod == 'delivery'
+                                  ? (_formatCustomerAddress(_savedCustomerProfile)
+                                          .isNotEmpty
+                                      ? 'Delivery: ${_formatCustomerAddress(_savedCustomerProfile)}'
+                                      : 'Home Delivery (Standard)')
+                                  : 'Store Pickup: $_businessName (Ready in 15–30 mins)',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     // Customer Details Inputs
                     Row(
                       children: [
@@ -4024,6 +4715,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         int orderId = saleId;
         if (_currentBusinessId != null) {
           try {
+            final activePhone = customerPhone ??
+                _savedCustomerProfile?['phone'] ??
+                'N/A';
+            final fulfillmentNotes = _deliveryMethod == 'delivery'
+                ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}'
+                : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection';
+
             final shopOrder = await SupabaseService.createShopOrder(
               businessId: _currentBusinessId!,
               customerId: SupabaseService.currentUser?.id,
@@ -4033,6 +4731,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               transactionId: checkoutId,
               paymentProofUrl: proofUrl,
               totalAmount: total,
+              notes: fulfillmentNotes,
               saleId: saleId,
               items: _cartItems
                   .map(

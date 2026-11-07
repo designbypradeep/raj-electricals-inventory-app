@@ -54,22 +54,22 @@ class ShopCustomerStorage {
   static Future<void> saveProfile({
     required String name,
     required String phone,
-    String house = '',
-    String street = '',
-    String landmark = '',
-    String city = '',
-    String state = '',
-    String pincode = '',
+    String? house,
+    String? street,
+    String? landmark,
+    String? city,
+    String? state,
+    String? pincode,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_profileNameKey, name.trim());
     await prefs.setString(_profilePhoneKey, phone.trim());
-    await prefs.setString(_profileHouseKey, house.trim());
-    await prefs.setString(_profileStreetKey, street.trim());
-    await prefs.setString(_profileLandmarkKey, landmark.trim());
-    await prefs.setString(_profileCityKey, city.trim());
-    await prefs.setString(_profileStateKey, state.trim());
-    await prefs.setString(_profilePincodeKey, pincode.trim());
+    if (house != null) await prefs.setString(_profileHouseKey, house.trim());
+    if (street != null) await prefs.setString(_profileStreetKey, street.trim());
+    if (landmark != null) await prefs.setString(_profileLandmarkKey, landmark.trim());
+    if (city != null) await prefs.setString(_profileCityKey, city.trim());
+    if (state != null) await prefs.setString(_profileStateKey, state.trim());
+    if (pincode != null) await prefs.setString(_profilePincodeKey, pincode.trim());
   }
 
   static Future<List<Map<String, dynamic>>> loadLocalOrders() async {
