@@ -1549,33 +1549,16 @@ class _ProfileSheetState extends State<_ProfileSheet> {
     });
 
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) {
-          setState(() => _isDetectingLocation = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Location services are turned off on your device.'),
-              action: SnackBarAction(
-                label: 'Turn On',
-                textColor: Colors.white,
-                onPressed: () => Geolocator.openLocationSettings(),
-              ),
-            ),
-          );
-        }
-        return;
-      }
-
+      // 1. Check & Request Permissions FIRST so the OS prompts the user
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           if (mounted) {
-            setState(() => _isDetectingLocation = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Location permission denied.')),
-            );
+            setState(() {
+              _isDetectingLocation = false;
+              _locationStatusMessage = 'Location permission was denied.';
+            });
           }
           return;
         }
@@ -1583,25 +1566,84 @@ class _ProfileSheetState extends State<_ProfileSheet> {
 
       if (permission == LocationPermission.deniedForever) {
         if (mounted) {
-          setState(() => _isDetectingLocation = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Location permission permanently denied in device settings.'),
-              action: SnackBarAction(
-                label: 'Settings',
-                textColor: Colors.white,
-                onPressed: () => Geolocator.openAppSettings(),
+          setState(() {
+            _isDetectingLocation = false;
+            _locationStatusMessage =
+                'Location permission permanently denied in device settings.';
+          });
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Permission Required'),
+              content: const Text(
+                'Location permission is permanently disabled for this app. Please enable it in App Settings to use GPS auto-fill.',
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Geolocator.openAppSettings();
+                  },
+                  child: const Text('Open Settings'),
+                ),
+              ],
             ),
           );
         }
         return;
       }
 
+      // 2. Check if Location Services (GPS) is turned on
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          setState(() {
+            _isDetectingLocation = false;
+            _locationStatusMessage =
+                'GPS/Location is turned off on your device. Please turn it on.';
+          });
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.location_off_rounded, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text('GPS is Turned Off'),
+                ],
+              ),
+              content: const Text(
+                'Device GPS / Location is currently turned off. Please turn it on in settings to auto-fill your delivery address.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Geolocator.openLocationSettings();
+                  },
+                  icon: const Icon(Icons.settings, size: 16),
+                  label: const Text('Turn On Location'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
+      // 3. Fetch GPS position
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 12),
+          timeLimit: Duration(seconds: 15),
         ),
       );
 
@@ -1619,7 +1661,14 @@ class _ProfileSheetState extends State<_ProfileSheet> {
           place.street,
           place.subLocality,
           place.thoroughfare,
-        ].where((s) => s != null && s.trim().isNotEmpty && s != place.postalCode && s != place.locality).toSet().toList();
+        ]
+            .where((s) =>
+                s != null &&
+                s.trim().isNotEmpty &&
+                s != place.postalCode &&
+                s != place.locality)
+            .toSet()
+            .toList();
 
         setState(() {
           if (place.postalCode != null && place.postalCode!.isNotEmpty) {
@@ -1630,21 +1679,24 @@ class _ProfileSheetState extends State<_ProfileSheet> {
           }
           if (place.locality != null && place.locality!.isNotEmpty) {
             _cityCtrl.text = place.locality!;
-          } else if (place.subAdministrativeArea != null && place.subAdministrativeArea!.isNotEmpty) {
+          } else if (place.subAdministrativeArea != null &&
+              place.subAdministrativeArea!.isNotEmpty) {
             _cityCtrl.text = place.subAdministrativeArea!;
           }
-          if (place.administrativeArea != null && place.administrativeArea!.isNotEmpty) {
+          if (place.administrativeArea != null &&
+              place.administrativeArea!.isNotEmpty) {
             _stateCtrl.text = place.administrativeArea!;
           }
-          _locationStatusMessage = 'Auto-filled from GPS. Please check and add your Flat / House number.';
+          _locationStatusMessage =
+              'Auto-filled from GPS. Please check and add your Flat / House number.';
         });
         HapticFeedback.lightImpact();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not detect location: $e')),
-        );
+        setState(() {
+          _locationStatusMessage = 'Could not detect location: $e';
+        });
       }
     } finally {
       if (mounted) {
