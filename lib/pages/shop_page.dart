@@ -4965,13 +4965,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       });
     }
 
-    // Redesigned product detail as a modern bottom sheet
+    // Redesigned product detail as an iOS-style draggable bottom sheet
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      enableDrag: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) {
         final cartItem = _cartItems.firstWhere(
           (item) => item['id'] == product['id'],
@@ -5070,20 +5069,30 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               }
             }
 
-            return SafeArea(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.9,
-                ),
-                child: Stack(
-                  children: [
-                    SingleChildScrollView(
-                      padding: EdgeInsets.only(
-                        left: 16,
-                        right: 16,
-                        top: 16,
-                        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-                      ),
+            return DraggableScrollableSheet(
+              initialChildSize: 0.9,
+              minChildSize: 0.35,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (sheetContext, scrollController) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Stack(
+                    children: [
+                      SingleChildScrollView(
+                        controller: scrollController,
+                        padding: EdgeInsets.only(
+                          left: 16,
+                          right: 16,
+                          top: 24,
+                          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                        ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
@@ -5555,8 +5564,27 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ],
                       ),
                     ),
+                    // Top iOS-style drag handle pill
                     Positioned(
-                      top: 12,
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: 24,
+                      child: Center(
+                        child: Container(
+                          width: 38,
+                          height: 4.5,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .dividerColor
+                                .withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(2.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 10,
                       right: 12,
                       child: IconButton(
                         onPressed: () => Navigator.of(context).pop(),
@@ -5569,7 +5597,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       ),
                     ),
                     Positioned(
-                      top: 60,
+                      top: 56,
                       right: 12,
                       child: IconButton.filledTonal(
                         onPressed: () => _shareProduct(currentProduct),
@@ -5585,8 +5613,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     ),
                   ],
                 ),
-              ),
-            );
+              );
+            },
+          );
           },
         );
       },
