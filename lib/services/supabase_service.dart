@@ -4101,7 +4101,7 @@ class SupabaseService {
 
         await _client.rpc(
           'decrement_stock',
-          params: {'product_id_to_update': pid, 'quantity_to_subtract': qty},
+          params: {'p_product_id': pid, 'p_quantity': qty},
         );
       }
 
