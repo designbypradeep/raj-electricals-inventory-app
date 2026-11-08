@@ -105,6 +105,7 @@ dependency_overrides:
   speech_to_text_windows:
     path: plugins/speech_to_text_windows
   shared_preferences_foundation: 2.5.4
+  archive: ^4.0.10
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
