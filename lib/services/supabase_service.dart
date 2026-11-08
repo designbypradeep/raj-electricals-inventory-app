@@ -3285,7 +3285,8 @@ class SupabaseService {
               .single();
           final String? itemUnit = it['unit'] as String?;
           final String? wholesale = meta['unit_type_wholesale'] as String?;
-          final int perUnit = (meta['items_per_wholesale_unit'] as int?) ?? 1;
+          final int perUnit =
+              (meta['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
           if (itemUnit != null && wholesale != null && itemUnit == wholesale) {
             qtyPieces = qtyEntered * perUnit;
           }
@@ -3566,7 +3567,7 @@ class SupabaseService {
                 .eq('business_id', businessId)
                 .maybeSingle();
             if (existing != null) {
-              final current = (existing['current_stock'] as int?) ?? 0;
+              final num current = (existing['current_stock'] as num?) ?? 0;
               // Sales: reduce by delta (increase back if delta negative)
               final newStock = delta > 0 ? current - delta : current + (-delta);
               await _client
@@ -3593,7 +3594,7 @@ class SupabaseService {
               .eq('business_id', businessId)
               .maybeSingle();
           if (existing != null) {
-            final current = (existing['current_stock'] as int?) ?? 0;
+            final num current = (existing['current_stock'] as num?) ?? 0;
             final newStock = current - newQty;
             await _client
                 .from('products')
@@ -3620,7 +3621,7 @@ class SupabaseService {
               .eq('business_id', businessId)
               .maybeSingle();
           if (existing != null) {
-            final current = (existing['current_stock'] as int?) ?? 0;
+            final num current = (existing['current_stock'] as num?) ?? 0;
             final newStock = current + oldQty; // restore
             await _client
                 .from('products')
@@ -3753,7 +3754,8 @@ class SupabaseService {
                 .eq('id', productId)
                 .single();
             final String? wholesale = meta['unit_type_wholesale'] as String?;
-            final int perUnit = (meta['items_per_wholesale_unit'] as int?) ?? 1;
+            final int perUnit =
+              (meta['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
             if (oldUnit != null && wholesale != null && oldUnit == wholesale) {
               oldSingle = oldQty * perUnit;
             }
@@ -3783,7 +3785,7 @@ class SupabaseService {
                 .eq('business_id', businessId)
                 .maybeSingle();
             if (existing != null) {
-              final current = (existing['current_stock'] as int?) ?? 0;
+              final num current = (existing['current_stock'] as num?) ?? 0;
               final newStock = current + delta;
               await _client
                   .from('products')
@@ -3817,7 +3819,8 @@ class SupabaseService {
                 .eq('id', productId)
                 .single();
             final String? wholesale = meta['unit_type_wholesale'] as String?;
-            final int perUnit = (meta['items_per_wholesale_unit'] as int?) ?? 1;
+            final int perUnit =
+              (meta['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
             if (newUnit != null && wholesale != null && newUnit == wholesale) {
               inc = newQty * perUnit;
             }
@@ -3830,7 +3833,7 @@ class SupabaseService {
               .eq('business_id', businessId)
               .maybeSingle();
           if (existing != null) {
-            final current = (existing['current_stock'] as int?) ?? 0;
+            final num current = (existing['current_stock'] as num?) ?? 0;
             final newStock = current + inc;
             await _client
                 .from('products')
@@ -3860,7 +3863,8 @@ class SupabaseService {
                 .eq('id', productId)
                 .single();
             final String? wholesale = meta['unit_type_wholesale'] as String?;
-            final int perUnit = (meta['items_per_wholesale_unit'] as int?) ?? 1;
+            final int perUnit =
+              (meta['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
             if (oldUnit != null && wholesale != null && oldUnit == wholesale) {
               dec = oldQty * perUnit;
             }
@@ -3873,7 +3877,7 @@ class SupabaseService {
               .eq('business_id', businessId)
               .maybeSingle();
           if (existing != null) {
-            final current = (existing['current_stock'] as int?) ?? 0;
+            final num current = (existing['current_stock'] as num?) ?? 0;
             final newStock = current - dec;
             await _client
                 .from('products')
@@ -3997,8 +4001,8 @@ class SupabaseService {
       }
 
       for (final it in items) {
-        final int pid = it['product_id'] as int;
-        final int qty = (it['quantity'] as int);
+        final int pid = (it['product_id'] as num).toInt();
+        final int qty = (it['quantity'] as num).toInt();
         final double ppu = (it['price_per_unit'] as num).toDouble();
 
         // ... standard validation for authenticated users which follows ...
@@ -4019,16 +4023,16 @@ class SupabaseService {
         }
 
         // Calculate required stock based on optional unit
-        int requiredStock = qty;
+        num requiredStock = qty;
         final String? unit = it['unit'] as String?;
         final String? wholesaleUnit = product['unit_type_wholesale'] as String?;
         final int itemsPerUnit =
-            (product['items_per_wholesale_unit'] as int?) ?? 1;
+            (product['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
         if (unit != null && wholesaleUnit != null && unit == wholesaleUnit) {
           requiredStock = qty * itemsPerUnit;
         }
 
-        final int currentStock = (product['current_stock'] as int?) ?? 0;
+        final num currentStock = (product['current_stock'] as num?) ?? 0;
         if (currentStock < requiredStock) {
           final pname = product['name'];
           throw Exception(
@@ -4056,7 +4060,7 @@ class SupabaseService {
           .select('id')
           .single();
 
-      final saleId = saleResp['id'] as int;
+      final saleId = (saleResp['id'] as num).toInt();
       createdSaleId = saleId;
 
       // 2) Insert sale items
@@ -4074,8 +4078,8 @@ class SupabaseService {
 
       // 3) Decrement stock for each product using RPC (handles concurrency)
       for (final it in items) {
-        final int pid = it['product_id'] as int;
-        int qty = it['quantity'] as int;
+        final int pid = (it['product_id'] as num).toInt();
+        int qty = (it['quantity'] as num).toInt();
         // Convert by unit if provided and matches wholesale unit
         try {
           final product = await _client
@@ -4087,7 +4091,7 @@ class SupabaseService {
           final String? wholesaleUnit =
               product['unit_type_wholesale'] as String?;
           final int itemsPerUnit =
-              (product['items_per_wholesale_unit'] as int?) ?? 1;
+              (product['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
           if (unit != null && wholesaleUnit != null && unit == wholesaleUnit) {
             qty = qty * itemsPerUnit;
           }
@@ -4436,7 +4440,8 @@ class SupabaseService {
                 .single();
             final String? itemUnit = it['unit'] as String?;
             final String? wholesale = meta['unit_type_wholesale'] as String?;
-            final int perUnit = (meta['items_per_wholesale_unit'] as int?) ?? 1;
+            final int perUnit =
+              (meta['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
             if (itemUnit != null &&
                 wholesale != null &&
                 itemUnit == wholesale) {
@@ -4495,7 +4500,8 @@ class SupabaseService {
                 .single();
             final String? itemUnit = it['unit'] as String?;
             final String? wholesale = meta['unit_type_wholesale'] as String?;
-            final int perUnit = (meta['items_per_wholesale_unit'] as int?) ?? 1;
+            final int perUnit =
+              (meta['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
             if (itemUnit != null &&
                 wholesale != null &&
                 itemUnit == wholesale) {
@@ -6249,11 +6255,11 @@ class SupabaseService {
         // Calculate correct stock from purchase/sales history
         final totalPurchased = (purchaseItems as List).fold<int>(
           0,
-          (sum, item) => sum + (item['quantity'] as int? ?? 0),
+          (sum, item) => sum + ((item['quantity'] as num?)?.toInt() ?? 0),
         );
         final totalSold = (salesItems as List).fold<int>(
           0,
-          (sum, item) => sum + (item['quantity'] as int? ?? 0),
+          (sum, item) => sum + ((item['quantity'] as num?)?.toInt() ?? 0),
         );
 
         final correctStock = totalPurchased - totalSold;
@@ -6266,7 +6272,7 @@ class SupabaseService {
         // Set stock to total sold to prevent negative stock
         final totalSold = (salesItems as List).fold<int>(
           0,
-          (sum, item) => sum + (item['quantity'] as int? ?? 0),
+          (sum, item) => sum + ((item['quantity'] as num?)?.toInt() ?? 0),
         );
 
         await _client
