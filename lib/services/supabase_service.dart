@@ -4099,10 +4099,31 @@ class SupabaseService {
           // If metadata fetch fails, proceed with raw qty
         }
 
-        await _client.rpc(
-          'decrement_stock',
-          params: {'p_product_id': pid, 'p_quantity': qty},
-        );
+        try {
+          await _client.rpc(
+            'decrement_stock',
+            params: {'p_product_id': pid, 'p_quantity': qty},
+          );
+        } catch (_) {
+          try {
+            final existing = await _client
+                .from('products')
+                .select('current_stock')
+                .eq('id', pid)
+                .eq('business_id', businessId)
+                .maybeSingle();
+            if (existing != null) {
+              final num curr = (existing['current_stock'] as num?) ?? 0;
+              await _client
+                  .from('products')
+                  .update({'current_stock': curr - qty})
+                  .eq('id', pid)
+                  .eq('business_id', businessId);
+            }
+          } catch (e) {
+            debugPrint('[createSaleWithItems] Stock decrement fallback failed for $pid: $e');
+          }
+        }
       }
 
       // 3b) Best-effort update of optional fields if columns exist
