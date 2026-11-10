@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'data/app_database.dart';
 import 'pages/shop_page.dart';
 import 'services/supabase_service.dart';
+import 'services/connectivity_service.dart';
 
 final AppDatabase database = AppDatabase();
 
@@ -28,6 +29,9 @@ Future<void> main() async {
     url: _supabaseUrl,
     anonKey: _supabaseAnonKey,
   );
+
+  // Initialize network connectivity monitoring
+  ConnectivityService().initialize();
 
   // Public Shop mode: set default business ID via --dart-define=BUSINESS_ID=<uuid>
   const defaultBusinessId = String.fromEnvironment(

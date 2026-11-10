@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:raj_electricals_inventory_app/theme/ui_tokens.dart';
 import 'dart:async';
+import 'dart:convert';
 import '../data/app_database.dart';
 import '../services/supabase_service.dart';
 import '../models/supabase_models.dart' as supabase_models;
@@ -63,6 +64,52 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   final List<Map<String, dynamic>> _cartItems = [];
   late AnimationController _cartBadgeAnimController;
   late Animation<double> _cartBadgeScaleAnimation;
+
+  static const String _cartStorageKey = 'INVENTOZA_SHOP_CART_ITEMS';
+
+  Future<void> _loadSavedCart() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cartStorageKey);
+      if (raw != null && raw.trim().isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          final items = decoded
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+          if (mounted && items.isNotEmpty) {
+            setState(() {
+              _cartItems.clear();
+              _cartItems.addAll(items);
+              _cartCount = _cartItems.fold(
+                0,
+                (sum, item) => sum + ((item['qty'] as num?)?.toInt() ?? 1),
+              );
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error loading saved cart: $e');
+      }
+    }
+  }
+
+  Future<void> _saveCartToPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_cartItems.isEmpty) {
+        await prefs.remove(_cartStorageKey);
+      } else {
+        await prefs.setString(_cartStorageKey, jsonEncode(_cartItems));
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error saving cart to prefs: $e');
+      }
+    }
+  }
 
   // Delivery Method: 'delivery' | 'pickup'
   String _deliveryMethod = 'delivery';
@@ -669,6 +716,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     });
     _initSpeech();
     _initDeepLinks();
+    _loadSavedCart();
     _loadCustomerProfile();
 
     // Listen to Supabase auth state changes (Google Sign-In / Sign-Out)
@@ -683,8 +731,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     ConnectivityService().isOnline.addListener(_onConnectivityChanged);
   }
 
+  bool _wasOffline = false;
+
   void _onConnectivityChanged() {
-    if (ConnectivityService().isOnline.value) {
+    final online = ConnectivityService().isOnline.value;
+    if (!online) {
+      _wasOffline = true;
+      return;
+    }
+    if (_wasOffline && online) {
+      _wasOffline = false;
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -3391,6 +3447,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                           );
                                         });
                                         setState(() {});
+                                        _saveCartToPrefs();
                                       },
                                       borderRadius: BorderRadius.circular(16),
                                       child: Padding(
@@ -3487,6 +3544,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                                 );
                                               });
                                               setState(() {});
+                                              _saveCartToPrefs();
                                             },
                                           ),
                                           Padding(
@@ -3526,6 +3584,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                                       );
                                                     });
                                                     setState(() {});
+                                                    _saveCartToPrefs();
                                                   }
                                                 : null,
                                           ),
@@ -4191,6 +4250,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 _cartItems.clear();
                 _cartCount = 0;
               });
+              _saveCartToPrefs();
               onCleared?.call();
             },
             child: const Text('Clear Cart'),
@@ -6472,6 +6532,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           _cartItems.clear();
           _cartCount = 0;
         });
+        _saveCartToPrefs();
       }
 
       navigator.pop(); // Pop loading
@@ -6708,6 +6769,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             _cartItems.clear();
             _cartCount = 0;
           });
+          _saveCartToPrefs();
         }
 
         navigator.pop(); // Pop loading dialog
@@ -7298,6 +7360,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         (sum, item) => sum + (item['qty'] as int),
       );
     });
+    _saveCartToPrefs();
   }
 
   void _addToCart(
@@ -7333,6 +7396,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         (sum, item) => sum + (item['qty'] as int),
       );
     });
+    _saveCartToPrefs();
 
     _cartBadgeAnimController.forward(from: 0.0);
 
