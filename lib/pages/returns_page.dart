@@ -1329,14 +1329,7 @@ class _ReturnsPageState extends State<ReturnsPage> {
                           child: ElevatedButton.icon(
                             onPressed: () {
                               Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text('Return declined'),
-                                  backgroundColor: Theme.of(
-                                    context,
-                                  ).colorScheme.error,
-                                ),
-                              );
+                              _updateReturnStatus(item['id'].toString(), 'Declined');
                             },
                             icon: const Icon(Icons.close),
                             label: const Text('Decline'),
@@ -1356,16 +1349,7 @@ class _ReturnsPageState extends State<ReturnsPage> {
                           child: ElevatedButton.icon(
                             onPressed: () {
                               Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text(
-                                    'Return approved successfully',
-                                  ),
-                                  backgroundColor: Theme.of(
-                                    context,
-                                  ).colorScheme.primary,
-                                ),
-                              );
+                              _updateReturnStatus(item['id'].toString(), 'Approved');
                             },
                             icon: const Icon(Icons.check),
                             label: const Text('Approve'),
@@ -1420,11 +1404,17 @@ class _ReturnsPageState extends State<ReturnsPage> {
   }
 
   void _updateReturnStatus(String id, String status) {
-    final idx = _returns.indexWhere((e) => e['id'] == id);
+    final idx = _returns.indexWhere((e) => e['id']?.toString() == id);
     if (idx != -1) {
       setState(() => _returns[idx]['status'] = status);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Return $id $status')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Return $id marked as $status'),
+          backgroundColor: status == 'Approved'
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 }

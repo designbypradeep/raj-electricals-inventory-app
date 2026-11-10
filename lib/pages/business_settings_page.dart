@@ -120,7 +120,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   final TextEditingController _slugController = TextEditingController();
   final RegExp _slugRegex = RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$');
   String? _loadedSlug;
-  final bool _validatingSlug = false;
+  bool _validatingSlug = false;
 
   @override
   void initState() {
@@ -416,12 +416,25 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              slug,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  slug,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                if (_validatingSlug) ...[
+                                  const SizedBox(width: 8),
+                                  const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                ],
+                              ],
                             ),
                           ],
                         ),
@@ -523,6 +536,21 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
+                                      if (hasSlug) ...[
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          icon: const Icon(Icons.open_in_new, size: 18),
+                                          tooltip: 'Open in Browser',
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          onPressed: () async {
+                                            final uri = Uri.tryParse(shopLink);
+                                            if (uri != null && await canLaunchUrl(uri)) {
+                                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                            }
+                                          },
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -1142,6 +1170,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
 
       setState(() {
         _isSaving = true;
+        _validatingSlug = true;
       });
 
       try {
@@ -1167,7 +1196,12 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
           _showError('Failed to update Shop Code: $e');
         }
       } finally {
-        if (mounted) setState(() => _isSaving = false);
+        if (mounted) {
+          setState(() {
+            _isSaving = false;
+            _validatingSlug = false;
+          });
+        }
       }
     }
   }

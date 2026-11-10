@@ -2667,20 +2667,39 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  Future<void> _openOnlineStore() async {
+    final slug = _businessProfile?.slug;
+    final url = (slug != null && slug.isNotEmpty)
+        ? 'https://designbypradeep.github.io/inventory-shop-redirect/?id=$slug'
+        : 'https://designbypradeep.github.io/inventory-shop-redirect/';
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open online store link')),
+        );
+      }
+    }
+  }
+
   void _showMobileMoreMenu() {
-    final isMobile = MediaQuery.of(context).size.width < 480;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => SingleChildScrollView(
-        child: Container(
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.78,
+        minChildSize: 0.5,
+        maxChildSize: 0.94,
+        expand: false,
+        builder: (context, scrollController) => Container(
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 margin: const EdgeInsets.only(top: 12),
@@ -2692,72 +2711,145 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
                   children: [
                     const Text(
                       'More Options',
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: isMobile ? 12 : 16),
-                    Builder(
-                      builder: (ctx) {
-                        final bool isCashier = _subscriptionInfo?.isCashier == true;
-                        final bool isOwner = _subscriptionInfo?.isOwner == true;
-
-                        return GridView.count(
-                          shrinkWrap: true,
-                          crossAxisCount: 2,
-                          childAspectRatio: 3,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          children: [
-                            if (!isCashier) _buildMobileMoreItem('Reports', Icons.bar_chart),
-                            _buildMobileMoreItem('Verify Payments', Icons.verified),
-                            if (!isCashier)
-                              _buildMobileMoreItem(
-                                'Suppliers',
-                                Icons.business_center,
-                              ),
-                            if (!isCashier)
-                              _buildMobileMoreItem(
-                                'Supplier Returns',
-                                Icons.assignment_return_outlined,
-                              ),
-                            if (!isCashier)
-                              _buildMobileMoreItem(
-                                'Supplier Credits',
-                                Icons.credit_card,
-                              ),
-                            _buildMobileMoreItem('Returns', Icons.undo),
-                            _buildMobileMoreItem('Replacements', Icons.swap_horiz),
-                            if (isOwner) _buildMobileMoreItem('Business', Icons.business),
-                            if (!isCashier) _buildMobileMoreItem('Requests', Icons.people),
-                            if (isOwner)
-                              _buildMobileMoreItem(
-                                'System Health',
-                                Icons.health_and_safety,
-                              ),
-                            if (isOwner) _buildMobileMoreItem('Manage Staff', Icons.group_add),
-                            if (isOwner) _buildMobileMoreItem('Billing & Plan', Icons.credit_card),
-                            if (isOwner) _buildMobileMoreItem('Archive', Icons.archive),
-                            if (isOwner) _buildMobileMoreItem('Settings', Icons.settings),
-                            _buildMobileMoreItem('Customers', Icons.people_outline),
-                          ],
-                        );
-                      },
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.pop(context),
+                      tooltip: 'Close',
                     ),
                   ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                  child: Builder(
+                    builder: (ctx) {
+                      final bool isCashier = _subscriptionInfo?.isCashier == true;
+                      final bool isOwner = _subscriptionInfo?.isOwner == true;
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildMoreCategorySection(
+                            'Sales & Storefront',
+                            Icons.storefront_outlined,
+                            [
+                              _buildMobileMoreItem('Verify Payments', Icons.verified),
+                              _buildMobileMoreItem('Customers', Icons.people_outline),
+                              _buildMobileMoreItem('Sales History', Icons.receipt_long),
+                              _buildMobileMoreItem('Online Store', Icons.public),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          _buildMoreCategorySection(
+                            'Returns & Exchanges',
+                            Icons.swap_horizontal_circle_outlined,
+                            [
+                              _buildMobileMoreItem('Returns', Icons.undo),
+                              _buildMobileMoreItem('Replacements', Icons.swap_horiz),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          _buildMoreCategorySection(
+                            'Inventory & Requests',
+                            Icons.inventory_2_outlined,
+                            [
+                              if (!isCashier) _buildMobileMoreItem('Stock Requests', Icons.assignment_outlined),
+                              if (isOwner) _buildMobileMoreItem('Archived Items', Icons.archive_outlined),
+                            ],
+                          ),
+                          if (!isCashier) ...[
+                            const SizedBox(height: 20),
+                            _buildMoreCategorySection(
+                              'Suppliers & Procurement',
+                              Icons.business_center_outlined,
+                              [
+                                _buildMobileMoreItem('Suppliers', Icons.business_center),
+                                _buildMobileMoreItem('Purchase History', Icons.shopping_bag_outlined),
+                                _buildMobileMoreItem('Supplier Returns', Icons.assignment_return_outlined),
+                                _buildMobileMoreItem('Supplier Credits', Icons.credit_card),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            _buildMoreCategorySection(
+                              'Reports & Insights',
+                              Icons.insights_outlined,
+                              [
+                                _buildMobileMoreItem('Reports', Icons.bar_chart),
+                                if (isOwner) _buildMobileMoreItem('System Health', Icons.health_and_safety_outlined),
+                              ],
+                            ),
+                          ],
+                          if (isOwner) ...[
+                            const SizedBox(height: 20),
+                            _buildMoreCategorySection(
+                              'Store Administration',
+                              Icons.admin_panel_settings_outlined,
+                              [
+                                _buildMobileMoreItem('Manage Staff', Icons.group_add_outlined),
+                                _buildMobileMoreItem('Business Profile', Icons.business_outlined),
+                                _buildMobileMoreItem('Billing & Plan', Icons.card_membership_outlined),
+                                _buildMobileMoreItem('Data & Backup', Icons.settings_backup_restore_outlined),
+                              ],
+                            ),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildMoreCategorySection(String title, IconData icon, List<Widget> items) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 14, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 6),
+            Text(
+              title.toUpperCase(),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          childAspectRatio: 2.8,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          children: items,
+        ),
+      ],
     );
   }
 
@@ -2782,14 +2874,14 @@ class _DashboardPageState extends State<DashboardPage> {
               context,
               MaterialPageRoute(builder: (context) => const ReportsPage()),
             );
-          } else if (label == 'Business') {
+          } else if (label == 'Business Profile' || label == 'Business') {
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => const BusinessSettingsPage(),
               ),
             );
-          } else if (label == 'Requests') {
+          } else if (label == 'Stock Requests' || label == 'Requests') {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const RequestsPage()),
@@ -2829,14 +2921,14 @@ class _DashboardPageState extends State<DashboardPage> {
                 builder: (context) => BillingPage(db: widget.db),
               ),
             );
-          } else if (label == 'Archive') {
+          } else if (label == 'Archived Items' || label == 'Archive') {
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => const ArchivedProductsPage(),
               ),
             );
-          } else if (label == 'Settings') {
+          } else if (label == 'Data & Backup' || label == 'Settings') {
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -2869,13 +2961,13 @@ class _DashboardPageState extends State<DashboardPage> {
               context,
               MaterialPageRoute(builder: (context) => const CustomersPage()),
             );
-          } else {
-            // No-op for unknown labels to avoid disruptive snackbars
+          } else if (label == 'Online Store') {
+            _openOnlineStore();
           }
         },
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(12),
@@ -2889,24 +2981,22 @@ class _DashboardPageState extends State<DashboardPage> {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.onSurface.withAlpha(26),
+                  color: Theme.of(context).colorScheme.primary.withAlpha(26),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   icon,
                   size: 16,
-                  color: Theme.of(
-                    context,
-                  ).textTheme.bodyMedium?.color?.withAlpha(153),
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   label,
                   style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -3031,11 +3121,23 @@ class _DashboardPageState extends State<DashboardPage> {
                   ],
                 ),
               ),
+            if (width >= 1024) ...[
+              _buildPageHeader(),
+              const SizedBox(height: 16),
+            ],
             _buildExecutiveHeader(),
             SizedBox(height: isMobile ? 12 : 16),
             _buildKeyMetrics(),
             SizedBox(height: isMobile ? 16 : 20),
-            _buildTabbedAnalytics(),
+            if (width >= 1024) ...[
+              _buildChartsSection(),
+              const SizedBox(height: 20),
+              _buildRealtimeMetrics(),
+              const SizedBox(height: 20),
+              _buildGrowthAnalytics(),
+            ] else ...[
+              _buildTabbedAnalytics(),
+            ],
             SizedBox(height: isMobile ? 16 : 20),
             _buildQuickActions(),
           ],

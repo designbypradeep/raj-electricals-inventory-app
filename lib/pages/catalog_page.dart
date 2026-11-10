@@ -1450,51 +1450,16 @@ class _CatalogPageState extends State<CatalogPage> {
   }
 
   Widget _buildSliverProductsListWithPadding() {
-    if (_filteredProducts.isEmpty) {
-      return SliverToBoxAdapter(
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: MediaQuery.of(context).size.width > 1024
-                ? 32
-                : MediaQuery.of(context).size.width > 640
-                ? 24
-                : 16,
-          ),
-          child: _buildEmptyState(),
-        ),
-      );
-    }
+    final horizontalPadding = MediaQuery.of(context).size.width > 1024
+        ? 32.0
+        : MediaQuery.of(context).size.width > 640
+        ? 24.0
+        : 16.0;
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < _mobileBreakpoint;
-
-    if (isMobile) {
-      return SliverPadding(
-        padding: EdgeInsets.symmetric(
-          horizontal: MediaQuery.of(context).size.width > 640 ? 24 : 16,
-        ),
-        sliver: SliverList(
-          delegate: SliverChildBuilderDelegate((context, index) {
-            final product = _getPaginatedProducts()[index];
-            final isSelected = _selectedProducts.contains(product.id);
-            return _buildMobileCard(product, isSelected);
-          }, childCount: _getPaginatedProducts().length),
-        ),
-      );
-    } else {
-      return SliverToBoxAdapter(
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: MediaQuery.of(context).size.width > 1024
-                ? 32
-                : MediaQuery.of(context).size.width > 640
-                ? 24
-                : 16,
-          ),
-          child: _buildDesktopTable(),
-        ),
-      );
-    }
+    return SliverPadding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      sliver: _buildSliverProductsList(),
+    );
   }
 
   Widget _buildSliverProductsList() {

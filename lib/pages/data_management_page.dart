@@ -1664,14 +1664,17 @@ class _DataManagementPageState extends State<DataManagementPage> {
             final returnsInserted = res['returns_inserted'] ?? 0;
             final returnItemsInserted = res['return_items_inserted'] ?? 0;
             setState(() {
-              _message = 'Selected import mode is not implemented yet.';
-              _isSuccess = false;
+              _message =
+                  'Restore complete:\n'
+                  '• Products: +$inserted (updated $updated)\n'
+                  '• Purchases: +$purchasesInserted ($purchaseItemsInserted items)\n'
+                  '• Sales: +$salesInserted ($salesItemsInserted items)\n'
+                  '• Returns: +$returnsInserted ($returnItemsInserted items)\n'
+                  '• Images updated: $images';
+              _isSuccess = true;
               _isImporting = false;
             });
-            _showSnack(
-              'Selected import mode is not implemented yet.',
-              success: false,
-            );
+            _showSnack('Restore completed successfully', success: true);
           }
         }
 

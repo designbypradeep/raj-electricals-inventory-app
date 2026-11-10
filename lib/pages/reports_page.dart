@@ -347,7 +347,7 @@ class _ReportsPageState extends State<ReportsPage> {
       for (final item in sale.salesItems) {
         final prod = findProduct(item.productId);
         final name =
-            item.product?.name ?? prod?.name ?? 'Product #${item.productId}';
+            item.product?.name ?? prod?.name ?? _productNameById(item.productId);
         final size = prod?.sizeOrSpec ?? '-';
         final qty = item.quantity;
         final rawUnitPrice = item.pricePerUnit; // recorded at sale time
@@ -2721,6 +2721,55 @@ class _ReportsPageState extends State<ReportsPage> {
                     _formatCurrency(avgOrder),
                   ),
                   if (filteredSales.isNotEmpty) ...[
+                    Builder(
+                      builder: (context) {
+                        final Map<String, double> salesByProd = {};
+                        for (final s in filteredSales) {
+                          for (final it in s.salesItems) {
+                            final pName =
+                                it.product?.name ?? _productNameById(it.productId);
+                            salesByProd[pName] =
+                                (salesByProd[pName] ?? 0.0) +
+                                (it.quantity * it.pricePerUnit);
+                          }
+                        }
+                        if (salesByProd.isEmpty) return const SizedBox.shrink();
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Top Performing Products:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).cardColor,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Theme.of(context).dividerColor,
+                                ),
+                              ),
+                              child: Column(
+                                children: _topEntries(salesByProd, 3)
+                                    .map(
+                                      (e) => _kvRow(
+                                        e.key,
+                                        _formatCurrency(e.value),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
                     const SizedBox(height: 12),
                     Text(
                       'Recent Sales:',
@@ -2812,6 +2861,31 @@ class _ReportsPageState extends State<ReportsPage> {
                               unitCostByProduct: unitCostByProduct,
                             ),
                           ],
+                          Builder(
+                            builder: (context) {
+                              final lowStock = _products
+                                  .where((p) => p.currentStock <= 5 && p.currentStock > 0)
+                                  .toList();
+                              if (lowStock.isEmpty) return const SizedBox.shrink();
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'Low Stock Warnings:',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...lowStock
+                                      .take(5)
+                                      .map((p) => _buildProductItem(p)),
+                                ],
+                              );
+                            },
+                          ),
                         ],
                       );
                     },
