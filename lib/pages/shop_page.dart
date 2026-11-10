@@ -599,6 +599,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   String? _businessLogoUrl;
   String? _rawLogoUrl;
   String? _currentBusinessId;
+  String get _effectiveBusinessId =>
+      _currentBusinessId ??
+      SupabaseService.getCurrentBusinessId() ??
+      '93926466-a72c-4eda-87c8-ed3594e45c23';
 
   final GlobalKey _filterBarKey = GlobalKey();
   supabase_models.BusinessProfile? _businessProfile;
@@ -2588,7 +2592,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               ? phoneCtrl.text.trim()
                               : (_savedCustomerProfile?['phone']);
                           await _completeBuyNowSaleWithProof(
-                            ctx,
                             checkoutId,
                             total,
                             product,
@@ -2624,7 +2627,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         onPressed: () {
                           Navigator.of(ctx).pop();
                           _placeOfflineBuyNowOrder(
-                            context,
                             product: product,
                             qty: qty,
                             isCod: _deliveryMethod == 'delivery',
@@ -5362,7 +5364,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                 ),
                                 onTap: () {
                                   Navigator.of(context).pop();
-                                  _initiateUPIPayment(context);
+                                  _initiateUPIPayment();
                                 },
                                 leading: Container(
                                   padding: const EdgeInsets.all(10),
@@ -5447,7 +5449,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                 onTap: () {
                                   Navigator.of(context).pop();
                                   _placeOfflineCartOrder(
-                                    context,
                                     isCod: _deliveryMethod == 'delivery',
                                   );
                                 },
@@ -5531,7 +5532,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     );
   }
 
-  Future<void> _initiateUPIPayment(BuildContext context) async {
+  Future<void> _initiateUPIPayment() async {
+    final pageContext = context;
     if (_deliveryMethod == 'delivery' &&
         _isDeliveryPincodeRestricted &&
         !_isCustomerPincodeServiceable) {
@@ -5619,7 +5621,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         }
       }
       if (mounted) {
-        _showUpiConfirmationSheet(context, checkoutId, total);
+        _showUpiConfirmationSheet(pageContext, checkoutId, total);
       }
     } catch (e) {
       if (mounted) {
@@ -6128,7 +6130,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                               ? phoneCtrl.text.trim()
                               : (_savedCustomerProfile?['phone']);
                           await _completeCartSaleWithProof(
-                            context,
                             checkoutId,
                             total,
                             selectedProof,
@@ -6226,10 +6227,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   // Context-aware Cash on Delivery (COD) / Pay at Store Counter order placement
-  Future<void> _placeOfflineCartOrder(
-    BuildContext context, {
+  Future<void> _placeOfflineCartOrder({
     required bool isCod,
   }) async {
+    if (!mounted) return;
+    final pageContext = context;
     final activeName = (_savedCustomerProfile?['name'] ?? '').trim().isNotEmpty
         ? _savedCustomerProfile!['name']!.trim()
         : 'Customer';
@@ -6240,7 +6242,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         _isDeliveryPincodeRestricted &&
         !_isCustomerPincodeServiceable) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(pageContext).showSnackBar(
           SnackBar(
             content: Text(
               'Pay on Delivery is unavailable for pincode ${_savedCustomerProfile?['pincode'] ?? ""}. Please select Store Pickup.',
@@ -6254,7 +6256,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
     if (isCod && activeAddress.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(pageContext).showSnackBar(
           SnackBar(
             content: const Text(
               'Please add your delivery address before placing Cash on Delivery order.',
@@ -6264,7 +6266,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               textColor: Colors.orangeAccent,
               onPressed: () {
                 ShopAccountSheets.showProfileSheet(
-                  context,
+                  pageContext,
                   onSaved: () => _loadCustomerProfile(),
                 );
               },
@@ -6283,7 +6285,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
     // Show quick confirmation
     final confirm = await showDialog<bool>(
-      context: context,
+      context: pageContext,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -6408,13 +6410,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
     if (confirm != true || !mounted) return;
 
-    final navigator = Navigator.of(context);
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(pageContext);
+    final scaffoldMessenger = ScaffoldMessenger.of(pageContext);
 
     showDialog(
-      context: context,
+      context: pageContext,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
     try {
@@ -6502,7 +6504,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             textColor: Colors.white,
             onPressed: () {
               ShopAccountSheets.showTrackOrderSheet(
-                context,
+                pageContext,
                 businessId: _effectiveBusinessId,
                 businessName: _businessName,
                 businessPhone: _businessProfile?.phone,
@@ -6522,14 +6524,9 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         ),
       );
     }
-      scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Failed to place order: $e')),
-      );
-    }
   }
 
   Future<void> _completeCartSaleWithProof(
-    BuildContext context,
     String checkoutId,
     double total,
     File? proof, {
@@ -6537,14 +6534,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     String customerName = 'Walk-in Customer',
     String? customerPhone,
   }) async {
+    if (!mounted) return;
+    final pageContext = context;
     // Capture state objects before async gap
-    final navigator = Navigator.of(context);
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(pageContext);
+    final scaffoldMessenger = ScaffoldMessenger.of(pageContext);
 
     showDialog(
-      context: context,
+      context: pageContext,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
     try {
@@ -6683,7 +6682,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             textColor: Colors.white,
             onPressed: () {
               ShopAccountSheets.showTrackOrderSheet(
-                context,
+                pageContext,
                 businessId: _effectiveBusinessId,
                 businessName: _businessName,
                 businessPhone: _businessProfile?.phone,
@@ -6703,16 +6702,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         ),
       );
     }
-    }
   }
 
   // Buy Now offline order placement (COD / Store Pickup)
-  Future<void> _placeOfflineBuyNowOrder(
-    BuildContext context, {
+  Future<void> _placeOfflineBuyNowOrder({
     required Map<String, dynamic> product,
     required int qty,
     required bool isCod,
   }) async {
+    if (!mounted) return;
+    final pageContext = context;
     final activeName = (_savedCustomerProfile?['name'] ?? '').trim().isNotEmpty
         ? _savedCustomerProfile!['name']!.trim()
         : 'Customer';
@@ -6723,7 +6722,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         _isDeliveryPincodeRestricted &&
         !_isCustomerPincodeServiceable) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(pageContext).showSnackBar(
           SnackBar(
             content: Text(
               'Pay on Delivery is unavailable for pincode ${_savedCustomerProfile?['pincode'] ?? ""}. Please select Store Pickup.',
@@ -6737,7 +6736,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
     if (isCod && activeAddress.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(pageContext).showSnackBar(
           SnackBar(
             content: const Text(
               'Please add your delivery address before placing Cash on Delivery order.',
@@ -6747,7 +6746,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               textColor: Colors.orangeAccent,
               onPressed: () {
                 ShopAccountSheets.showProfileSheet(
-                  context,
+                  pageContext,
                   onSaved: () => _loadCustomerProfile(),
                 );
               },
@@ -6766,7 +6765,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         (1000 + (DateTime.now().millisecondsSinceEpoch % 9000)).toString();
 
     final confirm = await showDialog<bool>(
-      context: context,
+      context: pageContext,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -6849,13 +6848,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
     if (confirm != true || !mounted) return;
 
-    final navigator = Navigator.of(context);
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(pageContext);
+    final scaffoldMessenger = ScaffoldMessenger.of(pageContext);
 
     showDialog(
-      context: context,
+      context: pageContext,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
     try {
@@ -6933,7 +6932,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             textColor: Colors.white,
             onPressed: () {
               ShopAccountSheets.showTrackOrderSheet(
-                context,
+                pageContext,
                 businessId: _effectiveBusinessId,
                 businessName: _businessName,
                 businessPhone: _businessProfile?.phone,
@@ -6947,14 +6946,15 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     } catch (e) {
       navigator.pop(); // Pop loading
       scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Failed to place order: $e')),
+        SnackBar(
+          content: Text('Failed to place order: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
-    }
     }
   }
 
   Future<void> _completeBuyNowSaleWithProof(
-    BuildContext context,
     String checkoutId,
     double total,
     Map<String, dynamic> product,
@@ -6964,14 +6964,16 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     String customerName = 'Walk-in Customer',
     String? customerPhone,
   }) async {
+    if (!mounted) return;
+    final pageContext = context;
     // Capture state to safely use across async gaps
-    final navigator = Navigator.of(context);
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(pageContext);
+    final scaffoldMessenger = ScaffoldMessenger.of(pageContext);
 
     showDialog(
-      context: context,
+      context: pageContext,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const Center(child: CircularProgressIndicator()),
     );
 
     try {
@@ -7104,7 +7106,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             textColor: Colors.white,
             onPressed: () {
               ShopAccountSheets.showTrackOrderSheet(
-                context,
+                pageContext,
                 businessId: _effectiveBusinessId,
                 businessName: _businessName,
                 businessPhone: _businessProfile?.phone,
@@ -7123,7 +7125,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           backgroundColor: Colors.red,
         ),
       );
-    }
     }
   }
 

@@ -5067,7 +5067,6 @@ class SupabaseService {
     required List<Map<String, dynamic>> items,
   }) async {
     try {
-      final token = 'trk_${DateTime.now().millisecondsSinceEpoch}_${(1000 + (DateTime.now().microsecond % 9000))}';
       final orderRes = await _client
           .from('shop_orders')
           .insert({
@@ -5080,7 +5079,6 @@ class SupabaseService {
             if (paymentProofUrl != null) 'payment_proof_url': paymentProofUrl,
             'total_amount': totalAmount,
             'status': 'payment_pending',
-            'tracking_token': token,
             if (notes != null) 'notes': notes,
             if (saleId != null) 'sale_id': saleId,
           })
