@@ -2086,34 +2086,36 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             ].join('&');
             final upiUri = 'upi://pay?$qp';
             final mq = MediaQuery.of(ctx);
-            double qrSize = 260;
+            double qrSize = 175;
             final double w = mq.size.width;
             final double h = mq.size.height;
             if (w < 360) {
-              qrSize = 200;
+              qrSize = 150;
             } else if (w < 480) {
-              qrSize = 220;
-            } else if (w < 768) {
-              qrSize = 240;
+              qrSize = 175;
             } else {
-              qrSize = 280;
+              qrSize = 200;
             }
-            final double capByHeight = h * 0.35;
+            final double capByHeight = h * 0.28;
             if (qrSize > capByHeight) {
               qrSize = capByHeight;
             }
-            final bool disableScroll = h >= 720;
 
-            return SingleChildScrollView(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              ),
-              physics: disableScroll
-                  ? const NeverScrollableScrollPhysics()
-                  : null,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+            final bottomInset = mq.viewInsets.bottom;
+            final bottomSafe = mq.padding.bottom;
+
+            return SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  16 + bottomInset + (bottomSafe > 0 ? bottomSafe : 8),
+                ),
+                physics: const BouncingScrollPhysics(),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
@@ -2143,7 +2145,49 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ).textTheme.bodySmall?.color?.withValues(alpha: 0.8),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    Container(
+                      margin: const EdgeInsets.only(top: 8, bottom: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _deliveryMethod == 'delivery'
+                                ? Icons.local_shipping_outlined
+                                : Icons.storefront_outlined,
+                            size: 15,
+                            color: Theme.of(ctx).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _deliveryMethod == 'delivery'
+                                  ? (_formatCustomerAddress(_savedCustomerProfile)
+                                          .isNotEmpty
+                                      ? 'Delivery: ${_formatCustomerAddress(_savedCustomerProfile)}'
+                                      : 'Home Delivery (Standard)')
+                                  : 'Store Pickup: $_businessName (Ready in 15–30 mins)',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
                     // Customer Details Inputs
                     Row(
                       children: [
@@ -2152,7 +2196,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             controller: nameCtrl,
                             textCapitalization: TextCapitalization.words,
                             decoration: InputDecoration(
-                              labelText: 'Your Name (optional)',
+                              labelText: 'Name (Optional)',
                               hintText: 'e.g. Ramesh',
                               isDense: true,
                               contentPadding: const EdgeInsets.symmetric(
@@ -2505,7 +2549,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ),
                         icon: const Icon(Icons.check_circle_outline, size: 18),
                         label: const Text(
-                          '✓  I Have Paid • Place Order',
+                          'I Have Paid • Place Order',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -2556,7 +2600,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   ],
                 ),
               ),
-            );
+            ),
+          );
           },
         );
       },
@@ -5576,33 +5621,34 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             final upiUri = 'upi://pay?$qp';
 
             final mq = MediaQuery.of(ctx);
-            double qrSize = 260;
+            double qrSize = 175;
             final double w = mq.size.width;
             final double h = mq.size.height;
             if (w < 360) {
-              qrSize = 200;
+              qrSize = 150;
             } else if (w < 480) {
-              qrSize = 220;
-            } else if (w < 768) {
-              qrSize = 240;
+              qrSize = 175;
             } else {
-              qrSize = 280;
+              qrSize = 200;
             }
-            final double capByHeight = h * 0.35;
+            final double capByHeight = h * 0.28;
             if (qrSize > capByHeight) {
               qrSize = capByHeight;
             }
-            final bool disableScroll = h >= 720;
 
-            return SingleChildScrollView(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).viewInsets.bottom,
-              ),
-              physics: disableScroll
-                  ? const NeverScrollableScrollPhysics()
-                  : null,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+            final bottomInset = mq.viewInsets.bottom;
+            final bottomSafe = mq.padding.bottom;
+
+            return SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  16 + bottomInset + (bottomSafe > 0 ? bottomSafe : 8),
+                ),
+                physics: const BouncingScrollPhysics(),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -5669,7 +5715,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w500,
                               ),
-                              maxLines: 1,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -5685,7 +5731,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             controller: nameCtrl,
                             textCapitalization: TextCapitalization.words,
                             decoration: InputDecoration(
-                              labelText: 'Your Name (optional)',
+                              labelText: 'Name (Optional)',
                               hintText: 'e.g. Ramesh',
                               isDense: true,
                               contentPadding: const EdgeInsets.symmetric(
@@ -6035,7 +6081,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ),
                         icon: const Icon(Icons.check_circle_outline, size: 18),
                         label: const Text(
-                          '✓  I Have Paid • Place Order',
+                          'I Have Paid • Place Order',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -6059,7 +6105,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   ],
                 ),
               ),
-            );
+            ),
+          );
           },
         );
       },
