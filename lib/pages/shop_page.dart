@@ -1585,10 +1585,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     return prev[n];
   }
 
-  Future<void> _loadBusinessProfile() async {
+  Future<void> _loadBusinessProfile({bool forceRefresh = false}) async {
     try {
       // 1. Try standard fetch (network-first usually)
-      var p = await SupabaseService.getCurrentBusinessProfile();
+      var p = await SupabaseService.getCurrentBusinessProfile(forceRefresh: forceRefresh);
 
       // 2. Fallback: If null (or failed silently), try offline cache
       if (p == null) {
@@ -9901,7 +9901,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             );
 
             return RefreshIndicator(
-              onRefresh: _loadProductsAndCategories,
+              onRefresh: () async {
+                await Future.wait([
+                  _loadProductsAndCategories(reset: true),
+                  _loadBusinessProfile(forceRefresh: true),
+                ]);
+              },
               child: content,
             );
           },

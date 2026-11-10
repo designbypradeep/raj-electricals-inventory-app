@@ -4689,22 +4689,37 @@ class SupabaseService {
 
   // Get business profile for current user
   static Future<supabase_models.BusinessProfile?>
-  getCurrentBusinessProfile() async {
+  getCurrentBusinessProfile({bool forceRefresh = false}) async {
     try {
       final user = _client.auth.currentUser;
       if (user == null) {
         // Unauthenticated/public shop mode: try default business ID
         if (_defaultBusinessId != null && _defaultBusinessId!.isNotEmpty) {
+          // 1. First fetch from business_profiles directly to get all current columns including delivery_charge and delivery_policy
           try {
-            // Use RPC for secure public access (returns only public columns)
-            // Note: get_public_business_profile was replaced with public_business_info view
+            final directResponse = await _client
+                .from('business_profiles')
+                .select()
+                .eq('id', _defaultBusinessId!)
+                .maybeSingle();
+
+            if (directResponse != null) {
+              _currentBusinessProfile =
+                  supabase_models.BusinessProfile.fromJson(
+                    Map<String, dynamic>.from(directResponse),
+                  );
+              return _currentBusinessProfile;
+            }
+          } catch (_) {}
+
+          try {
+            // Fallback to public_business_info view
             final response = await _client
                 .from('public_business_info')
                 .select()
                 .eq('id', _defaultBusinessId!)
                 .maybeSingle();
 
-            // maybeSingle returns Map? directly, not a List
             if (response != null) {
               _currentBusinessProfile =
                   supabase_models.BusinessProfile.fromJson(
