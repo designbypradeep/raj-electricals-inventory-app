@@ -1887,7 +1887,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             TextButton(
               onPressed: () {
                 Navigator.pop(ctx, false);
-                _showDeliveryOptionsModal(context);
+                _showDeliveryOptionsModal(context, setState);
               },
               child: const Text('Change Address'),
             ),
@@ -2600,8 +2600,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   ],
                 ),
               ),
-            ),
-          );
+            );
           },
         );
       },
@@ -4583,7 +4582,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             TextButton(
               onPressed: () {
                 Navigator.pop(ctx, false);
-                _showDeliveryOptionsModal(context);
+                _showDeliveryOptionsModal(context, setState);
               },
               child: const Text('Change Address'),
             ),
@@ -6105,8 +6104,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   ],
                 ),
               ),
-            ),
-          );
+            );
           },
         );
       },
@@ -6804,6 +6802,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     final total = price * qty;
     final checkoutId =
         '${isCod ? "COD" : "CASH"}-${DateTime.now().millisecondsSinceEpoch}-${product['id']}';
+    final deliveryPin =
+        (1000 + (DateTime.now().millisecondsSinceEpoch % 9000)).toString();
 
     final confirm = await showDialog<bool>(
       context: context,
