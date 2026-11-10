@@ -39,6 +39,7 @@ import '../widgets/page_header.dart';
 import 'archived_products_page.dart';
 import 'order_history_page.dart';
 import 'billing_page.dart';
+import 'team_management_page.dart';
 import '../theme/status_colors.dart';
 // import '../theme/brand_accents.dart'; // no longer needed after semantic color mapping
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -2741,6 +2742,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                 'System Health',
                                 Icons.health_and_safety,
                               ),
+                            if (isOwner) _buildMobileMoreItem('Manage Staff', Icons.group_add),
                             if (isOwner) _buildMobileMoreItem('Billing & Plan', Icons.credit_card),
                             if (isOwner) _buildMobileMoreItem('Archive', Icons.archive),
                             if (isOwner) _buildMobileMoreItem('Settings', Icons.settings),
@@ -2811,6 +2813,13 @@ class _DashboardPageState extends State<DashboardPage> {
               context,
               MaterialPageRoute(
                 builder: (context) => const PurchaseHistoryPage(),
+              ),
+            );
+          } else if (label == 'Manage Staff') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const TeamManagementPage(),
               ),
             );
           } else if (label == 'Billing & Plan') {
@@ -4194,6 +4203,12 @@ class _DashboardPageState extends State<DashboardPage> {
               children: [
                 if (isOwner)
                   _buildSecondaryActionCard(
+                    'Staff & Team',
+                    Icons.group,
+                    _twColor('purple'),
+                  ),
+                if (isOwner)
+                  _buildSecondaryActionCard(
                     'Business Settings',
                     Icons.business,
                     Theme.of(context).colorScheme.secondary,
@@ -4462,6 +4477,13 @@ class _DashboardPageState extends State<DashboardPage> {
               context,
               MaterialPageRoute(builder: (context) => const InventoryPage()),
             );
+          } else if (title == 'Staff & Team') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const TeamManagementPage(),
+              ),
+            );
           } else if (title == 'Business Settings') {
             Navigator.push(
               context,
@@ -4560,6 +4582,13 @@ class _DashboardPageState extends State<DashboardPage> {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const ReportsPage()),
+            );
+          } else if (title == 'Staff & Team') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const TeamManagementPage(),
+              ),
             );
           } else if (title == 'Business Settings') {
             Navigator.push(
