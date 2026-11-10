@@ -5422,6 +5422,19 @@ class SupabaseService {
   static Future<supabase_models.SubscriptionInfo> getSubscriptionInfo([
     String? businessId,
   ]) async {
+    // 1. Authoritative Server RPC: Query verified entitlements from database
+    try {
+      final user = _client.auth.currentUser;
+      if (user != null) {
+        final entitlements = await _client.rpc('get_merchant_entitlements');
+        if (entitlements is Map && entitlements['has_business'] == true) {
+          return supabase_models.SubscriptionInfo.fromEntitlements(
+            Map<String, dynamic>.from(entitlements),
+          );
+        }
+      }
+    } catch (_) {}
+
     final bId = businessId ?? getCurrentBusinessId();
     if (bId == null) {
       return const supabase_models.SubscriptionInfo(status: 'ACTIVE');

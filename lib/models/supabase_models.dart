@@ -574,6 +574,7 @@ class SubscriptionInfo {
   final String? planId;
   final String planName;
   final String status;
+  final String role; // 'owner', 'manager', 'cashier', 'staff', 'customer'
   final int? maxProducts;
   final int? maxUsers;
   final int? maxStorageImages;
@@ -588,6 +589,7 @@ class SubscriptionInfo {
     this.planId,
     this.planName = 'Trial Plan',
     this.status = 'TRIAL',
+    this.role = 'owner',
     this.maxProducts,
     this.maxUsers,
     this.maxStorageImages,
@@ -598,6 +600,40 @@ class SubscriptionInfo {
     this.isTrial = true,
     this.daysRemaining,
   });
+
+  factory SubscriptionInfo.fromEntitlements(Map<String, dynamic> data) {
+    final plan = data['plan'] as Map<String, dynamic>? ?? {};
+    final quotas = data['quotas'] as Map<String, dynamic>? ?? {};
+    final rawFeatures = data['features'];
+    final Map<String, dynamic> features = rawFeatures is Map
+        ? Map<String, dynamic>.from(rawFeatures)
+        : const {};
+    final status = (data['status'] as String? ?? 'ACTIVE').toUpperCase();
+    final role = (data['role'] as String? ?? 'owner').toLowerCase();
+    final bool isExp = data['is_expired'] == true;
+    final int? daysLeft = (data['days_remaining'] as num?)?.toInt();
+
+    return SubscriptionInfo(
+      planId: plan['id']?.toString(),
+      planName: plan['display_name']?.toString() ?? 'Standard Plan',
+      status: isExp ? 'EXPIRED' : status,
+      role: role,
+      maxProducts: (quotas['max_products'] as num?)?.toInt(),
+      maxUsers: (quotas['max_users'] as num?)?.toInt(),
+      maxStorageImages: (quotas['max_storage_images'] as num?)?.toInt(),
+      features: features,
+      isTrial: status == 'TRIAL',
+      daysRemaining: daysLeft,
+    );
+  }
+
+  bool get isOwner => role.toLowerCase() == 'owner';
+  bool get isManager =>
+      role.toLowerCase() == 'manager' ||
+      role.toLowerCase() == 'admin' ||
+      isOwner;
+  bool get isCashier =>
+      role.toLowerCase() == 'cashier' || role.toLowerCase() == 'staff';
 
   bool get isExpired {
     final s = status.toUpperCase();

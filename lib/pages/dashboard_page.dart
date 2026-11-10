@@ -2178,12 +2178,16 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildMobileBottomNav() {
+    final bool isCashier = _subscriptionInfo?.isCashier == true;
     final items = [
       {'label': 'Dashboard', 'icon': Icons.dashboard_rounded},
       {'label': 'Catalog', 'icon': Icons.inventory_2_rounded},
       {'label': 'Inventory', 'icon': Icons.warehouse_rounded},
       {'label': 'Sales', 'icon': Icons.trending_up_rounded},
-      {'label': 'Purchase', 'icon': Icons.shopping_cart_rounded},
+      if (!isCashier)
+        {'label': 'Purchase', 'icon': Icons.shopping_cart_rounded}
+      else
+        {'label': 'Orders', 'icon': Icons.receipt_long_rounded},
     ];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2316,9 +2320,20 @@ class _DashboardPageState extends State<DashboardPage> {
                 MaterialPageRoute(builder: (context) => const SalesPage()),
               );
             } else if (label == 'Purchase') {
+              if (_subscriptionInfo?.isCashier == true) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Purchase orders restricted to Owner and Managers.')),
+                );
+                return;
+              }
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const PurchasePage()),
+              );
+            } else if (label == 'Orders') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const OrderHistoryPage()),
               );
             }
           },
@@ -2508,9 +2523,20 @@ class _DashboardPageState extends State<DashboardPage> {
                 MaterialPageRoute(builder: (context) => const SalesPage()),
               );
             } else if (label == 'Purchase') {
+              if (_subscriptionInfo?.isCashier == true) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Purchase orders restricted to Owner and Managers.')),
+                );
+                return;
+              }
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const PurchasePage()),
+              );
+            } else if (label == 'Orders') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const OrderHistoryPage()),
               );
             }
           },
@@ -2677,40 +2703,51 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                     ),
                     SizedBox(height: isMobile ? 12 : 16),
-                    GridView.count(
-                      shrinkWrap: true,
-                      crossAxisCount: 2,
-                      childAspectRatio: 3,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      children: [
-                        _buildMobileMoreItem('Reports', Icons.bar_chart),
-                        _buildMobileMoreItem('Verify Payments', Icons.verified),
-                        _buildMobileMoreItem(
-                          'Suppliers',
-                          Icons.business_center,
-                        ),
-                        _buildMobileMoreItem(
-                          'Supplier Returns',
-                          Icons.assignment_return_outlined,
-                        ),
-                        _buildMobileMoreItem(
-                          'Supplier Credits',
-                          Icons.credit_card,
-                        ),
-                        _buildMobileMoreItem('Returns', Icons.undo),
-                        _buildMobileMoreItem('Replacements', Icons.swap_horiz),
-                        _buildMobileMoreItem('Business', Icons.business),
-                        _buildMobileMoreItem('Requests', Icons.people),
-                        _buildMobileMoreItem(
-                          'System Health',
-                          Icons.health_and_safety,
-                        ),
-                        _buildMobileMoreItem('Billing & Plan', Icons.credit_card),
-                        _buildMobileMoreItem('Archive', Icons.archive),
-                        _buildMobileMoreItem('Settings', Icons.settings),
-                        _buildMobileMoreItem('Customers', Icons.people_outline),
-                      ],
+                    Builder(
+                      builder: (ctx) {
+                        final bool isCashier = _subscriptionInfo?.isCashier == true;
+                        final bool isOwner = _subscriptionInfo?.isOwner == true;
+
+                        return GridView.count(
+                          shrinkWrap: true,
+                          crossAxisCount: 2,
+                          childAspectRatio: 3,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          children: [
+                            if (!isCashier) _buildMobileMoreItem('Reports', Icons.bar_chart),
+                            _buildMobileMoreItem('Verify Payments', Icons.verified),
+                            if (!isCashier)
+                              _buildMobileMoreItem(
+                                'Suppliers',
+                                Icons.business_center,
+                              ),
+                            if (!isCashier)
+                              _buildMobileMoreItem(
+                                'Supplier Returns',
+                                Icons.assignment_return_outlined,
+                              ),
+                            if (!isCashier)
+                              _buildMobileMoreItem(
+                                'Supplier Credits',
+                                Icons.credit_card,
+                              ),
+                            _buildMobileMoreItem('Returns', Icons.undo),
+                            _buildMobileMoreItem('Replacements', Icons.swap_horiz),
+                            if (isOwner) _buildMobileMoreItem('Business', Icons.business),
+                            if (!isCashier) _buildMobileMoreItem('Requests', Icons.people),
+                            if (isOwner)
+                              _buildMobileMoreItem(
+                                'System Health',
+                                Icons.health_and_safety,
+                              ),
+                            if (isOwner) _buildMobileMoreItem('Billing & Plan', Icons.credit_card),
+                            if (isOwner) _buildMobileMoreItem('Archive', Icons.archive),
+                            if (isOwner) _buildMobileMoreItem('Settings', Icons.settings),
+                            _buildMobileMoreItem('Customers', Icons.people_outline),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -3388,6 +3425,8 @@ class _DashboardPageState extends State<DashboardPage> {
               decimalDigits: 0,
             ).format(refundNum);
 
+            final bool isCashier = _subscriptionInfo?.isCashier == true;
+
             return GridView.count(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -3416,30 +3455,48 @@ class _DashboardPageState extends State<DashboardPage> {
                     );
                   },
                 ),
-                _buildMetricCard(
-                  'Total Profit/Loss',
-                  profitFormatted,
-                  profitNum >= 0
-                      ? Icons.trending_up
-                      : Icons.trending_down,
-                  profitNum >= 0
-                      ? _statusColors(context).success
-                      : Theme.of(context).colorScheme.error,
-                  profitNum >= 0 ? 'Profit' : 'Loss',
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    if (!_assertFeature(context, 'reports', 'Financial Reports')) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ReportsPage(
-                          initialReportType: 'Financial',
-                          initialPeriod: 'All Time',
+                if (isCashier)
+                  _buildMetricCard(
+                    'Total Sales',
+                    '${_stats['salesCount'] ?? 0}',
+                    Icons.receipt_long,
+                    _statusColors(context).success,
+                    'Completed transactions',
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SalesHistoryPage(),
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  )
+                else
+                  _buildMetricCard(
+                    'Total Profit/Loss',
+                    profitFormatted,
+                    profitNum >= 0
+                        ? Icons.trending_up
+                        : Icons.trending_down,
+                    profitNum >= 0
+                        ? _statusColors(context).success
+                        : Theme.of(context).colorScheme.error,
+                    profitNum >= 0 ? 'Profit' : 'Loss',
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      if (!_assertFeature(context, 'reports', 'Financial Reports')) return;
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ReportsPage(
+                            initialReportType: 'Financial',
+                            initialPeriod: 'All Time',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 _buildMetricCard(
                   'Low Stock Items',
                   '${_stats['lowStockCount'] ?? 0}',
@@ -4119,6 +4176,9 @@ class _DashboardPageState extends State<DashboardPage> {
         // Secondary Actions Grid (Focused on secondary operations)
         LayoutBuilder(
           builder: (context, constraints) {
+            final bool isCashier = _subscriptionInfo?.isCashier == true;
+            final bool isOwner = _subscriptionInfo?.isOwner == true;
+
             final crossAxisCount = constraints.maxWidth > 1024
                 ? 4
                 : constraints.maxWidth > 640
@@ -4132,16 +4192,18 @@ class _DashboardPageState extends State<DashboardPage> {
               mainAxisSpacing: constraints.maxWidth <= 480 ? 10 : 12,
               childAspectRatio: constraints.maxWidth <= 480 ? 1.5 : 1.6,
               children: [
-                _buildSecondaryActionCard(
-                  'Business Settings',
-                  Icons.business,
-                  Theme.of(context).colorScheme.secondary,
-                ),
-                _buildSecondaryActionCard(
-                  'Billing & Plans',
-                  Icons.credit_card_rounded,
-                  Colors.amber.shade700,
-                ),
+                if (isOwner)
+                  _buildSecondaryActionCard(
+                    'Business Settings',
+                    Icons.business,
+                    Theme.of(context).colorScheme.secondary,
+                  ),
+                if (isOwner)
+                  _buildSecondaryActionCard(
+                    'Billing & Plans',
+                    Icons.credit_card_rounded,
+                    Colors.amber.shade700,
+                  ),
                 _buildSecondaryActionCard(
                   'Payment Verification',
                   Icons.verified,
@@ -4157,11 +4219,12 @@ class _DashboardPageState extends State<DashboardPage> {
                   Icons.trending_up,
                   _twColor('cyan'),
                 ),
-                _buildSecondaryActionCard(
-                  'Purchase History',
-                  Icons.receipt_long,
-                  _twColor('blue'),
-                ),
+                if (!isCashier)
+                  _buildSecondaryActionCard(
+                    'Purchase History',
+                    Icons.receipt_long,
+                    _twColor('blue'),
+                  ),
                 if (!isRestricted)
                   _buildSecondaryActionCard(
                     'Process Returns',
@@ -4174,13 +4237,13 @@ class _DashboardPageState extends State<DashboardPage> {
                     Icons.swap_horiz,
                     _twColor('blue'),
                   ),
-                if (!isRestricted)
+                if (!isRestricted && !isCashier)
                   _buildSecondaryActionCard(
                     'Create Request',
                     Icons.people,
                     _statusColors(context).warning,
                   ),
-                if (!isRestricted)
+                if (!isRestricted && !isCashier)
                   _buildSecondaryActionCard(
                     'Manage Requests',
                     Icons.settings,
