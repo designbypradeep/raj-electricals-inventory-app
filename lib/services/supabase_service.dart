@@ -5140,6 +5140,21 @@ class SupabaseService {
       final trimmed = query.trim();
       final idNum = int.tryParse(trimmed);
 
+      // 1. Try secure RPC track_shop_order first (bypasses RLS safely for guest tracking)
+      try {
+        final rpcRes = await _client.rpc('track_shop_order', params: {
+          'p_token': trimmed,
+          'p_order_id': idNum,
+        });
+        if (rpcRes != null && rpcRes is Map) {
+          return Map<String, dynamic>.from(rpcRes);
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('RPC track_shop_order check: $e');
+        }
+      }
+
       var req = _client
           .from('shop_orders')
           .select('*, shop_order_items(*, products(*))');
@@ -5200,17 +5215,59 @@ class SupabaseService {
     }
   }
 
+  // Batch query order statuses by tracking tokens
+  static Future<Map<int, String>> getShopOrdersStatus(List<String> tokens) async {
+    if (tokens.isEmpty) return {};
+    try {
+      final res = await _client.rpc('get_shop_orders_status', params: {
+        'p_tokens': tokens,
+      });
+      final map = <int, String>{};
+      if (res is List) {
+        for (final item in res) {
+          final id = item['id'] as int?;
+          final status = item['status'] as String?;
+          if (id != null && status != null) {
+            map[id] = status;
+          }
+        }
+      }
+      return map;
+    } catch (e) {
+      if (kDebugMode) print('Error fetching shop orders status: $e');
+      return {};
+    }
+  }
+
   // Cancel Shop Order (Customer or Merchant initiated)
   static Future<bool> cancelShopOrder({
     required dynamic orderId,
+    String? trackingToken,
     String? reason,
   }) async {
     try {
       final idNum = int.tryParse(orderId.toString());
       if (idNum != null) {
-        // Try calling reject_shop_order RPC if it's a pending shop order
+        // 1. Try customer self-service cancellation RPC
+        if (trackingToken != null && trackingToken.isNotEmpty) {
+          try {
+            final res = await _client.rpc('cancel_shop_order_by_customer', params: {
+              'p_order_id': idNum,
+              'p_tracking_token': trackingToken,
+              'p_reason': reason ?? 'Cancelled by customer',
+            });
+            if (res == true) return true;
+          } catch (e) {
+            if (kDebugMode) print('RPC cancel_shop_order_by_customer failed: $e');
+          }
+        }
+
+        // 2. Try calling reject_shop_order RPC if it's merchant-initiated
         try {
-          await _client.rpc('reject_shop_order', params: {'p_order_id': idNum});
+          await _client.rpc('reject_shop_order', params: {
+            'p_order_id': idNum,
+            'p_reason': reason ?? 'Cancelled by customer',
+          });
           return true;
         } catch (_) {}
 

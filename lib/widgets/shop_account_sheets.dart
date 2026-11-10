@@ -157,6 +157,7 @@ class ShopAccountSheets {
     required String businessName,
     String? businessPhone,
     String? businessWhatsapp,
+    String? deliveryPolicy,
     VoidCallback? onStateChanged,
   }) {
     showModalBottomSheet(
@@ -168,6 +169,7 @@ class ShopAccountSheets {
         businessName: businessName,
         businessPhone: businessPhone,
         businessWhatsapp: businessWhatsapp,
+        deliveryPolicy: deliveryPolicy,
         onStateChanged: onStateChanged,
       ),
     );
@@ -179,6 +181,7 @@ class ShopAccountSheets {
     required String businessName,
     String? businessPhone,
     String? businessWhatsapp,
+    String? deliveryPolicy,
     String? initialQuery,
   }) {
     showModalBottomSheet(
@@ -190,6 +193,7 @@ class ShopAccountSheets {
         businessName: businessName,
         businessPhone: businessPhone,
         businessWhatsapp: businessWhatsapp,
+        deliveryPolicy: deliveryPolicy,
         initialQuery: initialQuery,
       ),
     );
@@ -236,6 +240,7 @@ class _AccountMenuSheet extends StatefulWidget {
   final String businessName;
   final String? businessPhone;
   final String? businessWhatsapp;
+  final String? deliveryPolicy;
   final VoidCallback? onStateChanged;
 
   const _AccountMenuSheet({
@@ -243,6 +248,7 @@ class _AccountMenuSheet extends StatefulWidget {
     required this.businessName,
     this.businessPhone,
     this.businessWhatsapp,
+    this.deliveryPolicy,
     this.onStateChanged,
   });
 
@@ -530,6 +536,7 @@ class _AccountMenuSheetState extends State<_AccountMenuSheet> {
                 businessName: widget.businessName,
                 businessPhone: widget.businessPhone,
                 businessWhatsapp: widget.businessWhatsapp,
+                deliveryPolicy: widget.deliveryPolicy,
               );
             },
           ),
@@ -544,6 +551,48 @@ class _AccountMenuSheetState extends State<_AccountMenuSheet> {
               ShopAccountSheets.showProfileSheet(context, onSaved: widget.onStateChanged);
             },
           ),
+          const SizedBox(height: 8),
+
+          if (widget.deliveryPolicy != null && widget.deliveryPolicy!.trim().isNotEmpty) ...[
+            _MenuTile(
+              icon: Icons.verified_user_outlined,
+              title: 'Delivery & Cancellation Policy',
+              subtitle: 'Store fulfillment terms, free delivery & cancellation window',
+              onTap: () {
+                showDialog(
+                  context: context,
+                  builder: (dCtx) => AlertDialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    title: const Row(
+                      children: [
+                        Icon(Icons.shield_outlined, color: Colors.blueAccent),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Store Policy',
+                            style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                    content: SingleChildScrollView(
+                      child: Text(
+                        widget.deliveryPolicy!.trim(),
+                        style: const TextStyle(fontSize: 13, height: 1.45),
+                      ),
+                    ),
+                    actions: [
+                      FilledButton.tonal(
+                        onPressed: () => Navigator.pop(dCtx),
+                        child: const Text('Close'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
 
           if (user != null) ...[
             const SizedBox(height: 16),
@@ -626,6 +675,7 @@ class _TrackOrderSheet extends StatefulWidget {
   final String businessName;
   final String? businessPhone;
   final String? businessWhatsapp;
+  final String? deliveryPolicy;
   final String? initialQuery;
 
   const _TrackOrderSheet({
@@ -633,6 +683,7 @@ class _TrackOrderSheet extends StatefulWidget {
     required this.businessName,
     this.businessPhone,
     this.businessWhatsapp,
+    this.deliveryPolicy,
     this.initialQuery,
   });
 
@@ -676,6 +727,13 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
       final res = await SupabaseService.trackShopOrder(query: query.trim(), businessId: bizId);
       if (res != null) {
         if (mounted) setState(() => _orderResult = res);
+        // Synchronize live status back to local storage so any stale cached status is corrected
+        final liveId = res['id'] is int ? res['id'] as int : int.tryParse(res['id'].toString());
+        final liveStatus = res['status']?.toString();
+        if (liveId != null && liveStatus != null) {
+          await ShopCustomerStorage.updateLocalOrderStatus(liveId, liveStatus);
+          await _loadRecentOrders();
+        }
       } else {
         // Fallback: check if local order exists
         final localMatch = _recentOrders.firstWhere(
@@ -909,7 +967,7 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Total Amount:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                  Text('₹${total.toStringAsFixed(2)}', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: theme.primaryColor)),
+                  Text('₹${total.toStringAsFixed(2)}', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
                 ],
               ),
               if (customerName.isNotEmpty) ...[
@@ -919,6 +977,53 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
             ],
           ),
         ),
+
+        // Store Delivery & Cancellation Policy Card (Amazon / Blinkit / Zepto trust banner)
+        Builder(builder: (ctx) {
+          final policyText = (o['delivery_policy'] ?? widget.deliveryPolicy ?? '').toString().trim();
+          if (policyText.isEmpty) return const SizedBox.shrink();
+
+          return Container(
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: theme.dividerColor.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.verified_user_outlined, size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Store Delivery & Cancellation Policy',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: theme.textTheme.bodyMedium?.color,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        policyText,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          height: 1.35,
+                          color: theme.textTheme.bodySmall?.color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
 
         // Delivery PIN (Blinkit / Zepto POD Verification) & Doorstep UPI QR
         Builder(builder: (ctx) {
@@ -1157,6 +1262,31 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
             ),
           ),
         ],
+
+        // Order Confirmed / Prepared Notice (Platform standard: Amazon, Blinkit, Zepto)
+        if (status == 'confirmed' || status == 'verified' || status == 'payment_verified' || status == 'dispatched') ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.withValues(alpha: 0.25)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Order is confirmed and being prepared. For modifications or cancellations, please contact the store directly.',
+                    style: TextStyle(fontSize: 12, color: theme.textTheme.bodyMedium?.color),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1236,32 +1366,41 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
 
     setState(() => _isCancelling = true);
     try {
+      final token = (_orderResult?['tracking_token'] ?? '').toString();
       final success = await SupabaseService.cancelShopOrder(
         orderId: orderId,
+        trackingToken: token.isNotEmpty ? token : null,
         reason: selectedReason,
       );
 
-      final idInt = int.tryParse(orderId.toString()) ?? 0;
-      await ShopCustomerStorage.updateLocalOrderStatus(idInt, 'cancelled');
+      if (success) {
+        final idInt = int.tryParse(orderId.toString()) ?? 0;
+        await ShopCustomerStorage.updateLocalOrderStatus(idInt, 'cancelled');
 
-      if (mounted) {
-        setState(() {
-          if (_orderResult != null) {
-            _orderResult!['status'] = 'cancelled';
-          }
-        });
-        await _loadRecentOrders();
+        if (mounted) {
+          setState(() {
+            if (_orderResult != null) {
+              _orderResult!['status'] = 'cancelled';
+            }
+          });
+          await _loadRecentOrders();
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              success
-                  ? 'Order #$orderId cancelled successfully.'
-                  : 'Order status updated to Cancelled.',
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Order #$orderId cancelled successfully.'),
+              backgroundColor: Colors.orange[800],
             ),
-            backgroundColor: Colors.orange[800],
-          ),
-        );
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not cancel order. It may have already been verified or processed.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -1324,7 +1463,7 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
       );
     }
 
-    final isConfirmed = status == 'confirmed' || status == 'payment_verified' || status == 'dispatched' || status == 'delivered' || status == 'completed';
+    final isConfirmed = status == 'confirmed' || status == 'verified' || status == 'payment_verified' || status == 'dispatched' || status == 'delivered' || status == 'completed';
     final isDispatched = status == 'dispatched' || status == 'delivered' || status == 'completed';
     final isDelivered = status == 'delivered' || status == 'completed';
 
@@ -1374,6 +1513,7 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
 
     switch (status) {
       case 'confirmed':
+      case 'verified':
       case 'payment_verified':
         bg = Colors.blue.withValues(alpha: 0.15);
         fg = Colors.blue.shade700;
@@ -1619,23 +1759,19 @@ class _MyOrdersSheetState extends State<_MyOrdersSheet> {
 
     // Merge with local device orders and refresh their live statuses from database
     final local = await ShopCustomerStorage.loadLocalOrders();
-    final localIds = local.map((e) => e['id']).whereType<int>().toList();
-    if (localIds.isNotEmpty) {
+    final localTokens = local
+        .map((e) => e['tracking_token']?.toString())
+        .where((t) => t != null && t.isNotEmpty && !t.startsWith('trk_'))
+        .cast<String>()
+        .toList();
+    if (localTokens.isNotEmpty) {
       try {
-        final liveOrders = await SupabaseService.client
-            .from('shop_orders')
-            .select('id, status, tracking_token')
-            .filter('id', 'in', localIds);
-        for (final row in (liveOrders as List)) {
-          final liveId = row['id'] as int?;
-          final liveStatus = row['status'] as String?;
-          if (liveId != null && liveStatus != null) {
-            for (var l in local) {
-              if (l['id'] == liveId) {
-                l['status'] = liveStatus;
-              }
-            }
-            await ShopCustomerStorage.updateLocalOrderStatus(liveId, liveStatus);
+        final liveStatuses = await SupabaseService.getShopOrdersStatus(localTokens);
+        for (var l in local) {
+          final id = l['id'] as int?;
+          if (id != null && liveStatuses.containsKey(id)) {
+            l['status'] = liveStatuses[id];
+            await ShopCustomerStorage.updateLocalOrderStatus(id, liveStatuses[id]!);
           }
         }
       } catch (e) {
@@ -1766,7 +1902,7 @@ class _MyOrdersSheetState extends State<_MyOrdersSheet> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text('Total: ₹${total.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: theme.primaryColor)),
+                                      Text('Total: ₹${total.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: theme.colorScheme.primary)),
                                       Row(
                                         children: [
                                           OutlinedButton(
@@ -1843,6 +1979,7 @@ class _MyOrdersSheetState extends State<_MyOrdersSheet> {
 
     switch (status) {
       case 'confirmed':
+      case 'verified':
       case 'payment_verified':
         bg = Colors.blue.withValues(alpha: 0.15);
         fg = Colors.blue.shade700;

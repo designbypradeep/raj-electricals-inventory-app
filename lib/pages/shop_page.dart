@@ -114,11 +114,32 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   // Delivery Method: 'delivery' | 'pickup'
   String _deliveryMethod = 'delivery';
 
-  double get _deliveryFee {
+  // Smart Detection of Free Delivery Threshold from custom policy (Amazon / Blinkit / Zepto model)
+  double? get _freeDeliveryThreshold {
+    final policy = _businessProfile?.deliveryPolicy;
+    if (policy == null || policy.trim().isEmpty) return null;
+    final match = RegExp(
+      r'(?:free\s+delivery.*?above|orders?\s+above|above)\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)',
+      caseSensitive: false,
+    ).firstMatch(policy);
+    if (match != null) {
+      return double.tryParse(match.group(1)!);
+    }
+    return null;
+  }
+
+  // Calculate delivery fee dynamically based on subtotal and free delivery threshold
+  double _deliveryFeeForAmount(double subtotal) {
     if (_deliveryMethod == 'pickup') return 0.0;
+    final threshold = _freeDeliveryThreshold;
+    if (threshold != null && threshold > 0 && subtotal >= threshold) {
+      return 0.0;
+    }
     final charge = _businessProfile?.deliveryCharge;
     return (charge != null && charge > 0) ? charge : 0.0;
   }
+
+  double get _deliveryFee => _deliveryFeeForAmount(_calculateTotal());
 
   double get _finalPayableTotal => _calculateTotal() + _deliveryFee;
 
@@ -214,6 +235,146 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       formatted = '$formatted - $pincode';
     }
     return formatted;
+  }
+
+  // Free Delivery Progress Bar (Amazon / Blinkit / Zepto model)
+  Widget _buildFreeDeliveryProgressBar(BuildContext context, double subtotal) {
+    final threshold = _freeDeliveryThreshold;
+    if (_deliveryMethod != 'delivery' || threshold == null || threshold <= 0) {
+      return const SizedBox.shrink();
+    }
+    final bool unlocked = subtotal >= threshold;
+    final double remaining = (threshold - subtotal).clamp(0.0, double.infinity);
+    final double progress = (subtotal / threshold).clamp(0.0, 1.0);
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: unlocked
+            ? const Color(0xFF10B981).withValues(alpha: 0.12)
+            : Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: unlocked
+              ? const Color(0xFF10B981).withValues(alpha: 0.3)
+              : Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                unlocked ? Icons.check_circle : Icons.local_shipping_outlined,
+                size: 16,
+                color: unlocked
+                    ? const Color(0xFF10B981)
+                    : Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  unlocked
+                      ? '🎉 You unlocked FREE Delivery on this order!'
+                      : 'Add ₹${remaining.toStringAsFixed(0)} more for FREE Delivery',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: unlocked
+                        ? const Color(0xFF10B981)
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+              if (!unlocked)
+                Text(
+                  '₹${threshold.toStringAsFixed(0)}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  ),
+                ),
+            ],
+          ),
+          if (!unlocked) ...[
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 4,
+                backgroundColor:
+                    Theme.of(context).dividerColor.withValues(alpha: 0.2),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // Store Delivery & Cancellation Policy Card (Amazon / Flipkart / Zepto trust badge)
+  Widget _buildPolicyCard(BuildContext context) {
+    final policy = _businessProfile?.deliveryPolicy?.trim();
+    final effectivePolicy = (policy != null && policy.isNotEmpty)
+        ? policy
+        : 'Standard doorstep delivery. Orders can be cancelled freely before verification/dispatch.';
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 6),
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.verified_user_outlined,
+            size: 16,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Store Delivery & Cancellation Policy',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  effectivePolicy,
+                  style: TextStyle(
+                    fontSize: 11,
+                    height: 1.35,
+                    color: Theme.of(context).textTheme.bodySmall?.color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildDeliveryAddressCard(BuildContext context) {
@@ -3819,6 +3980,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           : _buildStorePickupCard(context),
                     ),
 
+                    // Free Delivery Progress Bar (Amazon / Zepto / Blinkit model)
+                    _buildFreeDeliveryProgressBar(context, _calculateTotal()),
+
+                    // Store Delivery & Cancellation Policy
+                    _buildPolicyCard(context),
+
                     // Subtotal Row
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -4953,6 +5120,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                     businessName: _businessName,
                                     businessPhone: _businessProfile?.phone,
                                     businessWhatsapp: _businessProfile?.phone,
+                                    deliveryPolicy: _businessProfile?.deliveryPolicy,
                                     onStateChanged: () async {
                                       await _loadCustomerProfile();
                                       if (mounted) {
@@ -5150,6 +5318,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                 ),
                               ),
                             ),
+                            // Free Delivery Progress Bar (Amazon / Zepto / Blinkit model)
+                            _buildFreeDeliveryProgressBar(context, _calculateTotal()),
+
+                            // Store Delivery & Cancellation Policy
+                            _buildPolicyCard(context),
                             const SizedBox(height: 18),
                             Text(
                               'Order Summary',
@@ -6509,6 +6682,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 businessName: _businessName,
                 businessPhone: _businessProfile?.phone,
                 businessWhatsapp: _businessProfile?.phone,
+                deliveryPolicy: _businessProfile?.deliveryPolicy,
                 initialQuery: trackingToken,
               );
             },
@@ -6687,6 +6861,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 businessName: _businessName,
                 businessPhone: _businessProfile?.phone,
                 businessWhatsapp: _businessProfile?.phone,
+                deliveryPolicy: _businessProfile?.deliveryPolicy,
                 initialQuery: trackingToken,
               );
             },
@@ -6937,6 +7112,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 businessName: _businessName,
                 businessPhone: _businessProfile?.phone,
                 businessWhatsapp: _businessProfile?.phone,
+                deliveryPolicy: _businessProfile?.deliveryPolicy,
                 initialQuery: trackingToken,
               );
             },
@@ -7111,6 +7287,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 businessName: _businessName,
                 businessPhone: _businessProfile?.phone,
                 businessWhatsapp: _businessProfile?.phone,
+                deliveryPolicy: _businessProfile?.deliveryPolicy,
                 initialQuery: trackingToken,
               );
             },
@@ -9792,6 +9969,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                       businessName: _businessName,
                       businessPhone: _businessProfile?.phone,
                       businessWhatsapp: _businessProfile?.phone,
+                      deliveryPolicy: _businessProfile?.deliveryPolicy,
                       onStateChanged: () => setState(() {}),
                     );
                   }
@@ -10137,6 +10315,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                             businessName: _businessName,
                             businessPhone: _businessProfile?.phone,
                             businessWhatsapp: _businessProfile?.phone,
+                            deliveryPolicy: _businessProfile?.deliveryPolicy,
                             onStateChanged: () => setState(() {}),
                           );
                         },
