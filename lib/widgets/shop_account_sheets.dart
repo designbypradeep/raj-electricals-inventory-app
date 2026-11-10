@@ -1301,7 +1301,30 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
       );
     }
 
-    final isConfirmed = status == 'confirmed' || status == 'dispatched' || status == 'delivered' || status == 'completed';
+    if (status == 'rejected' || status == 'payment_rejected') {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.cancel, color: Colors.red, size: 24),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'This order was rejected by the merchant. Any reserved stock has been returned to inventory.',
+                style: TextStyle(color: Colors.red, fontSize: 12.5, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final isConfirmed = status == 'confirmed' || status == 'payment_verified' || status == 'dispatched' || status == 'delivered' || status == 'completed';
     final isDispatched = status == 'dispatched' || status == 'delivered' || status == 'completed';
     final isDelivered = status == 'delivered' || status == 'completed';
 
@@ -1351,6 +1374,7 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
 
     switch (status) {
       case 'confirmed':
+      case 'payment_verified':
         bg = Colors.blue.withValues(alpha: 0.15);
         fg = Colors.blue.shade700;
         label = 'Confirmed';
@@ -1365,6 +1389,12 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
         bg = Colors.green.withValues(alpha: 0.15);
         fg = Colors.green.shade700;
         label = 'Delivered';
+        break;
+      case 'rejected':
+      case 'payment_rejected':
+        bg = Colors.red.withValues(alpha: 0.15);
+        fg = Colors.red.shade700;
+        label = 'Rejected';
         break;
       case 'cancelled':
         bg = Colors.red.withValues(alpha: 0.15);
@@ -1587,8 +1617,32 @@ class _MyOrdersSheetState extends State<_MyOrdersSheet> {
       all.addAll(remote);
     }
 
-    // Merge with local device orders
+    // Merge with local device orders and refresh their live statuses from database
     final local = await ShopCustomerStorage.loadLocalOrders();
+    final localIds = local.map((e) => e['id']).whereType<int>().toList();
+    if (localIds.isNotEmpty) {
+      try {
+        final liveOrders = await SupabaseService.client
+            .from('shop_orders')
+            .select('id, status, tracking_token')
+            .filter('id', 'in', localIds);
+        for (final row in (liveOrders as List)) {
+          final liveId = row['id'] as int?;
+          final liveStatus = row['status'] as String?;
+          if (liveId != null && liveStatus != null) {
+            for (var l in local) {
+              if (l['id'] == liveId) {
+                l['status'] = liveStatus;
+              }
+            }
+            await ShopCustomerStorage.updateLocalOrderStatus(liveId, liveStatus);
+          }
+        }
+      } catch (e) {
+        debugPrint('[MyOrders] Error refreshing local orders status: $e');
+      }
+    }
+
     for (var l in local) {
       final exists = all.any((r) => r['id'] == l['id'] || (r['tracking_token'] != null && r['tracking_token'] == l['tracking_token']));
       if (!exists) {
@@ -1789,6 +1843,7 @@ class _MyOrdersSheetState extends State<_MyOrdersSheet> {
 
     switch (status) {
       case 'confirmed':
+      case 'payment_verified':
         bg = Colors.blue.withValues(alpha: 0.15);
         fg = Colors.blue.shade700;
         text = 'Confirmed';
@@ -1803,6 +1858,12 @@ class _MyOrdersSheetState extends State<_MyOrdersSheet> {
         bg = Colors.green.withValues(alpha: 0.15);
         fg = Colors.green.shade700;
         text = 'Delivered';
+        break;
+      case 'rejected':
+      case 'payment_rejected':
+        bg = Colors.red.withValues(alpha: 0.15);
+        fg = Colors.red.shade700;
+        text = 'Rejected';
         break;
       case 'cancelled':
         bg = Colors.red.withValues(alpha: 0.15);
