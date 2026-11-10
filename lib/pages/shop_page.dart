@@ -6418,77 +6418,48 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     );
 
     try {
-      final items = _cartItems
-          .map(
-            (e) => {
-              'product_id': e['id'],
-              'quantity': (e['qty'] as num?)?.toInt() ?? 1,
-              'price_per_unit': (e['price'] as num).toDouble(),
-            },
-          )
-          .toList();
-
       final payMethod = isCod ? 'cod' : 'cash';
-      final saleId = await SupabaseService.createSaleWithItems(
+
+      String mapsLink = '';
+      if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
+          _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
+        mapsLink =
+            ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
+      }
+      final fulfillmentNotes = isCod
+          ? 'Home Delivery (Pay on Delivery: Cash/UPI) | PIN: $deliveryPin | Deliver to: $activeName ($activePhone) | Address: $activeAddress$mapsLink'
+          : 'Store Pickup (Pay at Counter) | Customer: $activeName ($activePhone) | Store Counter Collection';
+
+      final shopOrder = await SupabaseService.createShopOrder(
+        businessId: _effectiveBusinessId,
+        customerId: SupabaseService.currentUser?.id,
         customerName: activeName,
         customerPhone: activePhone.isNotEmpty ? activePhone : null,
         paymentMethod: payMethod,
-        totalAmount: total,
         transactionId: checkoutId,
-        amountPaid: 0.0,
-        status: 'pending',
-        items: items,
+        totalAmount: total,
+        notes: fulfillmentNotes,
+        items: _cartItems
+            .map(
+              (e) => {
+                'product_id': e['id'],
+                'product_name': e['name'] ?? 'Item',
+                'quantity': (e['qty'] as num?)?.toInt() ?? 1,
+                'price_per_unit': (e['price'] as num).toDouble(),
+                'total_price':
+                    ((e['price'] as num).toDouble()) *
+                    ((e['qty'] as num?)?.toInt() ?? 1),
+              },
+            )
+            .toList(),
       );
 
-      String trackingToken = 'trk_$checkoutId';
-      int orderId = saleId ?? DateTime.now().millisecondsSinceEpoch;
-
-      if (_currentBusinessId != null) {
-        try {
-          String mapsLink = '';
-          if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
-              _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
-            mapsLink =
-                ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
-          }
-          final fulfillmentNotes = isCod
-              ? 'Home Delivery (Pay on Delivery: Cash/UPI) | PIN: $deliveryPin | Deliver to: $activeName ($activePhone) | Address: $activeAddress$mapsLink'
-              : 'Store Pickup (Pay at Counter) | Customer: $activeName ($activePhone) | Store Counter Collection';
-
-          final shopOrder = await SupabaseService.createShopOrder(
-            businessId: _currentBusinessId!,
-            customerId: SupabaseService.currentUser?.id,
-            customerName: activeName,
-            customerPhone: activePhone.isNotEmpty ? activePhone : null,
-            paymentMethod: payMethod,
-            transactionId: checkoutId,
-            totalAmount: total,
-            notes: fulfillmentNotes,
-            saleId: saleId,
-            items: _cartItems
-                .map(
-                  (e) => {
-                    'product_id': e['id'],
-                    'product_name': e['name'] ?? 'Item',
-                    'quantity': (e['qty'] as num?)?.toInt() ?? 1,
-                    'unit_price': (e['price'] as num).toDouble(),
-                    'total_price':
-                        ((e['price'] as num).toDouble()) *
-                        ((e['qty'] as num?)?.toInt() ?? 1),
-                  },
-                )
-                .toList(),
-          );
-          if (shopOrder != null) {
-            if (shopOrder['id'] != null) orderId = shopOrder['id'] as int;
-            if (shopOrder['tracking_token'] != null) {
-              trackingToken = shopOrder['tracking_token'] as String;
-            }
-          }
-        } catch (e) {
-          debugPrint('[Shop] createShopOrder offline error: $e');
-        }
-      }
+      final int orderId = (shopOrder != null && shopOrder['id'] != null)
+          ? shopOrder['id'] as int
+          : DateTime.now().millisecondsSinceEpoch;
+      final String trackingToken = (shopOrder != null && shopOrder['tracking_token'] != null)
+          ? shopOrder['tracking_token'] as String
+          : 'trk_$checkoutId';
 
       await ShopCustomerStorage.saveOrderLocally(
         orderId: orderId,
@@ -6501,31 +6472,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         items: List<Map<String, dynamic>>.from(_cartItems),
       );
 
-      final receiptItems = _cartItems
-          .map(
-            (e) => ReceiptItem(
-              name: e['name'] ?? 'Item',
-              quantity: (e['qty'] as num?)?.toInt() ?? 1,
-              pricePerUnit: (e['price'] as num).toDouble(),
-            ),
-          )
-          .toList();
-
-      final receipt = ReceiptData(
-        saleId: saleId?.toString() ?? orderId.toString(),
-        customerName: activeName,
-        customerPhone: activePhone.isNotEmpty ? activePhone : null,
-        transactionId: checkoutId,
-        items: receiptItems,
-        subTotal: total,
-        discount: 0,
-        finalTotal: total,
-        paymentMethod: payMethod,
-        saleDate: DateTime.now(),
-        status: isCod ? 'Pending (COD)' : 'Pending (Pay at Counter)',
-      );
-
-      await ReceiptService.shareReceiptPdf(receipt);
+      if (activeName != 'Walk-in Customer' && activePhone.isNotEmpty) {
+        ShopCustomerStorage.saveProfile(
+          name: activeName,
+          phone: activePhone,
+        );
+      }
 
       if (mounted) {
         setState(() {
@@ -6535,7 +6487,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         _saveCartToPrefs();
       }
 
-      navigator.pop(); // Pop loading
+      navigator.pop(); // Pop loading dialog
       scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(
@@ -6551,7 +6503,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             onPressed: () {
               ShopAccountSheets.showTrackOrderSheet(
                 context,
-                businessId: _currentBusinessId,
+                businessId: _effectiveBusinessId,
                 businessName: _businessName,
                 businessPhone: _businessProfile?.phone,
                 businessWhatsapp: _businessProfile?.phone,
@@ -6563,6 +6515,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       );
     } catch (e) {
       navigator.pop(); // Pop loading
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Failed to place order: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Failed to place order: $e')),
       );
@@ -6589,16 +6548,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     );
 
     try {
-      final items = _cartItems
-          .map(
-            (e) => {
-              'product_id': e['id'],
-              'quantity': e['qty'],
-              'price_per_unit': (e['price'] as num).toDouble(),
-            },
-          )
-          .toList();
-
       // Upload proof first if provided (best-effort)
       String? proofUrl;
       if (proof != null) {
@@ -6649,168 +6598,111 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       final String effectiveTxId =
           (utr != null && utr.trim().isNotEmpty) ? utr.trim() : checkoutId;
 
-      final saleId = await SupabaseService.createSaleWithItems(
+      final activePhone = customerPhone ??
+          _savedCustomerProfile?['phone'] ??
+          '';
+      String mapsLink = '';
+      if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
+          _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
+        mapsLink =
+            ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
+      }
+      final utrNote = (utr != null && utr.trim().isNotEmpty)
+          ? ' | UPI UTR: ${utr.trim()}'
+          : '';
+      final fulfillmentNotes = (_deliveryMethod == 'delivery'
+          ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}$mapsLink'
+          : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection') + utrNote;
+
+      final shopOrder = await SupabaseService.createShopOrder(
+        businessId: _effectiveBusinessId,
+        customerId: SupabaseService.currentUser?.id,
         customerName: customerName,
-        customerPhone: customerPhone,
+        customerPhone: activePhone.isNotEmpty ? activePhone : null,
         paymentMethod: 'upi',
-        totalAmount: total,
         transactionId: effectiveTxId,
-        amountPaid: total,
-        status: 'pending',
         paymentProofUrl: proofUrl,
-        items: items,
+        totalAmount: total,
+        notes: fulfillmentNotes,
+        items: _cartItems
+            .map(
+              (e) => {
+                'product_id': e['id'],
+                'product_name': e['name'] ?? 'Item',
+                'quantity': (e['qty'] as num?)?.toInt() ?? 1,
+                'unit_price': (e['price'] as num).toDouble(),
+                'total_price':
+                    ((e['price'] as num).toDouble()) *
+                    ((e['qty'] as num?)?.toInt() ?? 1),
+              },
+            )
+            .toList(),
       );
 
-      if (saleId != null) {
-        if (customerName.isNotEmpty && customerName != 'Walk-in Customer') {
-          ShopCustomerStorage.saveProfile(
-            name: customerName,
-            phone: customerPhone ?? '',
-          );
-        }
+      final int orderId = (shopOrder != null && shopOrder['id'] != null)
+          ? shopOrder['id'] as int
+          : DateTime.now().millisecondsSinceEpoch;
+      final String trackingToken = (shopOrder != null && shopOrder['tracking_token'] != null)
+          ? shopOrder['tracking_token'] as String
+          : 'trk_$checkoutId';
 
-        String trackingToken = 'trk_$checkoutId';
-        int orderId = saleId;
-        if (_currentBusinessId != null) {
-          try {
-            final activePhone = customerPhone ??
-                _savedCustomerProfile?['phone'] ??
-                'N/A';
-            String mapsLink = '';
-            if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
-                _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
-              mapsLink =
-                  ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
-            }
-            final utrNote = (utr != null && utr.trim().isNotEmpty)
-                ? ' | UPI UTR: ${utr.trim()}'
-                : '';
-            final fulfillmentNotes = (_deliveryMethod == 'delivery'
-                ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}$mapsLink'
-                : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection') + utrNote;
+      await ShopCustomerStorage.saveOrderLocally(
+        orderId: orderId,
+        trackingToken: trackingToken,
+        customerName: customerName,
+        customerPhone: activePhone.isNotEmpty ? activePhone : null,
+        totalAmount: total,
+        status: 'pending',
+        createdAt: DateTime.now().toIso8601String(),
+        items: List<Map<String, dynamic>>.from(_cartItems),
+      );
 
-            final shopOrder = await SupabaseService.createShopOrder(
-              businessId: _currentBusinessId!,
-              customerId: SupabaseService.currentUser?.id,
-              customerName: customerName,
-              customerPhone: customerPhone,
-              paymentMethod: 'upi',
-              transactionId: effectiveTxId,
-              paymentProofUrl: proofUrl,
-              totalAmount: total,
-              notes: fulfillmentNotes,
-              saleId: saleId,
-              items: _cartItems
-                  .map(
-                    (e) => {
-                      'product_id': e['id'],
-                      'product_name': e['name'] ?? 'Item',
-                      'quantity': (e['qty'] as num?)?.toInt() ?? 1,
-                      'unit_price': (e['price'] as num).toDouble(),
-                      'total_price':
-                          ((e['price'] as num).toDouble()) *
-                          ((e['qty'] as num?)?.toInt() ?? 1),
-                    },
-                  )
-                  .toList(),
-            );
-            if (shopOrder != null) {
-              if (shopOrder['id'] != null) orderId = shopOrder['id'] as int;
-              if (shopOrder['tracking_token'] != null) {
-                trackingToken = shopOrder['tracking_token'] as String;
-              }
-            }
-          } catch (e) {
-            debugPrint('[Shop] createShopOrder cart error: $e');
-          }
-        }
-
-        await ShopCustomerStorage.saveOrderLocally(
-          orderId: orderId,
-          trackingToken: trackingToken,
-          customerName: customerName,
-          customerPhone: customerPhone,
-          totalAmount: total,
-          status: 'pending',
-          createdAt: DateTime.now().toIso8601String(),
-          items: List<Map<String, dynamic>>.from(_cartItems),
-        );
-
-        // Build receipt items
-        final receiptItems = _cartItems
-            .map(
-              (e) => ReceiptItem(
-                name: e['name'] ?? 'Item',
-                quantity: (e['qty'] as num?)?.toInt() ?? 1,
-                pricePerUnit: (e['price'] as num).toDouble(),
-              ),
-            )
-            .toList();
-
-        final receipt = ReceiptData(
-          saleId: saleId.toString(),
-          customerName: customerName,
-          customerPhone: customerPhone,
-          transactionId: effectiveTxId,
-          items: receiptItems,
-          subTotal: total,
-          discount: 0,
-          finalTotal: total,
-          paymentMethod: 'upi',
-          saleDate: DateTime.now(),
-          status: 'pending',
-        );
-
-        // Share receipt (might take time/switch apps)
-        await ReceiptService.shareReceiptPdf(receipt);
-
-        if (mounted) {
-          setState(() {
-            _cartItems.clear();
-            _cartCount = 0;
-          });
-          _saveCartToPrefs();
-        }
-
-        navigator.pop(); // Pop loading dialog
-        scaffoldMessenger.showSnackBar(
-          SnackBar(
-            content: Text('Order submitted for verification! (ID: #$orderId)'),
-            backgroundColor: const Color(0xFF059669),
-            duration: const Duration(seconds: 8),
-            action: SnackBarAction(
-              label: 'Track Order',
-              textColor: Colors.white,
-              onPressed: () {
-                ShopAccountSheets.showTrackOrderSheet(
-                  context,
-                  businessId: _currentBusinessId,
-                  businessName: _businessName,
-                  businessPhone: _businessProfile?.phone,
-                  businessWhatsapp: _businessProfile?.phone,
-                  initialQuery: trackingToken,
-                );
-              },
-            ),
-          ),
-        );
-      } else {
-        navigator.pop(); // Pop loading dialog
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(
-            content: Text('Failed to record sale.'),
-            backgroundColor: Colors.red,
-          ),
+      if (customerName.isNotEmpty && customerName != 'Walk-in Customer') {
+        ShopCustomerStorage.saveProfile(
+          name: customerName,
+          phone: activePhone,
         );
       }
+
+      if (mounted) {
+        setState(() {
+          _cartItems.clear();
+          _cartCount = 0;
+        });
+        _saveCartToPrefs();
+      }
+
+      navigator.pop(); // Pop loading dialog
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Order submitted for verification! (ID: #$orderId)'),
+          backgroundColor: const Color(0xFF059669),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: 'Track Order',
+            textColor: Colors.white,
+            onPressed: () {
+              ShopAccountSheets.showTrackOrderSheet(
+                context,
+                businessId: _effectiveBusinessId,
+                businessName: _businessName,
+                businessPhone: _businessProfile?.phone,
+                businessWhatsapp: _businessProfile?.phone,
+                initialQuery: trackingToken,
+              );
+            },
+          ),
+        ),
+      );
     } catch (e) {
       navigator.pop(); // Pop loading dialog
       scaffoldMessenger.showSnackBar(
         SnackBar(
-          content: Text('Failed to record sale: $e'),
+          content: Text('Failed to submit order: $e'),
           backgroundColor: Colors.red,
         ),
       );
+    }
     }
   }
 
@@ -6968,68 +6860,43 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
     try {
       final payMethod = isCod ? 'cod' : 'cash';
-      final saleId = await SupabaseService.createSaleWithItems(
+
+      String mapsLink = '';
+      if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
+          _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
+        mapsLink =
+            ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
+      }
+      final fulfillmentNotes = isCod
+          ? 'Home Delivery (Pay on Delivery: Cash/UPI) | PIN: $deliveryPin | Deliver to: $activeName ($activePhone) | Address: $activeAddress$mapsLink'
+          : 'Store Pickup (Pay at Counter) | Customer: $activeName ($activePhone) | Store Counter Collection';
+
+      final shopOrder = await SupabaseService.createShopOrder(
+        businessId: _effectiveBusinessId,
+        customerId: SupabaseService.currentUser?.id,
         customerName: activeName,
         customerPhone: activePhone.isNotEmpty ? activePhone : null,
         paymentMethod: payMethod,
-        totalAmount: total,
         transactionId: checkoutId,
-        amountPaid: 0.0,
-        status: 'pending',
+        totalAmount: total,
+        notes: fulfillmentNotes,
         items: [
           {
             'product_id': product['id'],
+            'product_name': product['name'] ?? 'Item',
             'quantity': qty,
-            'price_per_unit': price,
+            'unit_price': price,
+            'total_price': total,
           },
         ],
       );
 
-      String trackingToken = 'trk_$checkoutId';
-      int orderId = saleId ?? DateTime.now().millisecondsSinceEpoch;
-
-      if (_currentBusinessId != null) {
-        try {
-          String mapsLink = '';
-          if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
-              _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
-            mapsLink =
-                ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
-          }
-          final fulfillmentNotes = isCod
-              ? 'Home Delivery (Pay on Delivery: Cash/UPI) | PIN: $deliveryPin | Deliver to: $activeName ($activePhone) | Address: $activeAddress$mapsLink'
-              : 'Store Pickup (Pay at Counter) | Customer: $activeName ($activePhone) | Store Counter Collection';
-
-          final shopOrder = await SupabaseService.createShopOrder(
-            businessId: _currentBusinessId!,
-            customerId: SupabaseService.currentUser?.id,
-            customerName: activeName,
-            customerPhone: activePhone.isNotEmpty ? activePhone : null,
-            paymentMethod: payMethod,
-            transactionId: checkoutId,
-            totalAmount: total,
-            notes: fulfillmentNotes,
-            saleId: saleId,
-            items: [
-              {
-                'product_id': product['id'],
-                'product_name': product['name'] ?? 'Item',
-                'quantity': qty,
-                'unit_price': price,
-                'total_price': total,
-              },
-            ],
-          );
-          if (shopOrder != null) {
-            if (shopOrder['id'] != null) orderId = shopOrder['id'] as int;
-            if (shopOrder['tracking_token'] != null) {
-              trackingToken = shopOrder['tracking_token'] as String;
-            }
-          }
-        } catch (e) {
-          debugPrint('[Shop] createShopOrder buy-now offline error: $e');
-        }
-      }
+      final int orderId = (shopOrder != null && shopOrder['id'] != null)
+          ? shopOrder['id'] as int
+          : DateTime.now().millisecondsSinceEpoch;
+      final String trackingToken = (shopOrder != null && shopOrder['tracking_token'] != null)
+          ? shopOrder['tracking_token'] as String
+          : 'trk_$checkoutId';
 
       await ShopCustomerStorage.saveOrderLocally(
         orderId: orderId,
@@ -7044,27 +6911,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         ],
       );
 
-      final receipt = ReceiptData(
-        saleId: saleId?.toString() ?? orderId.toString(),
-        customerName: activeName,
-        customerPhone: activePhone.isNotEmpty ? activePhone : null,
-        transactionId: checkoutId,
-        items: [
-          ReceiptItem(
-            name: product['name'] ?? 'Item',
-            quantity: qty,
-            pricePerUnit: price,
-          ),
-        ],
-        subTotal: total,
-        discount: 0,
-        finalTotal: total,
-        paymentMethod: payMethod,
-        saleDate: DateTime.now(),
-        status: isCod ? 'Pending (COD)' : 'Pending (Pay at Counter)',
-      );
-
-      await ReceiptService.shareReceiptPdf(receipt);
+      if (activeName != 'Walk-in Customer' && activePhone.isNotEmpty) {
+        ShopCustomerStorage.saveProfile(
+          name: activeName,
+          phone: activePhone,
+        );
+      }
 
       navigator.pop(); // Pop loading
       scaffoldMessenger.showSnackBar(
@@ -7082,7 +6934,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             onPressed: () {
               ShopAccountSheets.showTrackOrderSheet(
                 context,
-                businessId: _currentBusinessId,
+                businessId: _effectiveBusinessId,
                 businessName: _businessName,
                 businessPhone: _businessProfile?.phone,
                 businessWhatsapp: _businessProfile?.phone,
@@ -7097,6 +6949,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Failed to place order: $e')),
       );
+    }
     }
   }
 
@@ -7173,163 +7026,104 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           (utr != null && utr.trim().isNotEmpty) ? utr.trim() : checkoutId;
 
       final double price = (product['price'] as num?)?.toDouble() ?? 0.0;
-      final items = [
-        {
-          'product_id': product['id'],
-          'quantity': qty,
-          'price_per_unit': price,
-        },
-      ];
 
-      final saleId = await SupabaseService.createSaleWithItems(
+      final activePhone = customerPhone ??
+          _savedCustomerProfile?['phone'] ??
+          '';
+      String mapsLink = '';
+      if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
+          _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
+        mapsLink =
+            ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
+      }
+      final utrNote = (utr != null && utr.trim().isNotEmpty)
+          ? ' | UPI UTR: ${utr.trim()}'
+          : '';
+      final fulfillmentNotes = (_deliveryMethod == 'delivery'
+          ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}$mapsLink'
+          : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection') + utrNote;
+
+      final shopOrder = await SupabaseService.createShopOrder(
+        businessId: _effectiveBusinessId,
+        customerId: SupabaseService.currentUser?.id,
         customerName: customerName,
-        customerPhone: customerPhone,
+        customerPhone: activePhone.isNotEmpty ? activePhone : null,
         paymentMethod: 'upi',
-        totalAmount: total,
         transactionId: effectiveTxId,
-        amountPaid: total,
-        status: 'pending',
         paymentProofUrl: proofUrl,
-        items: items,
+        totalAmount: total,
+        notes: fulfillmentNotes,
+        items: [
+          {
+            'product_id': product['id'],
+            'product_name': product['name'] ?? 'Item',
+            'quantity': qty,
+            'unit_price': price,
+            'total_price': total,
+          },
+        ],
       );
 
-      if (saleId != null) {
-        if (customerName.isNotEmpty && customerName != 'Walk-in Customer') {
-          ShopCustomerStorage.saveProfile(
-            name: customerName,
-            phone: customerPhone ?? '',
-          );
-        }
+      final int orderId = (shopOrder != null && shopOrder['id'] != null)
+          ? shopOrder['id'] as int
+          : DateTime.now().millisecondsSinceEpoch;
+      final String trackingToken = (shopOrder != null && shopOrder['tracking_token'] != null)
+          ? shopOrder['tracking_token'] as String
+          : 'trk_$checkoutId';
 
-        String trackingToken = 'trk_$checkoutId';
-        int orderId = saleId;
-        if (_currentBusinessId != null) {
-          try {
-            final activePhone = customerPhone ??
-                _savedCustomerProfile?['phone'] ??
-                'N/A';
-            String mapsLink = '';
-            if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
-                _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
-              mapsLink =
-                  ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
-            }
-            final utrNote = (utr != null && utr.trim().isNotEmpty)
-                ? ' | UPI UTR: ${utr.trim()}'
-                : '';
-            final fulfillmentNotes = (_deliveryMethod == 'delivery'
-                ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}$mapsLink'
-                : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection') + utrNote;
+      await ShopCustomerStorage.saveOrderLocally(
+        orderId: orderId,
+        trackingToken: trackingToken,
+        customerName: customerName,
+        customerPhone: activePhone.isNotEmpty ? activePhone : null,
+        totalAmount: total,
+        status: 'pending',
+        createdAt: DateTime.now().toIso8601String(),
+        items: [
+          {'name': product['name'] ?? 'Item', 'qty': qty, 'price': price},
+        ],
+      );
 
-            final shopOrder = await SupabaseService.createShopOrder(
-              businessId: _currentBusinessId!,
-              customerId: SupabaseService.currentUser?.id,
-              customerName: customerName,
-              customerPhone: customerPhone,
-              paymentMethod: 'upi',
-              transactionId: effectiveTxId,
-              paymentProofUrl: proofUrl,
-              totalAmount: total,
-              notes: fulfillmentNotes,
-              saleId: saleId,
-              items: [
-                {
-                  'product_id': product['id'],
-                  'product_name': product['name'] ?? 'Item',
-                  'quantity': qty,
-                  'unit_price': price,
-                  'total_price': total,
-                },
-              ],
-            );
-            if (shopOrder != null) {
-              if (shopOrder['id'] != null) orderId = shopOrder['id'] as int;
-              if (shopOrder['tracking_token'] != null) {
-                trackingToken = shopOrder['tracking_token'] as String;
-              }
-            }
-          } catch (e) {
-            debugPrint('[Shop] createShopOrder buy-now error: $e');
-          }
-        }
-
-        await ShopCustomerStorage.saveOrderLocally(
-          orderId: orderId,
-          trackingToken: trackingToken,
-          customerName: customerName,
-          customerPhone: customerPhone,
-          totalAmount: total,
-          status: 'pending',
-          createdAt: DateTime.now().toIso8601String(),
-          items: [
-            {'name': product['name'] ?? 'Item', 'qty': qty, 'price': price},
-          ],
-        );
-
-        final receipt = ReceiptData(
-          saleId: saleId.toString(),
-          customerName: customerName,
-          customerPhone: customerPhone,
-          transactionId: effectiveTxId,
-          items: [
-            ReceiptItem(
-              name: product['name'] ?? 'Item',
-              quantity: qty,
-              pricePerUnit: price,
-            ),
-          ],
-          subTotal: total,
-          discount: 0,
-          finalTotal: total,
-          paymentMethod: 'upi',
-          saleDate: DateTime.now(),
-          status: 'pending',
-        );
-
-        // Share receipt
-        await ReceiptService.shareReceiptPdf(receipt);
-
-        navigator.pop(); // Pop dialog
-        scaffoldMessenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              'Order placed & submitted for verification! (ID: #$orderId)',
-            ),
-            backgroundColor: const Color(0xFF059669),
-            duration: const Duration(seconds: 8),
-            action: SnackBarAction(
-              label: 'Track Order',
-              textColor: Colors.white,
-              onPressed: () {
-                ShopAccountSheets.showTrackOrderSheet(
-                  context,
-                  businessId: _currentBusinessId,
-                  businessName: _businessName,
-                  businessPhone: _businessProfile?.phone,
-                  businessWhatsapp: _businessProfile?.phone,
-                  initialQuery: trackingToken,
-                );
-              },
-            ),
-          ),
-        );
-      } else {
-        navigator.pop();
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(
-            content: Text('Failed to record sale.'),
-            backgroundColor: Colors.red,
-          ),
+      if (customerName.isNotEmpty && customerName != 'Walk-in Customer') {
+        ShopCustomerStorage.saveProfile(
+          name: customerName,
+          phone: activePhone,
         );
       }
+
+      navigator.pop(); // Pop dialog
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Order placed & submitted for verification! (ID: #$orderId)',
+          ),
+          backgroundColor: const Color(0xFF059669),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: 'Track Order',
+            textColor: Colors.white,
+            onPressed: () {
+              ShopAccountSheets.showTrackOrderSheet(
+                context,
+                businessId: _effectiveBusinessId,
+                businessName: _businessName,
+                businessPhone: _businessProfile?.phone,
+                businessWhatsapp: _businessProfile?.phone,
+                initialQuery: trackingToken,
+              );
+            },
+          ),
+        ),
+      );
     } catch (e) {
       navigator.pop();
       scaffoldMessenger.showSnackBar(
         SnackBar(
-          content: Text('Failed to record sale: $e'),
+          content: Text('Failed to submit order: $e'),
           backgroundColor: Colors.red,
         ),
       );
+    }
     }
   }
 

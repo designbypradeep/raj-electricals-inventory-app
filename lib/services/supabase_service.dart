@@ -5091,10 +5091,11 @@ class SupabaseService {
 
       if (items.isNotEmpty) {
         final orderItems = items.map((it) => {
+          'business_id': businessId,
           'order_id': orderId,
           'product_id': it['product_id'],
           'quantity': it['quantity'],
-          'price_per_unit': it['price_per_unit'],
+          'price_per_unit': it['price_per_unit'] ?? it['unit_price'] ?? 0.0,
           if (it['unit'] != null) 'unit': it['unit'],
         }).toList();
 
@@ -5106,7 +5107,7 @@ class SupabaseService {
       if (kDebugMode) {
         print('Error creating shop order: $e');
       }
-      return null;
+      rethrow;
     }
   }
 
