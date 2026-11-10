@@ -56,6 +56,20 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Required on Android 11+ to query & launch installed UPI apps (GPay, PhonePe, Paytm, BHIM) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
+        <!-- Required on Android 11+ to open phone dialer -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <!-- Required on Android 11+ to open web links & WhatsApp web intents -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
     </queries>
 </manifest>
 

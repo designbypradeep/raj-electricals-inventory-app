@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,8 +8,14 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 android {
-    namespace = "com.example.raj_electricals_inventory_app"
+    namespace = "com.inventoza.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "28.2.13676358"
 
@@ -20,21 +29,35 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.raj_electricals_inventory_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        applicationId = "com.inventoza.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            val keyAliasProp = keystoreProperties.getProperty("keyAlias")
+            val keyPasswordProp = keystoreProperties.getProperty("keyPassword")
+            val storeFileProp = keystoreProperties.getProperty("storeFile")
+            val storePasswordProp = keystoreProperties.getProperty("storePassword")
+            if (storeFileProp != null && rootProject.file(storeFileProp).exists()) {
+                keyAlias = keyAliasProp
+                keyPassword = keyPasswordProp
+                storeFile = rootProject.file(storeFileProp)
+                storePassword = storePasswordProp
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = false
             isShrinkResources = false
         }
@@ -45,14 +68,12 @@ android {
     productFlavors {
         create("admin") {
             dimension = "app"
-            // Default app name for admin build
+            applicationId = "com.inventoza.admin"
             resValue("string", "app_name", "Inventoza")
         }
         create("shop") {
             dimension = "app"
-            // Use a different applicationId suffix to install alongside admin
-            applicationIdSuffix = ".shop"
-            // App name for customer-facing build
+            applicationId = "com.inventoza.shop"
             resValue("string", "app_name", "Inventoza Shop")
         }
     }

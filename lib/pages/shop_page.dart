@@ -2066,7 +2066,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             // Build UPI URI for QR
-            const upiId = 'pradeepsupergalaxy12@okicici';
+            final upiId = (_businessProfile?.upiVpa != null &&
+                    _businessProfile!.upiVpa!.trim().isNotEmpty)
+                ? _businessProfile!.upiVpa!.trim()
+                : 'pradeepsupergalaxy12@okicici';
             String pn = _sanitizeUpiName(_businessName).trim();
             if (pn.isEmpty) pn = 'Merchant';
             if (pn.length > 20) pn = pn.substring(0, 20);
@@ -5601,7 +5604,10 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         bool showQr = !(Platform.isAndroid || Platform.isIOS);
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            const upiId = 'pradeepsupergalaxy12@okicici';
+            final upiId = (_businessProfile?.upiVpa != null &&
+                    _businessProfile!.upiVpa!.trim().isNotEmpty)
+                ? _businessProfile!.upiVpa!.trim()
+                : 'pradeepsupergalaxy12@okicici';
             String pn = _sanitizeUpiName(_businessName).trim();
             if (pn.isEmpty) pn = 'Merchant';
             if (pn.length > 20) pn = pn.substring(0, 20);

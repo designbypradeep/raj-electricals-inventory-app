@@ -1,4 +1,4 @@
-package com.example.raj_electricals_inventory_app
+package com.inventoza.app
 
 import android.content.Intent
 import android.net.Uri
@@ -115,3 +115,4 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 }
+

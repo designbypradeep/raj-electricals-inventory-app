@@ -15,6 +15,10 @@ build/
 ### Android
 android/.gradle/
 android/local.properties
+android/key.properties
+key.properties
+*.keystore
+*.jks
 android/app/*.keystore
 android/app/*.jks
 
