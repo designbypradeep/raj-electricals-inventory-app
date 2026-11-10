@@ -5201,6 +5201,51 @@ class SupabaseService {
     }
   }
 
+  // Cancel Shop Order (Customer or Merchant initiated)
+  static Future<bool> cancelShopOrder({
+    required dynamic orderId,
+    String? reason,
+  }) async {
+    try {
+      final idNum = int.tryParse(orderId.toString());
+      if (idNum != null) {
+        // Try calling reject_shop_order RPC if it's a pending shop order
+        try {
+          await _client.rpc('reject_shop_order', params: {'p_order_id': idNum});
+          return true;
+        } catch (_) {}
+
+        // Fallback: direct update in shop_orders
+        try {
+          await _client
+              .from('shop_orders')
+              .update({
+                'status': 'cancelled',
+                if (reason != null && reason.isNotEmpty)
+                  'notes': 'Cancelled by customer: $reason',
+              })
+              .eq('id', idNum);
+          return true;
+        } catch (_) {}
+
+        // Fallback for sales table
+        try {
+          await _client
+              .from('sales')
+              .update({'status': 'cancelled'})
+              .eq('id', idNum);
+          return true;
+        } catch (_) {}
+      }
+      return false;
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error cancelling shop order: $e');
+      }
+      return false;
+    }
+  }
+
   // Create or get business profile
   static Future<supabase_models.BusinessProfile?> getOrCreateBusinessProfile({
     required String businessName,

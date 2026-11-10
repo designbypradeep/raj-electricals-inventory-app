@@ -2,10 +2,10 @@ name: Build Apps (iOS IPAs & Android APKs)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feat/custom-sale-price
-      - main
+  # push:
+  #   branches:
+  #     - feat/custom-sale-price
+  #     - main
 
 jobs:
   # ==========================================

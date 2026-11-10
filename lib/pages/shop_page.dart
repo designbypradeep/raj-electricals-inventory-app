@@ -80,6 +80,22 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
   Future<void> _loadCustomerProfile() async {
     final profile = await ShopCustomerStorage.loadSavedProfile();
+    final user = SupabaseService.currentUser;
+    if (user != null) {
+      final userMeta = user.userMetadata ?? {};
+      final fullName = (userMeta['full_name'] as String?) ??
+          (userMeta['name'] as String?) ??
+          user.email?.split('@').first ??
+          '';
+      if ((profile['name']?.trim().isEmpty ?? true) && fullName.isNotEmpty) {
+        profile['name'] = fullName;
+      }
+      if ((profile['phone']?.trim().isEmpty ?? true) &&
+          user.phone != null &&
+          user.phone!.isNotEmpty) {
+        profile['phone'] = user.phone!;
+      }
+    }
     if (mounted) {
       setState(() {
         _savedCustomerProfile = profile;
@@ -121,7 +137,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
 
   String _formatCustomerAddress(Map<String, String>? profile) {
     if (profile == null) return '';
-    final parts = [
+    final rawParts = [
       profile['house'],
       profile['street'],
       profile['landmark'],
@@ -129,12 +145,28 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       profile['state'],
     ].where((p) => p != null && p.trim().isNotEmpty).map((p) => p!.trim()).toList();
 
-    final pincode = profile['pincode']?.trim() ?? '';
-    if (parts.isEmpty && pincode.isEmpty) return '';
-    if (pincode.isNotEmpty) {
-      return '${parts.join(', ')} - $pincode';
+    if (rawParts.isEmpty && (profile['pincode']?.trim().isEmpty ?? true)) return '';
+
+    // Smart deduplication: avoid appending city/state if already present in house/street
+    final List<String> distinctParts = [];
+    for (final part in rawParts) {
+      final partLower = part.toLowerCase();
+      final alreadyCovered = distinctParts.any((existing) {
+        final existingLower = existing.toLowerCase();
+        return existingLower == partLower ||
+            existingLower.contains(partLower);
+      });
+      if (!alreadyCovered) {
+        distinctParts.add(part);
+      }
     }
-    return parts.join(', ');
+
+    final pincode = profile['pincode']?.trim() ?? '';
+    String formatted = distinctParts.join(', ');
+    if (pincode.isNotEmpty && !formatted.contains(pincode)) {
+      formatted = '$formatted - $pincode';
+    }
+    return formatted;
   }
 
   Widget _buildDeliveryAddressCard(BuildContext context) {
@@ -1788,6 +1820,130 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       }
       return;
     }
+
+    // Ensure customer has entered name and phone before buying
+    if (!await _ensureCustomerContactDetails(context)) return;
+
+    // Real-time stock verification from Database
+    try {
+      final pid = product['id'];
+      if (pid != null) {
+        final res = await SupabaseService.client
+            .from('products')
+            .select('current_stock')
+            .eq('id', pid)
+            .maybeSingle();
+        if (res != null) {
+          final num liveStock = (res['current_stock'] as num?) ?? 0;
+          product['stock'] = liveStock;
+          if (liveStock < qty) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    liveStock <= 0
+                        ? 'Sorry, "${product['name'] ?? 'This item'}" is now out of stock.'
+                        : 'Only $liveStock units available in stock (you requested $qty).',
+                  ),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[Shop] Buy now live stock check error: $e');
+    }
+
+    // Pincode restriction check for delivery
+    if (_deliveryMethod == 'delivery' &&
+        _isDeliveryPincodeRestricted &&
+        !_isCustomerPincodeServiceable) {
+      final customerPincode = _savedCustomerProfile?['pincode']?.trim() ?? '';
+      final bool? switchPickup = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.location_off_rounded, color: Colors.orange, size: 24),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('Delivery Unavailable', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          content: Text(
+            customerPincode.isNotEmpty
+                ? 'Doorstep delivery is currently not serviceable for pincode $customerPincode.\n\n'
+                  'Allowed pincodes: ${_allowedDeliveryPincodesList.join(', ')}.\n\n'
+                  'Would you like to switch to Store Pickup or update your address?'
+                : 'Please enter a serviceable delivery pincode to continue with delivery, or switch to Store Pickup.',
+            style: const TextStyle(fontSize: 13.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx, false);
+                _showDeliveryOptionsModal(context);
+              },
+              child: const Text('Change Address'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Switch to Pickup'),
+            ),
+          ],
+        ),
+      );
+      if (switchPickup == true) {
+        setState(() => _deliveryMethod = 'pickup');
+      } else {
+        return;
+      }
+    }
+
+    // Anti-fraud: Enforce minimum ₹100 order value for home delivery
+    if (_deliveryMethod == 'delivery' && _calculateTotal() < 100) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.shopping_bag_outlined, color: Colors.orange),
+                SizedBox(width: 8),
+                Expanded(child: Text('Minimum Order Value')),
+              ],
+            ),
+            content: Text(
+              'Home delivery requires a minimum order value of ₹100.00.\n'
+              'Current total: ₹${_calculateTotal().toStringAsFixed(2)}.\n\n'
+              'Please add more items to your cart or choose Store Pickup.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Add Items'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  setState(() => _deliveryMethod = 'pickup');
+                  _proceedToCheckout(context);
+                },
+                child: const Text('Switch to Pickup'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
     final num stock = (product['stock'] as num?) ?? 0;
     if (stock <= 0) {
       if (mounted) {
@@ -1886,6 +2042,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     final phoneCtrl = TextEditingController(
       text: _savedCustomerProfile?['phone'] ?? '',
     );
+    final utrCtrl = TextEditingController();
+    File? selectedProof;
     if (nameCtrl.text.isEmpty || phoneCtrl.text.isEmpty) {
       ShopCustomerStorage.loadSavedProfile().then((prof) {
         if (prof['name']?.isNotEmpty == true && nameCtrl.text.isEmpty) {
@@ -2139,45 +2297,261 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            icon: const Icon(Icons.close),
-                            label: const Text('Close'),
+                    const SizedBox(height: 12),
+                    // UPI Confirmation Details: UTR + Screenshot (Option A)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(ctx)
+                              .dividerColor
+                              .withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.verified_outlined,
+                                size: 16,
+                                color: Theme.of(ctx).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Confirm Payment Details',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12.5,
+                                  color: Theme.of(ctx).colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Paid via UPI app or QR? Enter the UTR / Ref number or attach a screenshot to verify faster.',
+                            style: Theme.of(ctx)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(fontSize: 11),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: utrCtrl,
+                            keyboardType: TextInputType.text,
+                            decoration: InputDecoration(
+                              labelText: 'UPI Reference / UTR No. (Optional)',
+                              hintText: '12-digit Ref No. from UPI app',
+                              isDense: true,
+                              prefixIcon: const Icon(Icons.tag, size: 18),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (selectedProof != null) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(ctx)
+                                    .colorScheme
+                                    .primaryContainer
+                                    .withValues(alpha: 0.25),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Theme.of(ctx)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Image.file(
+                                      selectedProof!,
+                                      width: 32,
+                                      height: 32,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.image, size: 32),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Screenshot attached',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        Text(
+                                          selectedProof!.path
+                                              .split(Platform.pathSeparator)
+                                              .last,
+                                          style: Theme.of(ctx)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(fontSize: 10),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.close,
+                                      size: 18,
+                                      color: Colors.redAccent,
+                                    ),
+                                    tooltip: 'Remove',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () => setSheetState(
+                                      () => selectedProof = null,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ] else ...[
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () async {
+                                  final file = await _pickPaymentScreenshot();
+                                  if (file != null) {
+                                    setSheetState(() => selectedProof = file);
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.add_photo_alternate_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text(
+                                  'Attach Payment Screenshot (Optional)',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          HapticFeedback.mediumImpact();
+                          Navigator.of(ctx).pop();
+                          final name = nameCtrl.text.trim().isNotEmpty
+                              ? nameCtrl.text.trim()
+                              : (_savedCustomerProfile?['name']
+                                          ?.isNotEmpty ==
+                                      true
+                                  ? _savedCustomerProfile!['name']!
+                                  : 'Walk-in Customer');
+                          final phone = phoneCtrl.text.trim().isNotEmpty
+                              ? phoneCtrl.text.trim()
+                              : (_savedCustomerProfile?['phone']);
+                          await _completeBuyNowSaleWithProof(
+                            ctx,
+                            checkoutId,
+                            total,
+                            product,
+                            qty,
+                            selectedProof,
+                            utr: utrCtrl.text.trim(),
+                            customerName: name,
+                            customerPhone: phone,
+                          );
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF059669),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: () async {
-                              final file = await _pickPaymentScreenshot();
-                              if (file == null) return;
-                              if (mounted) Navigator.of(ctx).pop();
-                              final name = nameCtrl.text.trim().isNotEmpty
-                                  ? nameCtrl.text.trim()
-                                  : 'Walk-in Customer';
-                              final phone = phoneCtrl.text.trim().isNotEmpty
-                                  ? phoneCtrl.text.trim()
-                                  : null;
-                              await _completeBuyNowSaleWithProof(
-                                ctx,
-                                checkoutId,
-                                total,
-                                product,
-                                qty,
-                                file,
-                                customerName: name,
-                                customerPhone: phone,
-                              );
-                            },
-                            icon: const Icon(Icons.upload_file),
-                            label: const Text('Upload Proof'),
+                        icon: const Icon(Icons.check_circle_outline, size: 18),
+                        label: const Text(
+                          '✓  I Have Paid • Place Order',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
                           ),
                         ),
-                      ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    // Option to switch to COD / Store Pickup
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          _placeOfflineBuyNowOrder(
+                            context,
+                            product: product,
+                            qty: qty,
+                            isCod: _deliveryMethod == 'delivery',
+                          );
+                        },
+                        icon: Icon(
+                          _deliveryMethod == 'delivery'
+                              ? Icons.local_shipping_outlined
+                              : Icons.storefront_outlined,
+                          size: 15,
+                        ),
+                        label: Text(
+                          _deliveryMethod == 'delivery'
+                              ? 'Or Pay via Cash on Delivery (COD)'
+                              : 'Or Pay at Store Counter',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                    Center(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: Text(
+                          'Cancel / Pay Later',
+                          style: TextStyle(
+                            color: Theme.of(ctx).textTheme.bodySmall?.color,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -3779,6 +4153,316 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     );
   }
 
+  void _showDeliveryOptionsModal(
+    BuildContext context,
+    StateSetter setCheckoutState,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (bctx) {
+        return StatefulBuilder(
+          builder: (bctx, setModalState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color:
+                            Theme.of(bctx).dividerColor.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Delivery Options',
+                    style: Theme.of(bctx).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Home Delivery option
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: _deliveryMethod == 'delivery'
+                            ? Theme.of(bctx).colorScheme.primary
+                            : Theme.of(bctx).dividerColor.withValues(alpha: 0.3),
+                        width: _deliveryMethod == 'delivery' ? 1.5 : 1,
+                      ),
+                    ),
+                    child: ListTile(
+                      onTap: () {
+                        setState(() => _deliveryMethod = 'delivery');
+                        setCheckoutState(() {});
+                        setModalState(() {});
+                      },
+                      leading: Icon(
+                        Icons.local_shipping_outlined,
+                        color: _deliveryMethod == 'delivery'
+                            ? Theme.of(bctx).colorScheme.primary
+                            : null,
+                      ),
+                      title: const Text('Home Delivery'),
+                      subtitle: Text(
+                        _hasCustomerAddress
+                            ? _formatCustomerAddress(_savedCustomerProfile)
+                            : 'Set delivery address',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(bctx).textTheme.bodySmall,
+                      ),
+                      trailing: Radio<String>(
+                        value: 'delivery',
+                        groupValue: _deliveryMethod,
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _deliveryMethod = val);
+                            setCheckoutState(() {});
+                            setModalState(() {});
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  if (_deliveryMethod == 'delivery') ...[
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          ShopAccountSheets.showProfileSheet(
+                            context,
+                            onSaved: () async {
+                              await _loadCustomerProfile();
+                              if (mounted) {
+                                setState(() {});
+                                setCheckoutState(() {});
+                                setModalState(() {});
+                              }
+                            },
+                          );
+                        },
+                        icon: const Icon(
+                          Icons.edit_location_alt_outlined,
+                          size: 16,
+                        ),
+                        label: const Text('Edit Delivery Address'),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  // Store Pickup option
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: _deliveryMethod == 'pickup'
+                            ? Theme.of(bctx).colorScheme.primary
+                            : Theme.of(bctx).dividerColor.withValues(alpha: 0.3),
+                        width: _deliveryMethod == 'pickup' ? 1.5 : 1,
+                      ),
+                    ),
+                    child: ListTile(
+                      onTap: () {
+                        setState(() => _deliveryMethod = 'pickup');
+                        setCheckoutState(() {});
+                        setModalState(() {});
+                      },
+                      leading: Icon(
+                        Icons.storefront_outlined,
+                        color: _deliveryMethod == 'pickup'
+                            ? Theme.of(bctx).colorScheme.primary
+                            : null,
+                      ),
+                      title: const Text('Store Pickup'),
+                      subtitle: Text(
+                        'Collect in 15–30 mins at $_businessName',
+                        style: Theme.of(bctx).textTheme.bodySmall,
+                      ),
+                      trailing: Radio<String>(
+                        value: 'pickup',
+                        groupValue: _deliveryMethod,
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _deliveryMethod = val);
+                            setCheckoutState(() {});
+                            setModalState(() {});
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(bctx).pop(),
+                      child: const Text('Done'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Ensure guest or signed-in customer has entered name and valid 10-digit mobile number
+  Future<bool> _ensureCustomerContactDetails(BuildContext context) async {
+    final currentPhone = (_savedCustomerProfile?['phone'] ?? '').trim();
+    final currentName = (_savedCustomerProfile?['name'] ?? '').trim();
+
+    if (currentPhone.length >= 10 && currentName.isNotEmpty) {
+      return true;
+    }
+
+    final nameCtrl = TextEditingController(text: currentName);
+    final phoneCtrl = TextEditingController(text: currentPhone);
+    final formKey = GlobalKey<FormState>();
+
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).dividerColor.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.contact_phone_outlined,
+                      color: Theme.of(ctx).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Contact Details',
+                      style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Please provide your name & mobile number for order delivery coordination.',
+                  style: Theme.of(ctx).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    labelText: 'Your Full Name',
+                    prefixIcon: const Icon(Icons.person_outline),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Please enter your name'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                  decoration: InputDecoration(
+                    labelText: 'Mobile Number (WhatsApp)',
+                    hintText: '10-digit number',
+                    prefixText: '+91 ',
+                    prefixIcon: const Icon(Icons.phone_outlined),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Please enter your mobile number';
+                    }
+                    if (v.trim().length != 10) {
+                      return 'Please enter a valid 10-digit number';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () async {
+                      if (formKey.currentState?.validate() != true) return;
+                      await ShopCustomerStorage.saveProfile(
+                        name: nameCtrl.text.trim(),
+                        phone: phoneCtrl.text.trim(),
+                      );
+                      await _loadCustomerProfile();
+                      if (ctx.mounted) Navigator.pop(ctx, true);
+                    },
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Save & Continue',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    return saved == true;
+  }
+
   Future<void> _proceedToCheckout(BuildContext context) async {
     if (_businessProfile != null && !_businessProfile!.isWritable) {
       if (mounted) {
@@ -3821,353 +4505,918 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     }
     if (_cartItems.isEmpty) return;
 
+    // Ensure customer has entered name and phone before checking out
+    if (!await _ensureCustomerContactDetails(context)) return;
+
+    // Fix 1: Enforce unserviceable pincode restriction at checkout
+    if (_deliveryMethod == 'delivery' &&
+        _isDeliveryPincodeRestricted &&
+        !_isCustomerPincodeServiceable) {
+      final customerPincode = _savedCustomerProfile?['pincode']?.trim() ?? '';
+      final bool? switchPickup = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.location_off_rounded, color: Colors.orange, size: 24),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('Delivery Unavailable', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          content: Text(
+            customerPincode.isNotEmpty
+                ? 'Doorstep delivery is currently not serviceable for pincode $customerPincode.\n\n'
+                  'Allowed pincodes: ${_allowedDeliveryPincodesList.join(', ')}.\n\n'
+                  'Would you like to switch to Store Pickup or update your address?'
+                : 'Please enter a serviceable delivery pincode to continue with delivery, or switch to Store Pickup.',
+            style: const TextStyle(fontSize: 13.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx, false);
+                _showDeliveryOptionsModal(context);
+              },
+              child: const Text('Change Address'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Switch to Pickup'),
+            ),
+          ],
+        ),
+      );
+      if (switchPickup == true) {
+        setState(() => _deliveryMethod = 'pickup');
+      } else {
+        return;
+      }
+    }
+
+    // Anti-fraud: Enforce minimum ₹100 order value for home delivery
+    if (_deliveryMethod == 'delivery' && _calculateTotal() < 100) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.shopping_bag_outlined, color: Colors.orange),
+                SizedBox(width: 8),
+                Expanded(child: Text('Minimum Order Value')),
+              ],
+            ),
+            content: Text(
+              'Home delivery requires a minimum order value of ₹100.00.\n'
+              'Current total: ₹${_calculateTotal().toStringAsFixed(2)}.\n\n'
+              'Please add more items to your cart or choose Store Pickup.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Add Items'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  setState(() => _deliveryMethod = 'pickup');
+                  _proceedToCheckout(context);
+                },
+                child: const Text('Switch to Pickup'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    // Fix 3: Real-time stock freshness check from database
+    try {
+      final productIds = _cartItems
+          .map((item) => item['id'])
+          .whereType<int>()
+          .toList();
+      if (productIds.isNotEmpty) {
+        final res = await SupabaseService.client
+            .from('products')
+            .select('id, name, current_stock')
+            .filter('id', 'in', productIds);
+
+        final List<String> stockIssues = [];
+        bool hasStockChanges = false;
+
+        for (final row in (res as List)) {
+          final pid = row['id'] as int?;
+          final pName = row['name'] as String? ?? 'Item';
+          final num liveStock = (row['current_stock'] as num?) ?? 0;
+
+          final cartItem = _cartItems.where((it) => it['id'] == pid).firstOrNull;
+          if (cartItem != null) {
+            final int cartQty = (cartItem['qty'] as int?) ?? 1;
+            if (cartItem['stock'] != liveStock) {
+              cartItem['stock'] = liveStock;
+              hasStockChanges = true;
+            }
+            if (liveStock <= 0) {
+              stockIssues.add('• "$pName" is out of stock.');
+            } else if (cartQty > liveStock) {
+              stockIssues.add('• "$pName" only has $liveStock available (cart has $cartQty).');
+            }
+          }
+        }
+
+        if (hasStockChanges) {
+          setState(() {});
+        }
+
+        if (stockIssues.isNotEmpty) {
+          if (mounted) {
+            await showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.inventory_2_outlined, color: Colors.red, size: 24),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text('Stock Unavailable', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Some items in your cart exceed currently available inventory. Please adjust your cart before checkout:',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    ...stockIssues.map(
+                      (msg) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          msg,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Update Cart'),
+                  ),
+                ],
+              ),
+            );
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('[Shop] Pre-checkout stock check error: $e');
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.9,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-              ),
-              child: Column(
-                children: [
-                  // Handle
-                  Center(
-                    child: Container(
-                      margin: const EdgeInsets.only(top: 12, bottom: 8),
-                      width: 48,
-                      height: 5,
-                      decoration: BoxDecoration(
-                        color: Theme.of(
-                          context,
-                        ).dividerColor.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(2.5),
-                      ),
+        return StatefulBuilder(
+          builder: (context, setCheckoutState) {
+            return DraggableScrollableSheet(
+              initialChildSize: 0.88,
+              minChildSize: 0.5,
+              maxChildSize: 0.95,
+              builder: (context, scrollController) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
                     ),
                   ),
+                  child: Column(
+                    children: [
+                      // Handle
+                      Center(
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 12, bottom: 8),
+                          width: 48,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).dividerColor.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(2.5),
+                          ),
+                        ),
+                      ),
 
-                  // Header
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                      // Header
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              'Checkout',
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Checkout',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  '${_cartItems.length} ${_cartItems.length == 1 ? "item" : "items"}',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ],
                             ),
-                            Text(
-                              '${_cartItems.length} items',
-                              style: Theme.of(context).textTheme.bodyMedium,
+                            IconButton.filledTonal(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.close),
                             ),
                           ],
                         ),
-                        IconButton.filledTonal(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
+                      ),
+                      const Divider(height: 1),
 
-                  // Scrollable Content
-                  Expanded(
-                    child: ListView(
-                      controller: scrollController,
-                      padding: const EdgeInsets.all(24),
-                      children: [
-                        // Delivery Method & Address/Pickup Confirmation Banner
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 20),
-                          padding: const EdgeInsets.all(12),
+                      // Account Status Bar (Signed-in vs Guest)
+                      Builder(builder: (ctx) {
+                        final user = SupabaseService.currentUser;
+                        final bool isSignedIn = user != null;
+                        final userMeta = user?.userMetadata ?? {};
+                        final String accountName =
+                            (userMeta['full_name'] as String?) ??
+                                (userMeta['name'] as String?) ??
+                                user?.email?.split('@').first ??
+                                (_savedCustomerProfile?['name']
+                                            ?.trim()
+                                            .isNotEmpty ==
+                                        true
+                                    ? _savedCustomerProfile!['name']!.trim()
+                                    : '');
+
+                        return Container(
+                          margin: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerHighest
-                                .withValues(alpha: 0.5),
-                            borderRadius: BorderRadius.circular(14),
+                            color: isSignedIn
+                                ? Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer
+                                    .withValues(alpha: 0.25)
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest
+                                    .withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: Theme.of(context)
-                                  .dividerColor
-                                  .withValues(alpha: 0.15),
+                              color: isSignedIn
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: 0.3)
+                                  : Theme.of(context)
+                                      .dividerColor
+                                      .withValues(alpha: 0.15),
                             ),
                           ),
                           child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(
-                                  _deliveryMethod == 'delivery'
-                                      ? Icons.local_shipping_outlined
-                                      : Icons.storefront_outlined,
-                                  color: Theme.of(context).colorScheme.primary,
-                                  size: 20,
+                              Icon(
+                                isSignedIn
+                                    ? Icons.account_circle_rounded
+                                    : Icons.person_outline_rounded,
+                                size: 18,
+                                color: isSignedIn
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.color,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  isSignedIn
+                                      ? 'Signed in as $accountName'
+                                      : 'Ordering as Guest • Fast checkout',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: isSignedIn
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                    color: isSignedIn
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.color,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(
-                                          _deliveryMethod == 'delivery'
-                                              ? 'Home Delivery'
-                                              : 'Store Pickup',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13.5,
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(
-                                              0xFF10B981,
-                                            ).withValues(alpha: 0.15),
-                                            borderRadius:
-                                                BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            _deliveryMethod == 'delivery'
-                                                ? (_deliveryFee > 0
-                                                    ? '₹${_deliveryFee.toStringAsFixed(0)}'
-                                                    : 'FREE')
-                                                : '⚡ READY IN 15-30M',
-                                            style: const TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w800,
-                                              color: Color(0xFF10B981),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      _deliveryMethod == 'delivery'
-                                          ? (_hasCustomerAddress
-                                              ? '${_savedCustomerProfile?['name']?.isNotEmpty == true ? "${_savedCustomerProfile!['name']} • " : ""}${_formatCustomerAddress(_savedCustomerProfile)}'
-                                              : 'Standard Doorstep Delivery')
-                                          : (_businessProfile?.address?.isNotEmpty == true
-                                              ? '$_businessName • ${_businessProfile!.address!}'
-                                              : 'Raj Electricals & Hardware, Ghaziabad'),
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        height: 1.25,
-                                        color: Theme.of(context)
-                                            .textTheme
-                                            .bodyMedium
-                                            ?.color
-                                            ?.withValues(alpha: 0.8),
-                                      ),
-                                    ),
-                                  ],
+                              TextButton(
+                                onPressed: () {
+                                  ShopAccountSheets.showAccountSheet(
+                                    context,
+                                    businessId: _currentBusinessId,
+                                    businessName: _businessName,
+                                    businessPhone: _businessProfile?.phone,
+                                    businessWhatsapp: _businessProfile?.phone,
+                                    onStateChanged: () async {
+                                      await _loadCustomerProfile();
+                                      if (mounted) {
+                                        setState(() {});
+                                        setCheckoutState(() {});
+                                      }
+                                    },
+                                  );
+                                },
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  minimumSize: Size.zero,
+                                ),
+                                child: Text(
+                                  isSignedIn ? 'Account' : 'Sign In',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        Text(
-                          'Order Summary',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 16),
-                        // Order List
-                        ..._cartItems.map((item) {
-                          final double price = (item['price'] as num)
-                              .toDouble();
-                          final int qty = (item['qty'] as int);
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '${item['qty']}x ${item['name']}',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodyLarge,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                        );
+                      }),
+
+                      // Scrollable Content
+                      Expanded(
+                        child: ListView(
+                          controller: scrollController,
+                          padding: const EdgeInsets.all(20),
+                          children: [
+                            // Interactive Delivery Method & Address Card
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () => _showDeliveryOptionsModal(
+                                  context,
+                                  setCheckoutState,
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest
+                                        .withValues(alpha: 0.4),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: Theme.of(context)
+                                          .dividerColor
+                                          .withValues(alpha: 0.2),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withValues(alpha: 0.12),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                        child: Icon(
+                                          _deliveryMethod == 'delivery'
+                                              ? Icons.local_shipping_outlined
+                                              : Icons.storefront_outlined,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment
+                                                      .spaceBetween,
+                                              children: [
+                                                Flexible(
+                                                  child: Text(
+                                                    _deliveryMethod == 'delivery'
+                                                        ? 'Home Delivery'
+                                                        : 'Store Pickup',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 13.5,
+                                                    ),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets
+                                                              .symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 2,
+                                                      ),
+                                                      decoration:
+                                                          BoxDecoration(
+                                                        color: const Color(
+                                                          0xFF10B981,
+                                                        ).withValues(
+                                                          alpha: 0.15,
+                                                        ),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(6),
+                                                      ),
+                                                      child: Text(
+                                                        _deliveryMethod ==
+                                                                'delivery'
+                                                            ? (_deliveryFee >
+                                                                    0
+                                                                ? '₹${_deliveryFee.toStringAsFixed(0)}'
+                                                                : 'FREE')
+                                                            : '⚡ 15-30 MINS',
+                                                        style:
+                                                            const TextStyle(
+                                                          fontSize: 9.5,
+                                                          fontWeight:
+                                                              FontWeight.w800,
+                                                          color: Color(
+                                                            0xFF10B981,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 6),
+                                                    const Text(
+                                                      'Change',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        color: Colors.blueAccent,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              _deliveryMethod == 'delivery'
+                                                  ? (_hasCustomerAddress
+                                                      ? '${_savedCustomerProfile?['name']?.isNotEmpty == true ? "${_savedCustomerProfile!['name']} • " : ""}${_formatCustomerAddress(_savedCustomerProfile)}'
+                                                      : 'Tap to add delivery address')
+                                                  : (_businessProfile
+                                                              ?.address
+                                                              ?.isNotEmpty ==
+                                                          true
+                                                      ? '$_businessName • ${_businessProfile!.address!}'
+                                                      : 'Raj Electricals & Hardware, Ghaziabad'),
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                height: 1.25,
+                                                color: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.color
+                                                    ?.withValues(alpha: 0.8),
+                                              ),
+                                              maxLines: 2,
+                                              overflow:
+                                                  TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                Text(
-                                  '₹${(price * qty).toStringAsFixed(2)}',
-                                  style: Theme.of(context).textTheme.bodyLarge
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                              ],
+                              ),
                             ),
-                          );
-                        }),
-                        const Divider(height: 32),
-
-                        // Bill Details
-                        if (_deliveryFee > 0) ...[
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Delivery Fee (${_deliveryMethod == 'delivery' ? 'Home Delivery' : 'Pickup'})',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                ),
-                                Text(
-                                  '₹${_deliveryFee.toStringAsFixed(2)}',
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const Divider(height: 16),
-                        ],
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
+                            const SizedBox(height: 18),
                             Text(
-                              'Total Amount',
-                              style: Theme.of(context).textTheme.titleLarge
+                              'Order Summary',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
                                   ?.copyWith(fontWeight: FontWeight.bold),
                             ),
-                            Text(
-                              _currencyFormat.format(_finalPayableTotal),
-                              style: Theme.of(context).textTheme.headlineSmall
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.orange,
+                            const SizedBox(height: 12),
+                            // Order List with 2-line title wrapping
+                            ..._cartItems.map((item) {
+                              final double price =
+                                  (item['price'] as num).toDouble();
+                              final int qty = (item['qty'] as int);
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                        vertical: 2,
+                                      ),
+                                      margin: const EdgeInsets.only(
+                                        top: 2,
+                                        right: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .surfaceContainerHighest,
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        '${item['qty']}x',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 11.5,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        '${item['name']}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      '₹${(price * qty).toStringAsFixed(2)}',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 14),
+
+                            // Structured Bill Details Box
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest
+                                    .withValues(alpha: 0.35),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: Theme.of(context)
+                                      .dividerColor
+                                      .withValues(alpha: 0.15),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Items Total (${_cartItems.length} ${_cartItems.length == 1 ? "item" : "items"})',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.color,
+                                            ),
+                                      ),
+                                      Text(
+                                        '₹${_calculateTotal().toStringAsFixed(2)}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                      ),
+                                    ],
                                   ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _deliveryMethod == 'delivery'
+                                            ? 'Delivery Fee'
+                                            : 'Pickup Handling',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              color: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.color,
+                                            ),
+                                      ),
+                                      Text(
+                                        _deliveryFee > 0
+                                            ? '₹${_deliveryFee.toStringAsFixed(2)}'
+                                            : 'FREE',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: _deliveryFee > 0
+                                              ? null
+                                              : const Color(0xFF10B981),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const Divider(height: 18),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Total Amount',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                      ),
+                                      Text(
+                                        _currencyFormat
+                                            .format(_finalPayableTotal),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                              color: Colors.orange,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+
+                            Text(
+                              'Payment Method',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // UPI Option (Vibrant & Highlighted)
+                            Card(
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                side: BorderSide(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: 0.35),
+                                  width: 1.5,
+                                ),
+                              ),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer
+                                  .withValues(alpha: 0.12),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 4,
+                                ),
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  _initiateUPIPayment(context);
+                                },
+                                leading: Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primaryContainer,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    Icons.qr_code_scanner,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onPrimaryContainer,
+                                    size: 22,
+                                  ),
+                                ),
+                                title: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Flexible(
+                                      child: Text(
+                                        'Pay via UPI',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981)
+                                            .withValues(alpha: 0.15),
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                      ),
+                                      child: const Text(
+                                        '⚡ INSTANT',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF10B981),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                subtitle: Text(
+                                  'Google Pay, PhonePe, Paytm, BHIM, etc.',
+                                  style:
+                                      Theme.of(context).textTheme.bodySmall,
+                                ),
+                                trailing: const Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 15,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+
+                            // Cash / Offline Option
+                            Card(
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                side: BorderSide(
+                                  color: Theme.of(context)
+                                      .dividerColor
+                                      .withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 4,
+                                ),
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  _placeOfflineCartOrder(
+                                    context,
+                                    isCod: _deliveryMethod == 'delivery',
+                                  );
+                                },
+                                leading: Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .secondaryContainer,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    _deliveryMethod == 'delivery'
+                                        ? Icons.local_shipping_outlined
+                                        : Icons.storefront_outlined,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSecondaryContainer,
+                                    size: 22,
+                                  ),
+                                ),
+                                title: Row(
+                                  children: [
+                                    Text(
+                                      _deliveryMethod == 'delivery'
+                                          ? 'Pay on Delivery'
+                                          : 'Pay at Store Counter',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber
+                                            .withValues(alpha: 0.18),
+                                        borderRadius:
+                                            BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        _deliveryMethod == 'delivery'
+                                            ? 'CASH OR UPI'
+                                            : 'AT STORE',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.amber[800],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                subtitle: Text(
+                                  _deliveryMethod == 'delivery'
+                                      ? 'Pay with cash or scan UPI QR code upon arrival at your doorstep'
+                                      : 'Pay cash or UPI in person when collecting items',
+                                  style:
+                                      Theme.of(context).textTheme.bodySmall,
+                                ),
+                                trailing: const Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 15,
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 32),
-
-                        Text(
-                          'Payment Method',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // UPI Option
-                        Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(
-                              color: Theme.of(context).dividerColor,
-                            ),
-                          ),
-                          child: ListTile(
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              _initiateUPIPayment(context);
-                            },
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.primaryContainer,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Icons.qr_code_scanner,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onPrimaryContainer,
-                              ),
-                            ),
-                            title: const Text('Pay via UPI'),
-                            subtitle: Text(
-                              'Google Pay, PhonePe, Paytm, etc.',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            trailing: const Icon(
-                              Icons.arrow_forward_ios,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-
-                        // Cash Option
-                        Card(
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            side: BorderSide(
-                              color: Theme.of(context).dividerColor,
-                            ),
-                          ),
-                          child: ListTile(
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              _openCashReceiptDialog(context);
-                            },
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.secondaryContainer,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                Icons.money,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSecondaryContainer,
-                              ),
-                            ),
-                            title: const Text('Cash Payment'),
-                            subtitle: Text(
-                              'Pay at counter / cash register',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            trailing: const Icon(
-                              Icons.arrow_forward_ios,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
@@ -4176,6 +5425,21 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 
   Future<void> _initiateUPIPayment(BuildContext context) async {
+    if (_deliveryMethod == 'delivery' &&
+        _isDeliveryPincodeRestricted &&
+        !_isCustomerPincodeServiceable) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Delivery is unavailable for pincode ${_savedCustomerProfile?['pincode'] ?? ""}. Please choose Store Pickup.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     try {
       // Use app-managed static UPI VPA (no Supabase dependency)
       String upiId = 'pradeepsupergalaxy12@okicici';
@@ -4270,6 +5534,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     final phoneCtrl = TextEditingController(
       text: _savedCustomerProfile?['phone'] ?? '',
     );
+    final utrCtrl = TextEditingController();
+    File? selectedProof;
     if (nameCtrl.text.isEmpty || phoneCtrl.text.isEmpty) {
       ShopCustomerStorage.loadSavedProfile().then((prof) {
         if (prof['name']?.isNotEmpty == true && nameCtrl.text.isEmpty) {
@@ -4563,43 +5829,232 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            icon: const Icon(Icons.close),
-                            label: const Text('Close'),
+                    const SizedBox(height: 12),
+                    // UPI Confirmation Details: UTR + Screenshot (Option A)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .surfaceContainerHighest
+                            .withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(ctx)
+                              .dividerColor
+                              .withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.verified_outlined,
+                                size: 16,
+                                color: Theme.of(ctx).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Confirm Payment Details',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12.5,
+                                  color: Theme.of(ctx).colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Paid via UPI app or QR? Enter the UTR / Ref number or attach a screenshot to verify faster.',
+                            style: Theme.of(ctx)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(fontSize: 11),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: utrCtrl,
+                            keyboardType: TextInputType.text,
+                            decoration: InputDecoration(
+                              labelText: 'UPI Reference / UTR No. (Optional)',
+                              hintText: '12-digit Ref No. from UPI app',
+                              isDense: true,
+                              prefixIcon: const Icon(Icons.tag, size: 18),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (selectedProof != null) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(ctx)
+                                    .colorScheme
+                                    .primaryContainer
+                                    .withValues(alpha: 0.25),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Theme.of(ctx)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Image.file(
+                                      selectedProof!,
+                                      width: 32,
+                                      height: 32,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          const Icon(Icons.image, size: 32),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Screenshot attached',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        Text(
+                                          selectedProof!.path
+                                              .split(Platform.pathSeparator)
+                                              .last,
+                                          style: Theme.of(ctx)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(fontSize: 10),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.close,
+                                      size: 18,
+                                      color: Colors.redAccent,
+                                    ),
+                                    tooltip: 'Remove',
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () => setSheetState(
+                                      () => selectedProof = null,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ] else ...[
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () async {
+                                  final file = await _pickPaymentScreenshot();
+                                  if (file != null) {
+                                    setSheetState(() => selectedProof = file);
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.add_photo_alternate_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text(
+                                  'Attach Payment Screenshot (Optional)',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          HapticFeedback.mediumImpact();
+                          Navigator.of(ctx).pop();
+                          final name = nameCtrl.text.trim().isNotEmpty
+                              ? nameCtrl.text.trim()
+                              : (_savedCustomerProfile?['name']
+                                          ?.isNotEmpty ==
+                                      true
+                                  ? _savedCustomerProfile!['name']!
+                                  : 'Walk-in Customer');
+                          final phone = phoneCtrl.text.trim().isNotEmpty
+                              ? phoneCtrl.text.trim()
+                              : (_savedCustomerProfile?['phone']);
+                          await _completeCartSaleWithProof(
+                            context,
+                            checkoutId,
+                            total,
+                            selectedProof,
+                            utr: utrCtrl.text.trim(),
+                            customerName: name,
+                            customerPhone: phone,
+                          );
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF059669),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: () async {
-                              final file = await _pickPaymentScreenshot();
-                              if (file == null) return;
-                              if (mounted) Navigator.of(ctx).pop();
-                              final name = nameCtrl.text.trim().isNotEmpty
-                                  ? nameCtrl.text.trim()
-                                  : 'Walk-in Customer';
-                              final phone = phoneCtrl.text.trim().isNotEmpty
-                                  ? phoneCtrl.text.trim()
-                                  : null;
-                              await _completeCartSaleWithProof(
-                                context,
-                                checkoutId,
-                                total,
-                                file,
-                                customerName: name,
-                                customerPhone: phone,
-                              );
-                            },
-                            icon: const Icon(Icons.upload_file),
-                            label: const Text('Upload Proof'),
+                        icon: const Icon(Icons.check_circle_outline, size: 18),
+                        label: const Text(
+                          '✓  I Have Paid • Place Order',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
                           ),
                         ),
-                      ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Center(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: Text(
+                          'Cancel / Pay Later',
+                          style: TextStyle(
+                            color: Theme.of(ctx).textTheme.bodySmall?.color,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -4659,11 +6114,355 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     }
   }
 
+  // Context-aware Cash on Delivery (COD) / Pay at Store Counter order placement
+  Future<void> _placeOfflineCartOrder(
+    BuildContext context, {
+    required bool isCod,
+  }) async {
+    final activeName = (_savedCustomerProfile?['name'] ?? '').trim().isNotEmpty
+        ? _savedCustomerProfile!['name']!.trim()
+        : 'Customer';
+    final activePhone = (_savedCustomerProfile?['phone'] ?? '').trim();
+    final activeAddress = _formatCustomerAddress(_savedCustomerProfile);
+
+    if (isCod &&
+        _isDeliveryPincodeRestricted &&
+        !_isCustomerPincodeServiceable) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Pay on Delivery is unavailable for pincode ${_savedCustomerProfile?['pincode'] ?? ""}. Please select Store Pickup.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (isCod && activeAddress.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Please add your delivery address before placing Cash on Delivery order.',
+            ),
+            action: SnackBarAction(
+              label: 'Add Address',
+              textColor: Colors.orangeAccent,
+              onPressed: () {
+                ShopAccountSheets.showProfileSheet(
+                  context,
+                  onSaved: () => _loadCustomerProfile(),
+                );
+              },
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final total = _finalPayableTotal;
+    final checkoutId =
+        '${isCod ? "COD" : "CASH"}-${DateTime.now().millisecondsSinceEpoch}';
+    final deliveryPin =
+        (1000 + (DateTime.now().millisecondsSinceEpoch % 9000)).toString();
+
+    // Show quick confirmation
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              isCod ? Icons.local_shipping_outlined : Icons.storefront_outlined,
+              color: Theme.of(ctx).colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                isCod
+                    ? 'Confirm Pay on Delivery'
+                    : 'Confirm Store Pickup',
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isCod
+                  ? 'Your order of ${_currencyFormat.format(total)} will be delivered to your doorstep. You can pay with Cash or scan UPI QR upon arrival.'
+                  : 'Your order of ${_currencyFormat.format(total)} will be kept ready at the store counter. You can pay cash or UPI when picking up.',
+              style: Theme.of(ctx).textTheme.bodyMedium,
+            ),
+            if (isCod) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border:
+                      Border.all(color: Colors.amber.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.pin_outlined,
+                        size: 20, color: Colors.amber[800]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Delivery PIN: $deliveryPin',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14.5,
+                              letterSpacing: 1.2,
+                              color: Colors.amber[900],
+                            ),
+                          ),
+                          const Text(
+                            'Share this PIN with the delivery person when receiving package.',
+                            style: TextStyle(fontSize: 10.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Theme.of(ctx)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Customer: $activeName${activePhone.isNotEmpty ? ' ($activePhone)' : ''}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (isCod && activeAddress.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Deliver to: $activeAddress',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(ctx).textTheme.bodySmall?.color,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm Order'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final items = _cartItems
+          .map(
+            (e) => {
+              'product_id': e['id'],
+              'quantity': (e['qty'] as num?)?.toInt() ?? 1,
+              'price_per_unit': (e['price'] as num).toDouble(),
+            },
+          )
+          .toList();
+
+      final payMethod = isCod ? 'cod' : 'cash';
+      final saleId = await SupabaseService.createSaleWithItems(
+        customerName: activeName,
+        customerPhone: activePhone.isNotEmpty ? activePhone : null,
+        paymentMethod: payMethod,
+        totalAmount: total,
+        transactionId: checkoutId,
+        amountPaid: 0.0,
+        status: 'pending',
+        items: items,
+      );
+
+      String trackingToken = 'trk_$checkoutId';
+      int orderId = saleId ?? DateTime.now().millisecondsSinceEpoch;
+
+      if (_currentBusinessId != null) {
+        try {
+          String mapsLink = '';
+          if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
+              _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
+            mapsLink =
+                ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
+          }
+          final fulfillmentNotes = isCod
+              ? 'Home Delivery (Pay on Delivery: Cash/UPI) | PIN: $deliveryPin | Deliver to: $activeName ($activePhone) | Address: $activeAddress$mapsLink'
+              : 'Store Pickup (Pay at Counter) | Customer: $activeName ($activePhone) | Store Counter Collection';
+
+          final shopOrder = await SupabaseService.createShopOrder(
+            businessId: _currentBusinessId!,
+            customerId: SupabaseService.currentUser?.id,
+            customerName: activeName,
+            customerPhone: activePhone.isNotEmpty ? activePhone : null,
+            paymentMethod: payMethod,
+            transactionId: checkoutId,
+            totalAmount: total,
+            notes: fulfillmentNotes,
+            saleId: saleId,
+            items: _cartItems
+                .map(
+                  (e) => {
+                    'product_id': e['id'],
+                    'product_name': e['name'] ?? 'Item',
+                    'quantity': (e['qty'] as num?)?.toInt() ?? 1,
+                    'unit_price': (e['price'] as num).toDouble(),
+                    'total_price':
+                        ((e['price'] as num).toDouble()) *
+                        ((e['qty'] as num?)?.toInt() ?? 1),
+                  },
+                )
+                .toList(),
+          );
+          if (shopOrder != null) {
+            if (shopOrder['id'] != null) orderId = shopOrder['id'] as int;
+            if (shopOrder['tracking_token'] != null) {
+              trackingToken = shopOrder['tracking_token'] as String;
+            }
+          }
+        } catch (e) {
+          debugPrint('[Shop] createShopOrder offline error: $e');
+        }
+      }
+
+      await ShopCustomerStorage.saveOrderLocally(
+        orderId: orderId,
+        trackingToken: trackingToken,
+        customerName: activeName,
+        customerPhone: activePhone.isNotEmpty ? activePhone : null,
+        totalAmount: total,
+        status: isCod ? 'pending_cod' : 'pending_pickup',
+        createdAt: DateTime.now().toIso8601String(),
+        items: List<Map<String, dynamic>>.from(_cartItems),
+      );
+
+      final receiptItems = _cartItems
+          .map(
+            (e) => ReceiptItem(
+              name: e['name'] ?? 'Item',
+              quantity: (e['qty'] as num?)?.toInt() ?? 1,
+              pricePerUnit: (e['price'] as num).toDouble(),
+            ),
+          )
+          .toList();
+
+      final receipt = ReceiptData(
+        saleId: saleId?.toString() ?? orderId.toString(),
+        customerName: activeName,
+        customerPhone: activePhone.isNotEmpty ? activePhone : null,
+        transactionId: checkoutId,
+        items: receiptItems,
+        subTotal: total,
+        discount: 0,
+        finalTotal: total,
+        paymentMethod: payMethod,
+        saleDate: DateTime.now(),
+        status: isCod ? 'Pending (COD)' : 'Pending (Pay at Counter)',
+      );
+
+      await ReceiptService.shareReceiptPdf(receipt);
+
+      if (mounted) {
+        setState(() {
+          _cartItems.clear();
+          _cartCount = 0;
+        });
+      }
+
+      navigator.pop(); // Pop loading
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            isCod
+                ? 'Pay on Delivery order placed! (Order #$orderId)'
+                : 'Store pickup order placed! (Order #$orderId)',
+          ),
+          backgroundColor: const Color(0xFF059669),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: 'Track Order',
+            textColor: Colors.white,
+            onPressed: () {
+              ShopAccountSheets.showTrackOrderSheet(
+                context,
+                businessId: _currentBusinessId,
+                businessName: _businessName,
+                businessPhone: _businessProfile?.phone,
+                businessWhatsapp: _businessProfile?.phone,
+                initialQuery: trackingToken,
+              );
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      navigator.pop(); // Pop loading
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Failed to place order: $e')),
+      );
+    }
+  }
+
   Future<void> _completeCartSaleWithProof(
     BuildContext context,
     String checkoutId,
     double total,
-    File proof, {
+    File? proof, {
+    String? utr,
     String customerName = 'Walk-in Customer',
     String? customerPhone,
   }) async {
@@ -4688,15 +6487,62 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           )
           .toList();
 
-      // Upload proof first (best-effort)
-      final proofUrl = await _uploadPaymentProof(proof, checkoutId);
+      // Upload proof first if provided (best-effort)
+      String? proofUrl;
+      if (proof != null) {
+        proofUrl = await _uploadPaymentProof(proof, checkoutId);
+      }
+
+      // Anti-fraud: Block duplicate UTR submission across non-cancelled orders
+      if (utr != null && utr.trim().length >= 8 && _currentBusinessId != null) {
+        final cleanUtr = utr.trim();
+        final dup = await SupabaseService.client
+            .from('shop_orders')
+            .select('id, status')
+            .eq('business_id', _currentBusinessId!)
+            .eq('transaction_id', cleanUtr)
+            .neq('status', 'cancelled')
+            .maybeSingle();
+        if (dup != null) {
+          navigator.pop(); // Pop loading
+          if (context.mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.red),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('Duplicate UPI Reference')),
+                  ],
+                ),
+                content: Text(
+                  'The UPI reference number ($cleanUtr) has already been submitted for another order.\n\n'
+                  'Please provide the unique reference number from your payment app.',
+                ),
+                actions: [
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      final String effectiveTxId =
+          (utr != null && utr.trim().isNotEmpty) ? utr.trim() : checkoutId;
 
       final saleId = await SupabaseService.createSaleWithItems(
         customerName: customerName,
         customerPhone: customerPhone,
         paymentMethod: 'upi',
         totalAmount: total,
-        transactionId: checkoutId,
+        transactionId: effectiveTxId,
         amountPaid: total,
         status: 'pending',
         paymentProofUrl: proofUrl,
@@ -4724,9 +6570,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               mapsLink =
                   ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
             }
-            final fulfillmentNotes = _deliveryMethod == 'delivery'
+            final utrNote = (utr != null && utr.trim().isNotEmpty)
+                ? ' | UPI UTR: ${utr.trim()}'
+                : '';
+            final fulfillmentNotes = (_deliveryMethod == 'delivery'
                 ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}$mapsLink'
-                : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection';
+                : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection') + utrNote;
 
             final shopOrder = await SupabaseService.createShopOrder(
               businessId: _currentBusinessId!,
@@ -4734,7 +6583,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               customerName: customerName,
               customerPhone: customerPhone,
               paymentMethod: 'upi',
-              transactionId: checkoutId,
+              transactionId: effectiveTxId,
               paymentProofUrl: proofUrl,
               totalAmount: total,
               notes: fulfillmentNotes,
@@ -4790,6 +6639,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           saleId: saleId.toString(),
           customerName: customerName,
           customerPhone: customerPhone,
+          transactionId: effectiveTxId,
           items: receiptItems,
           subTotal: total,
           discount: 0,
@@ -4851,13 +6701,298 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     }
   }
 
+  // Buy Now offline order placement (COD / Store Pickup)
+  Future<void> _placeOfflineBuyNowOrder(
+    BuildContext context, {
+    required Map<String, dynamic> product,
+    required int qty,
+    required bool isCod,
+  }) async {
+    final activeName = (_savedCustomerProfile?['name'] ?? '').trim().isNotEmpty
+        ? _savedCustomerProfile!['name']!.trim()
+        : 'Customer';
+    final activePhone = (_savedCustomerProfile?['phone'] ?? '').trim();
+    final activeAddress = _formatCustomerAddress(_savedCustomerProfile);
+
+    if (isCod &&
+        _isDeliveryPincodeRestricted &&
+        !_isCustomerPincodeServiceable) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Pay on Delivery is unavailable for pincode ${_savedCustomerProfile?['pincode'] ?? ""}. Please select Store Pickup.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (isCod && activeAddress.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Please add your delivery address before placing Cash on Delivery order.',
+            ),
+            action: SnackBarAction(
+              label: 'Add Address',
+              textColor: Colors.orangeAccent,
+              onPressed: () {
+                ShopAccountSheets.showProfileSheet(
+                  context,
+                  onSaved: () => _loadCustomerProfile(),
+                );
+              },
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final double price = (product['price'] as num?)?.toDouble() ?? 0.0;
+    final total = price * qty;
+    final checkoutId =
+        '${isCod ? "COD" : "CASH"}-${DateTime.now().millisecondsSinceEpoch}-${product['id']}';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              isCod ? Icons.local_shipping_outlined : Icons.storefront_outlined,
+              color: Theme.of(ctx).colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                isCod ? 'Confirm Cash on Delivery' : 'Confirm Store Pickup',
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isCod
+                  ? 'Your order for ${product['name']} (${_currencyFormat.format(total)}) will be delivered to your doorstep. You can pay cash upon delivery.'
+                  : 'Your order for ${product['name']} (${_currencyFormat.format(total)}) will be kept ready at the store counter. You can pay cash or UPI when picking up.',
+              style: Theme.of(ctx).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Theme.of(ctx)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Customer: $activeName${activePhone.isNotEmpty ? ' ($activePhone)' : ''}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (isCod && activeAddress.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Deliver to: $activeAddress',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(ctx).textTheme.bodySmall?.color,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm Order'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final payMethod = isCod ? 'cod' : 'cash';
+      final saleId = await SupabaseService.createSaleWithItems(
+        customerName: activeName,
+        customerPhone: activePhone.isNotEmpty ? activePhone : null,
+        paymentMethod: payMethod,
+        totalAmount: total,
+        transactionId: checkoutId,
+        amountPaid: 0.0,
+        status: 'pending',
+        items: [
+          {
+            'product_id': product['id'],
+            'quantity': qty,
+            'price_per_unit': price,
+          },
+        ],
+      );
+
+      String trackingToken = 'trk_$checkoutId';
+      int orderId = saleId ?? DateTime.now().millisecondsSinceEpoch;
+
+      if (_currentBusinessId != null) {
+        try {
+          String mapsLink = '';
+          if (_savedCustomerProfile?['latitude']?.isNotEmpty == true &&
+              _savedCustomerProfile?['longitude']?.isNotEmpty == true) {
+            mapsLink =
+                ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
+          }
+          final fulfillmentNotes = isCod
+              ? 'Home Delivery (Pay on Delivery: Cash/UPI) | PIN: $deliveryPin | Deliver to: $activeName ($activePhone) | Address: $activeAddress$mapsLink'
+              : 'Store Pickup (Pay at Counter) | Customer: $activeName ($activePhone) | Store Counter Collection';
+
+          final shopOrder = await SupabaseService.createShopOrder(
+            businessId: _currentBusinessId!,
+            customerId: SupabaseService.currentUser?.id,
+            customerName: activeName,
+            customerPhone: activePhone.isNotEmpty ? activePhone : null,
+            paymentMethod: payMethod,
+            transactionId: checkoutId,
+            totalAmount: total,
+            notes: fulfillmentNotes,
+            saleId: saleId,
+            items: [
+              {
+                'product_id': product['id'],
+                'product_name': product['name'] ?? 'Item',
+                'quantity': qty,
+                'unit_price': price,
+                'total_price': total,
+              },
+            ],
+          );
+          if (shopOrder != null) {
+            if (shopOrder['id'] != null) orderId = shopOrder['id'] as int;
+            if (shopOrder['tracking_token'] != null) {
+              trackingToken = shopOrder['tracking_token'] as String;
+            }
+          }
+        } catch (e) {
+          debugPrint('[Shop] createShopOrder buy-now offline error: $e');
+        }
+      }
+
+      await ShopCustomerStorage.saveOrderLocally(
+        orderId: orderId,
+        trackingToken: trackingToken,
+        customerName: activeName,
+        customerPhone: activePhone.isNotEmpty ? activePhone : null,
+        totalAmount: total,
+        status: isCod ? 'pending_cod' : 'pending_pickup',
+        createdAt: DateTime.now().toIso8601String(),
+        items: [
+          {'name': product['name'] ?? 'Item', 'qty': qty, 'price': price},
+        ],
+      );
+
+      final receipt = ReceiptData(
+        saleId: saleId?.toString() ?? orderId.toString(),
+        customerName: activeName,
+        customerPhone: activePhone.isNotEmpty ? activePhone : null,
+        transactionId: checkoutId,
+        items: [
+          ReceiptItem(
+            name: product['name'] ?? 'Item',
+            quantity: qty,
+            pricePerUnit: price,
+          ),
+        ],
+        subTotal: total,
+        discount: 0,
+        finalTotal: total,
+        paymentMethod: payMethod,
+        saleDate: DateTime.now(),
+        status: isCod ? 'Pending (COD)' : 'Pending (Pay at Counter)',
+      );
+
+      await ReceiptService.shareReceiptPdf(receipt);
+
+      navigator.pop(); // Pop loading
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            isCod
+                ? 'Pay on Delivery order placed! (Order #$orderId)'
+                : 'Store pickup order placed! (Order #$orderId)',
+          ),
+          backgroundColor: const Color(0xFF059669),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: 'Track Order',
+            textColor: Colors.white,
+            onPressed: () {
+              ShopAccountSheets.showTrackOrderSheet(
+                context,
+                businessId: _currentBusinessId,
+                businessName: _businessName,
+                businessPhone: _businessProfile?.phone,
+                businessWhatsapp: _businessProfile?.phone,
+                initialQuery: trackingToken,
+              );
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      navigator.pop(); // Pop loading
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Failed to place order: $e')),
+      );
+    }
+  }
+
   Future<void> _completeBuyNowSaleWithProof(
     BuildContext context,
     String checkoutId,
     double total,
     Map<String, dynamic> product,
     int qty,
-    File proof, {
+    File? proof, {
+    String? utr,
     String customerName = 'Walk-in Customer',
     String? customerPhone,
   }) async {
@@ -4872,12 +7007,63 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     );
 
     try {
-      // Upload proof first (best-effort)
-      final proofUrl = await _uploadPaymentProof(proof, checkoutId);
+      // Upload proof first if provided (best-effort)
+      String? proofUrl;
+      if (proof != null) {
+        proofUrl = await _uploadPaymentProof(proof, checkoutId);
+      }
+
+      // Anti-fraud: Block duplicate UTR submission across non-cancelled orders
+      if (utr != null && utr.trim().length >= 8 && _currentBusinessId != null) {
+        final cleanUtr = utr.trim();
+        final dup = await SupabaseService.client
+            .from('shop_orders')
+            .select('id, status')
+            .eq('business_id', _currentBusinessId!)
+            .eq('transaction_id', cleanUtr)
+            .neq('status', 'cancelled')
+            .maybeSingle();
+        if (dup != null) {
+          navigator.pop(); // Pop loading
+          if (context.mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.red),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('Duplicate UPI Reference')),
+                  ],
+                ),
+                content: Text(
+                  'The UPI reference number ($cleanUtr) has already been submitted for another order.\n\n'
+                  'Please provide the unique reference number from your payment app.',
+                ),
+                actions: [
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      final String effectiveTxId =
+          (utr != null && utr.trim().isNotEmpty) ? utr.trim() : checkoutId;
 
       final double price = (product['price'] as num?)?.toDouble() ?? 0.0;
       final items = [
-        {'product_id': product['id'], 'quantity': qty, 'price_per_unit': price},
+        {
+          'product_id': product['id'],
+          'quantity': qty,
+          'price_per_unit': price,
+        },
       ];
 
       final saleId = await SupabaseService.createSaleWithItems(
@@ -4885,7 +7071,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         customerPhone: customerPhone,
         paymentMethod: 'upi',
         totalAmount: total,
-        transactionId: checkoutId,
+        transactionId: effectiveTxId,
         amountPaid: total,
         status: 'pending',
         paymentProofUrl: proofUrl,
@@ -4913,9 +7099,12 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               mapsLink =
                   ' | Maps Pin: https://maps.google.com/?q=${_savedCustomerProfile!['latitude']},${_savedCustomerProfile!['longitude']}';
             }
-            final fulfillmentNotes = _deliveryMethod == 'delivery'
+            final utrNote = (utr != null && utr.trim().isNotEmpty)
+                ? ' | UPI UTR: ${utr.trim()}'
+                : '';
+            final fulfillmentNotes = (_deliveryMethod == 'delivery'
                 ? 'Home Delivery | Deliver to: $customerName ($activePhone) | Address: ${_formatCustomerAddress(_savedCustomerProfile)}$mapsLink'
-                : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection';
+                : 'Store Pickup (Ready in 15-30 mins) | Customer: $customerName ($activePhone) | Store Counter Collection') + utrNote;
 
             final shopOrder = await SupabaseService.createShopOrder(
               businessId: _currentBusinessId!,
@@ -4923,7 +7112,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
               customerName: customerName,
               customerPhone: customerPhone,
               paymentMethod: 'upi',
-              transactionId: checkoutId,
+              transactionId: effectiveTxId,
               paymentProofUrl: proofUrl,
               totalAmount: total,
               notes: fulfillmentNotes,
@@ -4966,6 +7155,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
           saleId: saleId.toString(),
           customerName: customerName,
           customerPhone: customerPhone,
+          transactionId: effectiveTxId,
           items: [
             ReceiptItem(
               name: product['name'] ?? 'Item',

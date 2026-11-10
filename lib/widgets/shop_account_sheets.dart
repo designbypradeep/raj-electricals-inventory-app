@@ -11,6 +11,7 @@ import '../services/receipt_service.dart';
 import '../models/sales_purchase_models.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 /// Storage helper for guest orders and delivery details on the customer device.
 class ShopCustomerStorage {
@@ -642,6 +643,7 @@ class _TrackOrderSheet extends StatefulWidget {
 class _TrackOrderSheetState extends State<_TrackOrderSheet> {
   final TextEditingController _queryCtrl = TextEditingController();
   bool _isSearching = false;
+  bool _isCancelling = false;
   Map<String, dynamic>? _orderResult;
   String? _errorMessage;
   List<Map<String, dynamic>> _recentOrders = [];
@@ -918,6 +920,120 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
           ),
         ),
 
+        // Delivery PIN (Blinkit / Zepto POD Verification) & Doorstep UPI QR
+        Builder(builder: (ctx) {
+          final notes = (o['notes'] ?? '').toString();
+          final pinMatch = RegExp(r'PIN:\s*(\d+)').firstMatch(notes);
+          final deliveryPin =
+              (o['delivery_pin'] ?? pinMatch?.group(1))?.toString();
+          final payMethod =
+              (o['payment_method'] ?? '').toString().toLowerCase();
+          final bool isPod = payMethod == 'cod' ||
+              notes.toLowerCase().contains('pay on delivery') ||
+              notes.toLowerCase().contains('cash on delivery');
+
+          if (!isPod && deliveryPin == null) return const SizedBox.shrink();
+
+          return Column(
+            children: [
+              if (deliveryPin != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.amber.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.verified_user_outlined,
+                        color: Colors.amber[900],
+                        size: 28,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'Delivery PIN: $deliveryPin',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16.5,
+                                    letterSpacing: 1.5,
+                                    color: Colors.amber[950],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber[800],
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    'VERIFY',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            const Text(
+                              'Share this 4-digit PIN with your delivery partner to receive package.',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (isPod &&
+                  (status == 'payment_pending' || status == 'pending')) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      _showDoorstepUpiDialog(
+                        context,
+                        total,
+                        orderId.toString(),
+                      );
+                    },
+                    icon: const Icon(Icons.qr_code_2, size: 20),
+                    label: const Text('Pay via UPI QR at Doorstep'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          );
+        }),
+
         const SizedBox(height: 20),
 
         // Live Timeline
@@ -1014,8 +1130,151 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
             ),
           ],
         ),
+
+        // Customer Self-Serve Cancel Order (Active only for pending/payment_pending orders)
+        if (status == 'pending' || status == 'payment_pending') ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isCancelling ? null : () => _confirmCancelOrder(orderId),
+              icon: _isCancelling
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
+                    )
+                  : const Icon(Icons.cancel_outlined, size: 18, color: Colors.red),
+              label: Text(
+                _isCancelling ? 'Cancelling Order...' : 'Cancel Order',
+                style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: Colors.red.withValues(alpha: 0.6)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+        ],
       ],
     );
+  }
+
+  Future<void> _confirmCancelOrder(dynamic orderId) async {
+    String selectedReason = 'Placed by mistake';
+    final reasons = [
+      'Placed by mistake',
+      'Incorrect delivery address or details',
+      'Need to change order items',
+      'Decided to purchase from store directly',
+      'Other',
+    ];
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDlgState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.cancel_outlined, color: Colors.red),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Cancel Order?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Are you sure you want to cancel Order #$orderId?\n\n'
+                    'If you already made an online payment, please contact the store with your order details for a refund.',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Reason for cancellation:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: selectedReason,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    items: reasons
+                        .map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(fontSize: 13))))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) setDlgState(() => selectedReason = val);
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Keep Order'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Confirm Cancel'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isCancelling = true);
+    try {
+      final success = await SupabaseService.cancelShopOrder(
+        orderId: orderId,
+        reason: selectedReason,
+      );
+
+      final idInt = int.tryParse(orderId.toString()) ?? 0;
+      await ShopCustomerStorage.updateLocalOrderStatus(idInt, 'cancelled');
+
+      if (mounted) {
+        setState(() {
+          if (_orderResult != null) {
+            _orderResult!['status'] = 'cancelled';
+          }
+        });
+        await _loadRecentOrders();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? 'Order #$orderId cancelled successfully.'
+                  : 'Order status updated to Cancelled.',
+            ),
+            backgroundColor: Colors.orange[800],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to cancel order: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isCancelling = false);
+    }
   }
 
   Widget _buildTimelineWidget(String status, String dateStr) {
@@ -1122,6 +1381,81 @@ class _TrackOrderSheetState extends State<_TrackOrderSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
       child: Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.bold, fontSize: 11)),
+    );
+  }
+
+  void _showDoorstepUpiDialog(
+    BuildContext context,
+    double total,
+    String orderId,
+  ) {
+    const upiId = 'pradeepsupergalaxy12@okicici';
+    final payeeName = Uri.encodeComponent(widget.businessName);
+    final amt = total.toStringAsFixed(2);
+    final upiUri =
+        'upi://pay?pa=$upiId&pn=$payeeName&am=$amt&cu=INR&tn=Order_$orderId';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.qr_code_2, color: Colors.blueAccent),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Doorstep UPI Payment',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Amount to pay: ₹${total.toStringAsFixed(2)}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Scan this QR code with any UPI app (GPay, PhonePe, Paytm) upon delivery.',
+              textAlign: TextAlign.center,
+              style: Theme.of(ctx).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: QrImageView(
+                data: upiUri,
+                version: QrVersions.auto,
+                size: 200,
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const SelectableText(
+              upiId,
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
     );
   }
 }
