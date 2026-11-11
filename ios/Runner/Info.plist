@@ -16,6 +16,18 @@
 	<string>Allow location access to auto-fill your delivery address and find nearby store pickup options.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Allow location access to auto-fill your delivery address and find nearby store pickup options.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>gpay</string>
+		<string>tez</string>
+		<string>phonepe</string>
+		<string>paytmmp</string>
+		<string>bhim</string>
+		<string>credpay</string>
+		<string>cred</string>
+		<string>upi</string>
+		<string>whatsapp</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

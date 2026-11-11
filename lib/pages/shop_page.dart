@@ -2222,23 +2222,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       'tn=${Uri.encodeQueryComponent(tn)}',
     ].join('&');
 
-    final bool isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
-    bool launched = false;
-    if (isMobile) {
-      launched = await _tryLaunchUri(Uri.parse('upi://pay?$qp'));
-      if (!launched) {
-        final intentUri = Uri.parse('intent://pay?$qp#Intent;scheme=upi;end');
-        launched = await _tryLaunchUri(intentUri);
-      }
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No UPI app found to handle this payment.'),
-          ),
-        );
-      }
-    }
-
     if (mounted) {
       _showUpiConfirmationSheetForBuyNow(
         context,
@@ -2523,43 +2506,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: () async {
-                          HapticFeedback.lightImpact();
-                          final uri = Uri.parse(upiUri);
-                          try {
-                            final launched = await _tryLaunchUri(uri);
-                            if (!launched) {
-                              final qp = uri.query;
-                              final intentUri = Uri.parse(
-                                'intent://pay?$qp#Intent;scheme=upi;end',
-                              );
-                              final intentLaunched = await _tryLaunchUri(
-                                intentUri,
-                              );
-                              if (!intentLaunched && ctx.mounted) {
-                                setSheetState(() => showQr = true);
-                                ScaffoldMessenger.of(ctx).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'No UPI app detected. QR code shown above.',
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                          } catch (_) {
-                            if (ctx.mounted) {
-                              setSheetState(() => showQr = true);
-                              ScaffoldMessenger.of(ctx).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Could not open UPI app. QR code shown above.',
-                                  ),
-                                ),
-                              );
-                            }
-                          }
-                        },
+                        onPressed: () => _handlePayViaUpi(
+                          ctx,
+                          qp,
+                          setShowQr: (val) => setSheetState(() => showQr = val),
+                        ),
                         style: FilledButton.styleFrom(
                           backgroundColor: Theme.of(ctx).colorScheme.primary,
                           padding: const EdgeInsets.symmetric(vertical: 13),
@@ -3161,6 +3112,202 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     } catch (_) {
       return false;
     }
+  }
+
+  // Unified UPI launcher supporting direct app schemes on iOS (GPay, PhonePe, Paytm, etc.)
+  Future<void> _handlePayViaUpi(
+    BuildContext context,
+    String qp, {
+    required void Function(bool) setShowQr,
+  }) async {
+    HapticFeedback.lightImpact();
+
+    if (!kIsWeb && Platform.isIOS) {
+      // On iOS, generic upi:// is claimed by WhatsApp if installed.
+      // Show dedicated app chooser so user can select GPay, PhonePe, Paytm, etc.
+      await _showIosUpiAppPicker(context, qp, setShowQr: setShowQr);
+      return;
+    }
+
+    // Android / Other platforms: system intent chooser
+    final uri = Uri.parse('upi://pay?$qp');
+    try {
+      final launched = await _tryLaunchUri(uri);
+      if (!launched) {
+        final intentUri = Uri.parse('intent://pay?$qp#Intent;scheme=upi;end');
+        final intentLaunched = await _tryLaunchUri(intentUri);
+        if (!intentLaunched && context.mounted) {
+          setShowQr(true);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No UPI app detected. QR code shown above.'),
+            ),
+          );
+        }
+      }
+    } catch (_) {
+      if (context.mounted) {
+        setShowQr(true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open UPI app. QR code shown above.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showIosUpiAppPicker(
+    BuildContext context,
+    String qp, {
+    required void Function(bool) setShowQr,
+  }) async {
+    final upiApps = [
+      {
+        'name': 'Google Pay',
+        'subtitle': 'Pay with Google Pay UPI',
+        'color': const Color(0xFF1A73E8),
+        'icon': Icons.account_balance_wallet_rounded,
+        'uri': 'gpay://upi/pay?$qp',
+        'fallback': 'tez://upi/pay?$qp',
+      },
+      {
+        'name': 'PhonePe',
+        'subtitle': 'Pay with PhonePe UPI',
+        'color': const Color(0xFF5F259F),
+        'icon': Icons.flash_on_rounded,
+        'uri': 'phonepe://pay?$qp',
+        'fallback': null,
+      },
+      {
+        'name': 'Paytm',
+        'subtitle': 'Pay with Paytm UPI',
+        'color': const Color(0xFF002E6E),
+        'icon': Icons.payments_rounded,
+        'uri': 'paytmmp://pay?$qp',
+        'fallback': null,
+      },
+      {
+        'name': 'Cred',
+        'subtitle': 'Pay with Cred UPI',
+        'color': const Color(0xFF1C1C1E),
+        'icon': Icons.credit_card_rounded,
+        'uri': 'credpay://upi/pay?$qp',
+        'fallback': 'cred://upi/pay?$qp',
+      },
+      {
+        'name': 'BHIM UPI',
+        'subtitle': 'Government of India UPI',
+        'color': const Color(0xFF00796B),
+        'icon': Icons.assured_workload_rounded,
+        'uri': 'bhim://upi/pay?$qp',
+        'fallback': null,
+      },
+      {
+        'name': 'Other UPI App',
+        'subtitle': 'WhatsApp / Default registered UPI app',
+        'color': const Color(0xFF25D366),
+        'icon': Icons.chat_bubble_outline_rounded,
+        'uri': 'upi://pay?$qp',
+        'fallback': null,
+      },
+    ];
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (bctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(bctx).dividerColor.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Text(
+                  'Choose UPI App',
+                  style: Theme.of(bctx).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Select your installed UPI app to complete payment:',
+                  style: Theme.of(bctx).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 12),
+                ...upiApps.map((app) {
+                  final color = app['color'] as Color;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
+                        color: Theme.of(bctx).dividerColor.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: color.withValues(alpha: 0.15),
+                        child: Icon(app['icon'] as IconData, color: color, size: 22),
+                      ),
+                      title: Text(
+                        app['name'] as String,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        app['subtitle'] as String,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: Theme.of(bctx).textTheme.bodySmall?.color,
+                        ),
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                      onTap: () async {
+                        Navigator.pop(bctx);
+                        final uriStr = app['uri'] as String;
+                        final fallbackStr = app['fallback'] as String?;
+                        bool launched = await _tryLaunchUri(Uri.parse(uriStr));
+                        if (!launched && fallbackStr != null) {
+                          launched = await _tryLaunchUri(Uri.parse(fallbackStr));
+                        }
+                        if (!launched && context.mounted) {
+                          setShowQr(true);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                '${app['name']} could not be opened. You can scan the QR code to pay.',
+                              ),
+                              backgroundColor: Colors.orange.shade800,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -5790,22 +5937,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
         'tn=${Uri.encodeQueryComponent(tn)}',
       ].join('&');
 
-      final bool isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
-      bool launched = false;
-      if (isMobile) {
-        launched = await _tryLaunchUri(Uri.parse('upi://pay?$qp'));
-        if (!launched) {
-          final intentUri = Uri.parse('intent://pay?$qp#Intent;scheme=upi;end');
-          launched = await _tryLaunchUri(intentUri);
-        }
-        if (!launched && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No UPI app found to handle this payment.'),
-            ),
-          );
-        }
-      }
       if (mounted) {
         _showUpiConfirmationSheet(pageContext, checkoutId, total);
       }
@@ -6087,43 +6218,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: () async {
-                          HapticFeedback.lightImpact();
-                          final uri = Uri.parse(upiUri);
-                          try {
-                            final launched = await _tryLaunchUri(uri);
-                            if (!launched) {
-                              final intentUri = Uri.parse(
-                                'intent://pay?$qp#Intent;scheme=upi;end',
-                              );
-                              final intentLaunched = await _tryLaunchUri(
-                                intentUri,
-                              );
-                              if (!intentLaunched && ctx.mounted) {
-                                setSheetState(() => showQr = true);
-                                ScaffoldMessenger.of(ctx).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'No UPI app detected. QR code shown above.',
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                          } catch (_) {
-                            if (ctx.mounted) {
-                              setSheetState(() => showQr = true);
-                              ScaffoldMessenger.of(ctx).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Could not open UPI app. QR code shown above.',
-                                  ),
-                                ),
-                              );
-                            }
-                          }
-                        },
-                        style: FilledButton.styleFrom(
+                        onPressed: () => _handlePayViaUpi(
+                          ctx,
+                          qp,
+                          setShowQr: (val) => setSheetState(() => showQr = val),
+                        ),
                           backgroundColor: Theme.of(ctx).colorScheme.primary,
                           padding: const EdgeInsets.symmetric(vertical: 13),
                           shape: RoundedRectangleBorder(
