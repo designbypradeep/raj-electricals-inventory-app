@@ -49,6 +49,9 @@ jobs:
           echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
+          if [ "${{ matrix.app_type }}" = "shop" ]; then
+            cp -rf ios/Runner/Assets.xcassets/AppIcon-Shop.appiconset/* ios/Runner/Assets.xcassets/AppIcon.appiconset/
+          fi
 
       - name: Get Flutter dependencies
         run: flutter pub get
