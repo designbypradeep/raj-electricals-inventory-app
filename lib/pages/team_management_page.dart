@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/supabase_service.dart';
 
+const Color _emerald = Color(0xFF10B981);
+
 class TeamManagementPage extends StatefulWidget {
   const TeamManagementPage({super.key});
 
@@ -210,11 +212,11 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
                               decoration: BoxDecoration(
                                 color: selectedRole == 'cashier'
-                                    ? Colors.emerald.withValues(alpha: 0.15)
+                                    ? _emerald.withValues(alpha: 0.15)
                                     : Theme.of(ctx).cardColor,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: selectedRole == 'cashier' ? Colors.emerald : Colors.grey.shade400,
+                                  color: selectedRole == 'cashier' ? _emerald : Colors.grey.shade400,
                                   width: selectedRole == 'cashier' ? 2 : 1,
                                 ),
                               ),
@@ -380,7 +382,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: isLimitReached ? Colors.orange.withValues(alpha: 0.15) : Colors.emerald.withValues(alpha: 0.15),
+                      color: isLimitReached ? Colors.orange.withValues(alpha: 0.15) : _emerald.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -388,7 +390,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: isLimitReached ? Colors.orange : Colors.emerald,
+                        color: isLimitReached ? Colors.orange : _emerald,
                       ),
                     ),
                   ),
@@ -445,10 +447,10 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: isManager ? Colors.blue.withValues(alpha: 0.2) : Colors.emerald.withValues(alpha: 0.2),
+                    backgroundColor: isManager ? Colors.blue.withValues(alpha: 0.2) : _emerald.withValues(alpha: 0.2),
                     child: Icon(
                       isManager ? Icons.manage_accounts : Icons.point_of_sale,
-                      color: isManager ? Colors.blue : Colors.emerald,
+                      color: isManager ? Colors.blue : _emerald,
                     ),
                   ),
                   title: Text(m['full_name'] ?? 'Staff', style: const TextStyle(fontWeight: FontWeight.bold)),

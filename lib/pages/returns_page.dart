@@ -1329,7 +1329,7 @@ class _ReturnsPageState extends State<ReturnsPage> {
                           child: ElevatedButton.icon(
                             onPressed: () {
                               Navigator.pop(context);
-                              _updateReturnStatus(item['id'].toString(), 'Declined');
+                              _updateReturnStatus(returnData['id'].toString(), 'Declined');
                             },
                             icon: const Icon(Icons.close),
                             label: const Text('Decline'),
@@ -1349,7 +1349,7 @@ class _ReturnsPageState extends State<ReturnsPage> {
                           child: ElevatedButton.icon(
                             onPressed: () {
                               Navigator.pop(context);
-                              _updateReturnStatus(item['id'].toString(), 'Approved');
+                              _updateReturnStatus(returnData['id'].toString(), 'Approved');
                             },
                             icon: const Icon(Icons.check),
                             label: const Text('Approve'),
