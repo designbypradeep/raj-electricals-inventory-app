@@ -6223,6 +6223,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                           qp,
                           setShowQr: (val) => setSheetState(() => showQr = val),
                         ),
+                        style: FilledButton.styleFrom(
                           backgroundColor: Theme.of(ctx).colorScheme.primary,
                           padding: const EdgeInsets.symmetric(vertical: 13),
                           shape: RoundedRectangleBorder(
