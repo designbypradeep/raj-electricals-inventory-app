@@ -2279,6 +2279,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -2329,11 +2330,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             final bottomSafe = mq.padding.bottom;
 
             return SafeArea(
-              top: false,
+              top: true,
               child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
                   16,
-                  16,
+                  12,
                   16,
                   16 + bottomInset + (bottomSafe > 0 ? bottomSafe : 8),
                 ),
@@ -2342,6 +2343,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).dividerColor.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
                     Row(
                       children: [
                         const Icon(Icons.payments_outlined),
@@ -4613,6 +4625,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -5832,6 +5845,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -5880,11 +5894,11 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
             final bottomSafe = mq.padding.bottom;
 
             return SafeArea(
-              top: false,
+              top: true,
               child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
                   16,
-                  16,
+                  12,
                   16,
                   16 + bottomInset + (bottomSafe > 0 ? bottomSafe : 8),
                 ),
@@ -5893,6 +5907,17 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).dividerColor.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
                     Row(
                       children: [
                         const Icon(Icons.payments_outlined),

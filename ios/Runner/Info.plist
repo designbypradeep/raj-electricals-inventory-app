@@ -12,6 +12,10 @@
 	<string>Allow speech recognition to search inventory by voice</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Biometric authentication to secure your business dashboard</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Allow location access to auto-fill your delivery address and find nearby store pickup options.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Allow location access to auto-fill your delivery address and find nearby store pickup options.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

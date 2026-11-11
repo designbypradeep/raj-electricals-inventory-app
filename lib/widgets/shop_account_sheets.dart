@@ -226,6 +226,7 @@ class ShopAccountSheets {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _ProfileSheet(onSaved: onSaved),
     );
@@ -2335,38 +2336,50 @@ class _ProfileSheetState extends State<_ProfileSheet> {
             ),
             if (_locationStatusMessage != null) ...[
               const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.check_circle_outline, size: 16, color: Color(0xFF10B981)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _locationStatusMessage!,
-                            style: const TextStyle(fontSize: 11.5, color: Color(0xFF10B981), fontWeight: FontWeight.w600),
+              Builder(builder: (context) {
+                final isErr = _locationStatusMessage!.toLowerCase().contains('could not') ||
+                    _locationStatusMessage!.toLowerCase().contains('denied') ||
+                    _locationStatusMessage!.toLowerCase().contains('turned off') ||
+                    _locationStatusMessage!.toLowerCase().contains('failed') ||
+                    _locationStatusMessage!.toLowerCase().contains('permission');
+                final statusColor = isErr ? Colors.orange.shade800 : const Color(0xFF10B981);
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(isErr ? Icons.info_outline : Icons.check_circle_outline,
+                              size: 16, color: statusColor),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _locationStatusMessage!,
+                              style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: statusColor,
+                                  fontWeight: FontWeight.w600),
+                            ),
                           ),
+                        ],
+                      ),
+                      if (_latitude != null && _longitude != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '📍 Device GPS Pin: Lat ${double.tryParse(_latitude!)?.toStringAsFixed(5)}, Lng ${double.tryParse(_longitude!)?.toStringAsFixed(5)}',
+                          style: TextStyle(fontSize: 10.5, color: theme.textTheme.bodySmall?.color),
                         ),
                       ],
-                    ),
-                    if (_latitude != null && _longitude != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '📍 Device GPS Pin: Lat ${double.tryParse(_latitude!)?.toStringAsFixed(5)}, Lng ${double.tryParse(_longitude!)?.toStringAsFixed(5)}',
-                        style: TextStyle(fontSize: 10.5, color: theme.textTheme.bodySmall?.color),
-                      ),
                     ],
-                  ],
-                ),
-              ),
+                  ),
+                );
+              }),
             ] else if (_latitude != null && _longitude != null) ...[
               const SizedBox(height: 8),
               Container(
