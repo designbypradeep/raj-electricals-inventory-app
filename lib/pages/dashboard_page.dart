@@ -192,8 +192,10 @@ class _DashboardPageState extends State<DashboardPage> {
   _FifoProfitResult _computeFifoProfit(
     List<models.Sale> sales,
     List<models.Purchase> purchases,
-    List<supabase_models.Product> products,
-  ) {
+    List<supabase_models.Product> products, [
+    List<Map<String, dynamic>>? returnsList,
+    List<Map<String, dynamic>>? replacements,
+  ]) {
     // Build initial lots by product from all purchases (normalized to pieces)
     final baseLots = _buildLotsByProduct(purchases, products);
     // Clone lots so we can consume them
@@ -277,6 +279,108 @@ class _DashboardPageState extends State<DashboardPage> {
       total += saleProfit;
       if (dayKey != null) {
         daily[dayKey] = (daily[dayKey] ?? 0) + saleProfit;
+      }
+    }
+
+    // Adjust daily profit with returns profit reversal & warranty loss
+    if (returnsList != null) {
+      for (final r in returnsList) {
+        final createdAtStr = r['created_at']?.toString();
+        if (createdAtStr == null) continue;
+        final dt = DateTime.tryParse(createdAtStr);
+        if (dt == null) continue;
+        final dayKey = DateFormat('MMM d').format(dt);
+
+        final List items = (r['return_items'] as List?) ?? const [];
+        for (final it in items) {
+          final double qty =
+              ((it['quantity_returned'] ?? it['quantity']) as num?)?.toDouble() ?? 0.0;
+          final double sp =
+              ((it['original_price_per_unit'] ??
+                          it['price_per_unit'] ??
+                          it['price'])
+                      as num?)
+                  ?.toDouble() ??
+              0.0;
+          final int pid =
+              (it['product_id'] as num?)?.toInt() ??
+              (((it['products'] as Map<String, dynamic>?)?['id'] as num?)
+                      ?.toInt() ??
+                  0);
+          final double cp = _fallbackAvgCostForProduct(pid, baseLots, products);
+          final profitReversal = (sp - cp) * qty;
+          double warrantyLoss = 0.0;
+          final cond = (it['item_condition'] as String?)?.toLowerCase();
+          final restockEligible = it['restock_eligible'];
+          if (cond == 'defective' ||
+              cond == 'damaged' ||
+              cond == 'warranty_claim' ||
+              restockEligible == false) {
+            warrantyLoss = cp * qty;
+          }
+          final totalDeduction = profitReversal + warrantyLoss;
+          total -= totalDeduction;
+          daily[dayKey] = (daily[dayKey] ?? 0) - totalDeduction;
+        }
+      }
+    }
+
+    // Adjust daily profit with replacements price difference & warranty loss
+    if (replacements != null) {
+      for (final rep in replacements) {
+        final createdAtStr = rep['created_at']?.toString();
+        if (createdAtStr == null) continue;
+        final dt = DateTime.tryParse(createdAtStr);
+        if (dt == null) continue;
+        final dayKey = DateFormat('MMM d').format(dt);
+
+        final double priceDiff =
+            (rep['price_difference'] as num?)?.toDouble() ?? 0.0;
+        double netDiff = priceDiff;
+
+        final List ins = (rep['replacement_items_in'] as List?) ?? const [];
+        final List outs = (rep['replacement_items_out'] as List?) ?? const [];
+
+        double costGiven = 0.0;
+        for (final it in ins) {
+          final double qty = ((it['quantity_given'] as num?) ?? 0).toDouble();
+          final int pid =
+              (it['product_id'] as num?)?.toInt() ??
+              (((it['products'] as Map<String, dynamic>?)?['id'] as num?)
+                      ?.toInt() ??
+                  0);
+          final double cp = _fallbackAvgCostForProduct(pid, baseLots, products);
+          costGiven += qty * cp;
+        }
+
+        double costReturnedRestockable = 0.0;
+        for (final it in outs) {
+          final cond = (it['item_condition'] as String?)?.toLowerCase();
+          final restockEligible = it['restock_eligible'];
+          if (cond == 'defective' ||
+              cond == 'damaged' ||
+              cond == 'warranty_claim' ||
+              restockEligible == false) {
+            continue;
+          }
+          final double qty =
+              ((it['quantity_returned'] as num?) ?? 0).toDouble();
+          final int pid =
+              (it['product_id'] as num?)?.toInt() ??
+              (((it['products'] as Map<String, dynamic>?)?['id'] as num?)
+                      ?.toInt() ??
+                  0);
+          final double cp = _fallbackAvgCostForProduct(pid, baseLots, products);
+          costReturnedRestockable += qty * cp;
+        }
+
+        final loss = costGiven - costReturnedRestockable;
+        if (loss > 0) {
+          netDiff -= loss;
+        }
+
+        total += netDiff;
+        daily[dayKey] = (daily[dayKey] ?? 0) + netDiff;
       }
     }
 
@@ -590,16 +694,55 @@ class _DashboardPageState extends State<DashboardPage> {
       }
     }
 
-    // Today's pulse stat (for Executive Header)
+    // Today's pulse stat (for Executive Header & Realtime Pulse)
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+    final todayNet = rangeKey == 'today'
+        ? net
+        : AccountingService.computeNetSummary(
+            allSales: sales,
+            allPurchases: purchases,
+            products: products,
+            replacements: replacements,
+            returnsList: returnsList,
+            period: DateTimeRange(start: todayStart, end: todayEnd),
+          );
+
     int todaysSalesCount = 0;
-    double todaysRevenue = 0;
     for (var sale in sales) {
       if (sale.createdAt != null &&
           sale.createdAt!.year == now.year &&
           sale.createdAt!.month == now.month &&
           sale.createdAt!.day == now.day) {
         todaysSalesCount++;
-        todaysRevenue += sale.totalAmount;
+      }
+    }
+
+    int todaysReturnsCount = 0;
+    for (final r in returnsList) {
+      final s = r['created_at']?.toString();
+      if (s != null) {
+        final d = DateTime.tryParse(s);
+        if (d != null &&
+            d.year == now.year &&
+            d.month == now.month &&
+            d.day == now.day) {
+          todaysReturnsCount++;
+        }
+      }
+    }
+
+    int todaysReplacementsCount = 0;
+    for (final rep in replacements) {
+      final s = rep['created_at']?.toString();
+      if (s != null) {
+        final d = DateTime.tryParse(s);
+        if (d != null &&
+            d.year == now.year &&
+            d.month == now.month &&
+            d.day == now.day) {
+          todaysReplacementsCount++;
+        }
       }
     }
 
@@ -614,18 +757,19 @@ class _DashboardPageState extends State<DashboardPage> {
           products.isNotEmpty || sales.isNotEmpty || purchases.isNotEmpty;
       _categoryCounts = grouped;
       _stats = {
-        'totalRevenue': net.grossRevenue,
+        'totalRevenue': net.netRevenue,
+        'grossRevenue': net.grossRevenue,
         'salesCount': rangeSales.length,
         'lowStockCount': lowStockCount,
         'totalProfit': net.netProfit,
         'totalReturns': rangeReturns.length,
         'totalRefund': net.refunds,
         'totalReplacements': rangeReplacements.length,
-        'todaysReturns': 0,
-        'todaysReplacements': 0,
+        'todaysReturns': todaysReturnsCount,
+        'todaysReplacements': todaysReplacementsCount,
         'warrantyLoss': net.warrantyLoss,
         'todaysSales': todaysSalesCount,
-        'todaysRevenue': todaysRevenue,
+        'todaysRevenue': todayNet.netRevenue,
         'itemsSold': rangeSales.length,
         'outOfStock': products.where((p) => p.currentStock == 0).length,
         'totalPurchases': purchases.length,
@@ -659,7 +803,7 @@ class _DashboardPageState extends State<DashboardPage> {
       end = now;
     }
 
-    // Daily Sales Data (filtered by selected range)
+    // Daily Sales Data (filtered by selected range, net of returns & replacements)
     final Map<String, double> dailySalesMap = {};
     for (var sale in sales) {
       final d = sale.createdAt ?? sale.saleDate;
@@ -673,8 +817,63 @@ class _DashboardPageState extends State<DashboardPage> {
             (dailySalesMap[dateKey] ?? 0) + sale.totalAmount;
       }
     }
+
+    // Deduct returns/refunds in the selected range
+    for (final r in returnsList) {
+      final createdAtStr = r['created_at']?.toString();
+      if (createdAtStr == null) continue;
+      final d = DateTime.tryParse(createdAtStr);
+      if (d == null) continue;
+      if (d.isAfter(start.subtract(const Duration(seconds: 1))) &&
+          d.isBefore(end.add(const Duration(seconds: 1)))) {
+        final dateKey = rangeKey == 'today'
+            ? DateFormat('h a').format(d)
+            : DateFormat('MMM d').format(d);
+
+        double refund = 0.0;
+        final List items = (r['return_items'] as List?) ?? const [];
+        for (final it in items) {
+          final double qty =
+              ((it['quantity_returned'] ?? it['quantity']) as num?)?.toDouble() ??
+              0.0;
+          final double sp =
+              ((it['original_price_per_unit'] ??
+                          it['price_per_unit'] ??
+                          it['price'])
+                      as num?)
+                  ?.toDouble() ??
+              0.0;
+          refund += qty * sp;
+        }
+        if (refund == 0.0 &&
+            (r['refund_amount'] != null || r['total_refund'] != null)) {
+          refund = ((r['refund_amount'] ?? r['total_refund']) as num).toDouble();
+        }
+
+        dailySalesMap[dateKey] = (dailySalesMap[dateKey] ?? 0) - refund;
+      }
+    }
+
+    // Add replacement price difference in the selected range
+    for (final rep in replacements) {
+      final createdAtStr = rep['created_at']?.toString();
+      if (createdAtStr == null) continue;
+      final d = DateTime.tryParse(createdAtStr);
+      if (d == null) continue;
+      if (d.isAfter(start.subtract(const Duration(seconds: 1))) &&
+          d.isBefore(end.add(const Duration(seconds: 1)))) {
+        final dateKey = rangeKey == 'today'
+            ? DateFormat('h a').format(d)
+            : DateFormat('MMM d').format(d);
+
+        final double priceDiff =
+            (rep['price_difference'] as num?)?.toDouble() ?? 0.0;
+        dailySalesMap[dateKey] = (dailySalesMap[dateKey] ?? 0) + priceDiff;
+      }
+    }
+
     _dailySales = dailySalesMap.entries
-        .map((e) => {'date': e.key, 'revenue': e.value})
+        .map((e) => {'date': e.key, 'revenue': e.value < 0 ? 0.0 : e.value})
         .toList();
 
     // Category totals - use actual inventory value by category as a real metric
@@ -689,8 +888,14 @@ class _DashboardPageState extends State<DashboardPage> {
         .map((e) => {'category': e.key, 'revenue': e.value})
         .toList();
 
-    // Daily Profits using FIFO filtered by range
-    final fifoForCharts = _computeFifoProfit(sales, purchases, products);
+    // Daily Profits using FIFO filtered by range (net of returns & replacements)
+    final fifoForCharts = _computeFifoProfit(
+      sales,
+      purchases,
+      products,
+      returnsList,
+      replacements,
+    );
     _dailyProfits = fifoForCharts.dailyProfits.entries
         .where((e) {
           if (rangeKey == 'all') return true;
@@ -774,10 +979,46 @@ class _DashboardPageState extends State<DashboardPage> {
         .length;
     final outOfStockCount = products.where((p) => p.currentStock == 0).length;
 
-    final todaysRevenue = todaysSales.fold<double>(
+    final todaysSalesGross = todaysSales.fold<double>(
       0.0,
       (sum, sale) => sum + sale.totalAmount,
     );
+
+    double todaysRefundAmount = 0.0;
+    for (final r in returnsList) {
+      final s = r['created_at']?.toString();
+      if (s != null) {
+        final d = DateTime.tryParse(s);
+        if (d != null &&
+            d.year == now.year &&
+            d.month == now.month &&
+            d.day == now.day) {
+          final List items = (r['return_items'] as List?) ?? const [];
+          for (final it in items) {
+            final double qty =
+                ((it['quantity_returned'] ?? it['quantity']) as num?)
+                    ?.toDouble() ??
+                0.0;
+            final double sp =
+                ((it['original_price_per_unit'] ??
+                            it['price_per_unit'] ??
+                            it['price'])
+                        as num?)
+                    ?.toDouble() ??
+                0.0;
+            todaysRefundAmount += qty * sp;
+          }
+          if (items.isEmpty &&
+              (r['refund_amount'] != null || r['total_refund'] != null)) {
+            todaysRefundAmount +=
+                ((r['refund_amount'] ?? r['total_refund']) as num).toDouble();
+          }
+        }
+      }
+    }
+
+    final todaysRevenue =
+        (todaysSalesGross - todaysRefundAmount).clamp(0.0, double.infinity);
 
     final todaysUnitsSold = todaysSales.fold<int>(
       0,
@@ -3572,7 +3813,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   revenueFormatted,
                   Icons.account_balance_wallet_outlined,
                   _statusColors(context).success,
-                  'From ${_stats['salesCount'] ?? 0} sales',
+                  refundNum > 0
+                      ? 'From ${_stats['salesCount'] ?? 0} sales (Net)'
+                      : 'From ${_stats['salesCount'] ?? 0} sales',
                   onTap: () {
                     HapticFeedback.lightImpact();
                     if (!_assertFeature(context, 'reports', 'Financial Reports')) return;
