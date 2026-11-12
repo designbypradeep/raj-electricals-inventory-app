@@ -341,7 +341,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                 icon: '👥',
                 showBackButton: true,
                 backLabel: 'Dashboard',
-                wrapInSafeArea: false,
+                wrapInSafeArea: true,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
                   if (MediaQuery.of(context).size.width >= 450)
@@ -377,7 +377,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                 icon: '👥',
                 showBackButton: true,
                 backLabel: 'Dashboard',
-                wrapInSafeArea: false,
+                wrapInSafeArea: true,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
                 ],
@@ -428,7 +428,7 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                 icon: '👥',
                 showBackButton: true,
                 backLabel: 'Dashboard',
-                wrapInSafeArea: false,
+                wrapInSafeArea: true,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
                   if (MediaQuery.of(context).size.width >= 450)
