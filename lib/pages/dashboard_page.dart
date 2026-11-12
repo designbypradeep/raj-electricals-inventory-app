@@ -2301,42 +2301,52 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {
+          onTap: () async {
             HapticFeedback.lightImpact();
+            if (index == 0) {
+              setState(() => _selectedTabIndex = 0);
+              return;
+            }
             setState(() => _selectedTabIndex = index);
-            if (label == 'Catalog') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => CatalogPage(db: widget.db),
-                ),
-              );
-            } else if (label == 'Inventory') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const InventoryPage()),
-              );
-            } else if (label == 'Sales') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SalesPage()),
-              );
-            } else if (label == 'Purchase') {
-              if (_subscriptionInfo?.isCashier == true) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Purchase orders restricted to Owner and Managers.')),
+            try {
+              if (label == 'Catalog') {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CatalogPage(db: widget.db),
+                  ),
                 );
-                return;
+              } else if (label == 'Inventory') {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const InventoryPage()),
+                );
+              } else if (label == 'Sales') {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SalesPage()),
+                );
+              } else if (label == 'Purchase') {
+                if (_subscriptionInfo?.isCashier == true) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Purchase orders restricted to Owner and Managers.')),
+                  );
+                  return;
+                }
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const PurchasePage()),
+                );
+              } else if (label == 'Orders') {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const OrderHistoryPage()),
+                );
               }
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const PurchasePage()),
-              );
-            } else if (label == 'Orders') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const OrderHistoryPage()),
-              );
+            } finally {
+              if (mounted) {
+                setState(() => _selectedTabIndex = 0);
+              }
             }
           },
           borderRadius: BorderRadius.circular(20),
@@ -2504,42 +2514,52 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {
+          onTap: () async {
             HapticFeedback.selectionClick();
+            if (index == 0) {
+              setState(() => _selectedTabIndex = 0);
+              return;
+            }
             setState(() => _selectedTabIndex = index);
-            if (label == 'Catalog') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => CatalogPage(db: widget.db),
-                ),
-              );
-            } else if (label == 'Inventory') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const InventoryPage()),
-              );
-            } else if (label == 'Sales') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SalesPage()),
-              );
-            } else if (label == 'Purchase') {
-              if (_subscriptionInfo?.isCashier == true) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Purchase orders restricted to Owner and Managers.')),
+            try {
+              if (label == 'Catalog') {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CatalogPage(db: widget.db),
+                  ),
                 );
-                return;
+              } else if (label == 'Inventory') {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const InventoryPage()),
+                );
+              } else if (label == 'Sales') {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SalesPage()),
+                );
+              } else if (label == 'Purchase') {
+                if (_subscriptionInfo?.isCashier == true) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Purchase orders restricted to Owner and Managers.')),
+                  );
+                  return;
+                }
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const PurchasePage()),
+                );
+              } else if (label == 'Orders') {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const OrderHistoryPage()),
+                );
               }
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const PurchasePage()),
-              );
-            } else if (label == 'Orders') {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const OrderHistoryPage()),
-              );
+            } finally {
+              if (mounted) {
+                setState(() => _selectedTabIndex = 0);
+              }
             }
           },
           borderRadius: BorderRadius.circular(12),
