@@ -179,23 +179,23 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
-                      controller: phoneCtrl,
-                      keyboardType: TextInputType.phone,
+                      controller: emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(
-                        labelText: 'Mobile Phone (for App Login)',
-                        hintText: 'e.g. 9876543210',
-                        prefixIcon: Icon(Icons.phone_outlined),
+                        labelText: 'Email Address (for App Login)',
+                        hintText: 'e.g. staff@gmail.com',
+                        prefixIcon: Icon(Icons.mail_outline),
                         border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
-                      controller: emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
-                        labelText: 'Email Address (Optional)',
-                        hintText: 'e.g. staff@gmail.com',
-                        prefixIcon: Icon(Icons.mail_outline),
+                        labelText: 'Mobile Phone (Optional / Contact)',
+                        hintText: 'e.g. 9876543210',
+                        prefixIcon: Icon(Icons.phone_outlined),
                         border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
                       ),
                     ),
@@ -259,14 +259,46 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 15,
+                            color: Theme.of(ctx).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              selectedRole == 'cashier'
+                                  ? 'Cashier access: POS Billing, Orders & Sales History, Customer returns, and Replacements. Inventory costs, purchases, reports, and settings are hidden.'
+                                  : 'Manager access: Inventory, Catalog, Purchases, Suppliers, Stock Requests, and Reports. Business settings, Billing plans, and Team management are hidden.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Theme.of(ctx).textTheme.bodySmall?.color,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
                         onPressed: () {
-                          if (phoneCtrl.text.trim().isEmpty && emailCtrl.text.trim().isEmpty) {
+                          final email = emailCtrl.text.trim();
+                          if (email.isEmpty || !email.contains('@')) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('Please enter a phone number or email.')),
+                              const SnackBar(content: Text('Please enter a valid email address for staff app login.')),
                             );
                             return;
                           }
