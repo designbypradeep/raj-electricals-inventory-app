@@ -974,6 +974,5 @@ class _TeamManagementPageState extends State<TeamManagementPage> {
       ),
     );
   }
-  }
 }
 
