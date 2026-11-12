@@ -792,7 +792,7 @@ class _CatalogPageState extends State<CatalogPage> {
               ),
               const SizedBox(width: 12),
               Text(
-                '🔍 Search & Filter Products',
+                'Search & Filter Products',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
@@ -1328,42 +1328,50 @@ class _CatalogPageState extends State<CatalogPage> {
         slivers: [
           // Page Header as part of scrollable content
           SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: MediaQuery.of(context).size.width > 1024
-                    ? 32
-                    : MediaQuery.of(context).size.width > 640
-                    ? 24
-                    : 16,
-                vertical: MediaQuery.of(context).size.width > 1024
-                    ? 32
-                    : MediaQuery.of(context).size.width > 640
-                    ? 24
-                    : 16,
-              ),
-              child: PageHeader(
-                title: 'Product Catalog',
-                description: 'Manage all products your business offers',
-                icon: '📦',
-                showBackButton: true,
-                stats: [
-                  PageHeaderStat(
-                    label: 'Total Products',
-                    value: '${_products.length}',
-                    description: 'All products in inventory',
+            child: PageHeader(
+              title: 'Product Catalog',
+              description: 'Manage all products your business offers',
+              icon: '📦',
+              showBackButton: true,
+              backLabel: 'Dashboard',
+              wrapInSafeArea: true,
+              breadcrumbs: [
+                PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
+                if (MediaQuery.of(context).size.width >= 450)
+                  PageHeaderBreadcrumb(
+                    label: 'Product Catalog',
+                    icon: '📦',
+                    current: true,
                   ),
-                  PageHeaderStat(
-                    label: 'Filtered Results',
-                    value: '${_filteredProducts.length}',
-                    description: 'Products matching current filters',
+              ],
+              stats: [
+                PageHeaderStat(
+                  label: 'Total Products',
+                  value: '${_products.length}',
+                  description: 'All catalog items',
+                ),
+                PageHeaderStat(
+                  label: 'Filtered Results',
+                  value: '${_filteredProducts.length}',
+                  description: 'Matching items',
+                ),
+                PageHeaderStat(
+                  label: 'Categories',
+                  value: '${_categories.length - 1}',
+                  description: 'Product categories',
+                ),
+              ],
+              actions: [
+                if (_businessProfile == null || _businessProfile!.isWritable)
+                  PageHeaderAction(
+                    label: 'New Product',
+                    shortLabel: 'Add Product',
+                    icon: Icons.add,
+                    color: Theme.of(context).colorScheme.primary,
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/add-product'),
                   ),
-                  PageHeaderStat(
-                    label: 'Categories',
-                    value: '${_categories.length - 1}',
-                    description: 'Product categories available',
-                  ),
-                ],
-              ),
+              ],
             ),
           ),
           // Status Messages

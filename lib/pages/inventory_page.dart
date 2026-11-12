@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:raj_electricals_inventory_app/theme/ui_tokens.dart';
 import '../services/supabase_service.dart';
 import '../models/supabase_models.dart' as supabase_models;
@@ -284,39 +285,36 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Theme.of(context).colorScheme.primary.withAlpha(20),
-              Theme.of(context).colorScheme.surface,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  _buildPageHeader(),
-                  const SizedBox(height: 24),
-                  _buildSearchBar(),
-                  const SizedBox(height: 24),
-                  _isLoading
-                      ? const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(40.0),
-                            child: CircularProgressIndicator(),
-                          ),
-                        )
-                      : _buildContent(),
-                ],
+      body: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          children: [
+            _buildPageHeader(),
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: MediaQuery.of(context).size.width < 480 ? 14 : 20,
+                vertical: 16,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: Column(
+                    children: [
+                      _buildSearchBar(),
+                      _isLoading
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(40.0),
+                                child: CircularProgressIndicator(),
+                              ),
+                            )
+                          : _buildContent(),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -333,15 +331,17 @@ class _InventoryPageState extends State<InventoryPage> {
       description: 'Real-time stock levels and product information',
       icon: '📦',
       showBackButton: true,
-      backLabel: 'Back to Dashboard',
+      backLabel: 'Dashboard',
+      wrapInSafeArea: true,
       onBackPressed: () => Navigator.pop(context),
       breadcrumbs: [
         PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
-        PageHeaderBreadcrumb(
-          label: 'Live Inventory',
-          icon: '📦',
-          current: true,
-        ),
+        if (MediaQuery.of(context).size.width >= 450)
+          PageHeaderBreadcrumb(
+            label: 'Live Inventory',
+            icon: '📦',
+            current: true,
+          ),
       ],
       stats: [
         PageHeaderStat(
@@ -351,7 +351,11 @@ class _InventoryPageState extends State<InventoryPage> {
         ),
         PageHeaderStat(
           label: 'Total Value',
-          value: '₹${totalValue.toStringAsFixed(0)}',
+          value: NumberFormat.currency(
+            symbol: '₹',
+            decimalDigits: 0,
+            locale: 'en_IN',
+          ).format(totalValue),
           description: 'Current inventory value',
         ),
       ],
@@ -403,7 +407,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      '🔍 Search Inventory',
+                      'Search Inventory',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
