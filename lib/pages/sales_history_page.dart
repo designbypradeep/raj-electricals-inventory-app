@@ -507,8 +507,8 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
 
   Widget _buildSkeletonLoading(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final base = isDark ? Colors.grey[850]! : Colors.grey[300]!;
-    final highlight = isDark ? Colors.grey[750]! : Colors.grey[100]!;
+    final base = isDark ? (Colors.grey[850] ?? Colors.grey[800]!) : Colors.grey[300]!;
+    final highlight = isDark ? Colors.grey[700]! : Colors.grey[100]!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
