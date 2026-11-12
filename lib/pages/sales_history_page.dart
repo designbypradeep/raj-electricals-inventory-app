@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import '../widgets/page_header.dart';
 import '../widgets/search_bar_widget.dart';
 import '../services/supabase_service.dart';
@@ -122,14 +123,22 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
     await _loadSales();
   }
 
-  Future<void> _loadSales() async {
+  Future<void> _loadSales({bool forceRefresh = false}) async {
     try {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = '';
-      });
+      final cached = SupabaseService.cachedSales;
+      if (cached != null && cached.isNotEmpty && !forceRefresh) {
+        // Fast instant render from memory cache
+        _sales = cached;
+        _filterAndSortSales();
+        _isLoading = false;
+      } else if (_sales.isEmpty) {
+        setState(() {
+          _isLoading = true;
+          _errorMessage = '';
+        });
+      }
 
-      final sales = await SupabaseService.getSales();
+      final sales = await SupabaseService.getSales(forceRefresh: forceRefresh);
 
       if (mounted) {
         setState(() {
@@ -496,34 +505,122 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: Center(
+  Widget _buildSkeletonLoading(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final base = isDark ? Colors.grey[850]! : Colors.grey[300]!;
+    final highlight = isDark ? Colors.grey[750]! : Colors.grey[100]!;
+
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        top: true,
+        bottom: true,
+        child: SingleChildScrollView(
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  Theme.of(context).colorScheme.primary,
-                ),
+              PageHeader(
+                title: 'Sales History',
+                description: 'Track, manage, and analyze sales records',
+                icon: '🛍️',
+                showBackButton: true,
+                backLabel: 'Back to Dashboard',
+                wrapInSafeArea: false,
+                breadcrumbs: const [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
+                  PageHeaderBreadcrumb(
+                    label: 'Sales History',
+                    icon: '🛍️',
+                    current: true,
+                  ),
+                ],
+                stats: const [
+                  PageHeaderStat(
+                    label: 'Total Sales',
+                    value: '...',
+                    description: 'Loading...',
+                  ),
+                  PageHeaderStat(
+                    label: 'Status',
+                    value: 'Syncing',
+                    description: 'Fetching live data',
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Loading sales history...',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.7),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1100),
+                    child: Column(
+                      children: [
+                        // Skeleton 2x2 grid stats
+                        GridView.count(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisCount: 2,
+                          childAspectRatio: 2.1,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          children: List.generate(
+                            4,
+                            (_) => Shimmer.fromColors(
+                              baseColor: base,
+                              highlightColor: highlight,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).cardColor,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        // Skeleton search bar
+                        Shimmer.fromColors(
+                          baseColor: base,
+                          highlightColor: highlight,
+                          child: Container(
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).cardColor,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        // Skeleton sales cards
+                        ...List.generate(
+                          3,
+                          (_) => Shimmer.fromColors(
+                            baseColor: base,
+                            highlightColor: highlight,
+                            child: Container(
+                              height: 140,
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).cardColor,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
         ),
-      );
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading && _sales.isEmpty) {
+      return _buildSkeletonLoading(context);
     }
 
     if (_errorMessage.isNotEmpty) {
@@ -584,9 +681,12 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
       body: SafeArea(
         top: true,
         bottom: true,
-        child: SingleChildScrollView(
-          controller: _scrollController,
-          child: Column(
+        child: RefreshIndicator(
+          onRefresh: () => _loadSales(forceRefresh: true),
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
             children: [
               PageHeader(
                 title: 'Sales History',
@@ -689,8 +789,9 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildActionButtons() {
     return Row(
@@ -794,28 +895,23 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
     return LayoutBuilder(
       builder: (context, c) {
         final w = c.maxWidth;
-        final cross = w >= 1000
+        final cross = w >= 900
             ? 4
-            : w >= 700
-            ? 3
-            : w >= 480
-            ? 2
-            : 1;
-        // Give tiles a bit more height at smaller widths to avoid overflow
-        final aspect = w < 360
-            ? 1.6
-            : w < 480
-            ? 1.8
-            : w < 700
+            : w >= 550
+            ? 4
+            : 2; // Always at least 2 columns on mobile (2x2 grid)
+        final aspect = w < 380
             ? 2.0
-            : 2.2;
+            : w < 550
+            ? 2.2
+            : 2.4;
         return GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: cross,
           childAspectRatio: aspect,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
           children: [
             _buildStatCard(
               'Total Sales',
@@ -854,36 +950,37 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
     Color color,
   ) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.2)),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
-            blurRadius: 10,
+            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.04),
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             children: [
-              Icon(icon, color: color, size: 20),
+              Icon(icon, color: color, size: 18),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   'Live',
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 9,
                     color: color,
                     fontWeight: FontWeight.bold,
                   ),
@@ -898,7 +995,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
             overflow: TextOverflow.ellipsis,
             softWrap: false,
             style: TextStyle(
-              fontSize: 22,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: color,
             ),
@@ -909,10 +1006,11 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
             overflow: TextOverflow.ellipsis,
             softWrap: false,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
               color: Theme.of(
                 context,
-              ).colorScheme.onSurface.withValues(alpha: 0.6),
+              ).textTheme.bodySmall?.color?.withValues(alpha: 0.75),
             ),
           ),
         ],
@@ -1726,18 +1824,15 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Total Amount:',
-                              style: TextStyle(
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.color
-                                    ?.withValues(alpha: 0.8),
+                              'Total: ₹${sale.totalAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
                               ),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Items Count:',
+                              'Items: ${items.length}',
                               style: TextStyle(
                                 color: Theme.of(context)
                                     .textTheme
@@ -1749,144 +1844,137 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                           ],
                         );
 
-                        final col3 = Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        final actionsWrap = Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
-                            Text(
-                              'ACTIONS',
-                              style: TextStyle(
-                                fontSize: 11,
-                                letterSpacing: 0.6,
-                                fontWeight: FontWeight.w700,
-                                color: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
-                                    ?.color
-                                    ?.withValues(alpha: 0.7),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _expandedSaleId = isExpanded
+                                      ? null
+                                      : sale.id;
+                                });
+                              },
+                              icon: Icon(
+                                isExpanded ? Icons.visibility_off : Icons.visibility,
+                                size: 15,
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            // Amount + items quick access
-                            Text(
-                              '₹${sale.totalAmount.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue,
+                              label: Text(
+                                isExpanded
+                                    ? 'Hide Details'
+                                    : 'View Details',
+                                style: const TextStyle(fontSize: 12),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            GestureDetector(
-                              onTap: () => setState(
-                                () => _expandedSaleId = isExpanded
-                                    ? null
-                                    : sale.id,
-                              ),
-                              child: const Text(
-                                'View items',
-                                style: TextStyle(
-                                  color: Colors.purple,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
+                              style: OutlinedButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                OutlinedButton.icon(
-                                  onPressed: () {
-                                    setState(() {
-                                      _expandedSaleId = isExpanded
-                                          ? null
-                                          : sale.id;
-                                    });
-                                  },
-                                  icon: const Icon(Icons.visibility, size: 16),
-                                  label: Text(
-                                    isExpanded
-                                        ? 'Hide Details'
-                                        : 'View Details',
-                                  ),
+                            ElevatedButton.icon(
+                              onPressed: () => _shareOnWhatsApp(sale),
+                              icon: const Icon(Icons.share, size: 15),
+                              label: const Text('Share', style: TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
                                 ),
-                                ElevatedButton.icon(
-                                  onPressed: () => _shareOnWhatsApp(sale),
-                                  icon: const Icon(Icons.share, size: 16),
-                                  label: const Text('Share'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green,
-                                    foregroundColor: Colors.white,
-                                  ),
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: () => _generatePdf(sale),
+                              icon: const Icon(Icons.picture_as_pdf, size: 15),
+                              label: const Text('PDF', style: TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
                                 ),
-                                ElevatedButton.icon(
-                                  onPressed: () => _generatePdf(sale),
-                                  icon: const Icon(
-                                    Icons.picture_as_pdf,
-                                    size: 16,
-                                  ),
-                                  label: const Text('PDF'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blue,
-                                    foregroundColor: Colors.white,
-                                  ),
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: () => _showEditDialog(sale),
+                              icon: const Icon(Icons.edit, size: 15),
+                              label: const Text('Edit', style: TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange,
+                                foregroundColor: Colors.white,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
                                 ),
-                                ElevatedButton.icon(
-                                  onPressed: () => _showEditDialog(sale),
-                                  icon: const Icon(Icons.edit, size: 16),
-                                  label: const Text('Edit'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.orange,
-                                    foregroundColor: Colors.white,
-                                  ),
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).pushNamed(
+                                  '/returns',
+                                  arguments: {'sale_id': sale.id},
+                                );
+                              },
+                              icon: const Icon(
+                                Icons.keyboard_return_rounded,
+                                size: 15,
+                              ),
+                              label: const Text('Return', style: TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.purple,
+                                foregroundColor: Colors.white,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
                                 ),
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    Navigator.of(context).pushNamed(
-                                      '/returns',
-                                      arguments: {'sale_id': sale.id},
-                                    );
-                                  },
-                                  icon: const Icon(
-                                    Icons.keyboard_return_rounded,
-                                    size: 16,
-                                  ),
-                                  label: const Text('Return'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.purple,
-                                    foregroundColor: Colors.white,
-                                  ),
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).pushNamed(
+                                  '/replacements',
+                                  arguments: {'sale_id': sale.id},
+                                );
+                              },
+                              icon: const Icon(Icons.swap_horiz, size: 15),
+                              label: const Text('Replace', style: TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.teal,
+                                foregroundColor: Colors.white,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
                                 ),
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    Navigator.of(context).pushNamed(
-                                      '/replacements',
-                                      arguments: {'sale_id': sale.id},
-                                    );
-                                  },
-                                  icon: const Icon(Icons.swap_horiz, size: 16),
-                                  label: const Text('Replace'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.teal,
-                                    foregroundColor: Colors.white,
-                                  ),
+                              ),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: () =>
+                                  _confirmAndDeleteSale(sale.id!),
+                              icon: const Icon(Icons.delete, size: 15),
+                              label: const Text('Delete', style: TextStyle(fontSize: 12)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.error,
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onError,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
                                 ),
-                                ElevatedButton.icon(
-                                  onPressed: () =>
-                                      _confirmAndDeleteSale(sale.id!),
-                                  icon: const Icon(Icons.delete, size: 16),
-                                  label: const Text('Delete'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Theme.of(
-                                      context,
-                                    ).colorScheme.error,
-                                    foregroundColor: Theme.of(
-                                      context,
-                                    ).colorScheme.onError,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ],
                         );
@@ -1896,21 +1984,68 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(child: col1),
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 14),
                               Expanded(child: col2),
-                              const SizedBox(width: 12),
-                              Expanded(child: col3),
+                              const SizedBox(width: 14),
+                              Expanded(flex: 2, child: actionsWrap),
                             ],
                           );
                         } else {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              col1,
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: col1),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        '₹${sale.totalAmount.toStringAsFixed(2)}',
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      InkWell(
+                                        onTap: () => setState(
+                                          () => _expandedSaleId =
+                                              isExpanded ? null : sale.id,
+                                        ),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 3,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.purple.withValues(
+                                              alpha: 0.08,
+                                            ),
+                                            borderRadius:
+                                                BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            isExpanded
+                                                ? 'Hide items'
+                                                : 'View items (${items.length})',
+                                            style: const TextStyle(
+                                              color: Colors.purple,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                               const SizedBox(height: 12),
-                              col2,
-                              const SizedBox(height: 12),
-                              col3,
+                              actionsWrap,
                             ],
                           );
                         }

@@ -3632,6 +3632,7 @@ class SupabaseService {
         }
       }
 
+      invalidateSalesCache();
       return true;
     } catch (e) {
       if (kDebugMode) {
@@ -3649,6 +3650,7 @@ class SupabaseService {
         params: {'sale_id_to_delete': saleId},
       );
       // If no exception, consider success
+      invalidateSalesCache();
       return true;
     } catch (e) {
       if (kDebugMode) {
@@ -4194,6 +4196,7 @@ class SupabaseService {
         }
       }
 
+      invalidateSalesCache();
       return saleId;
     } catch (e) {
       if (kDebugMode) {
@@ -6033,8 +6036,30 @@ class SupabaseService {
         .listen(onData);
   }
 
+  // In-memory sales cache
+  static List<Sale>? _cachedSales;
+  static DateTime? _salesCacheTime;
+
+  static List<Sale>? get cachedSales => _cachedSales;
+  static bool get hasCachedSales =>
+      _cachedSales != null && _cachedSales!.isNotEmpty;
+
+  static void invalidateSalesCache() {
+    _cachedSales = null;
+    _salesCacheTime = null;
+  }
+
   // Sales methods
-  static Future<List<Sale>> getSales() async {
+  static Future<List<Sale>> getSales({bool forceRefresh = false}) async {
+    // Return cache if fresh (within 3 minutes)
+    if (!forceRefresh &&
+        _cachedSales != null &&
+        _salesCacheTime != null &&
+        DateTime.now().difference(_salesCacheTime!) <
+            const Duration(minutes: 3)) {
+      return List<Sale>.from(_cachedSales!);
+    }
+
     // Ensure business profile is loaded
     await getCurrentBusinessProfile();
 
@@ -6043,7 +6068,7 @@ class SupabaseService {
       if (kDebugMode) {
         print('No business ID found for fetching sales');
       }
-      return [];
+      return _cachedSales ?? [];
     }
 
     try {
@@ -6070,12 +6095,15 @@ class SupabaseService {
         from += pageSize;
       }
 
+      _cachedSales = allSales;
+      _salesCacheTime = DateTime.now();
+
       return allSales;
     } catch (e) {
       if (kDebugMode) {
         print('Error fetching sales: $e');
       }
-      return [];
+      return _cachedSales ?? [];
     }
   }
 
