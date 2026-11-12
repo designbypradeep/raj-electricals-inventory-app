@@ -401,7 +401,7 @@ class _SupplierCreditsPageState extends State<SupplierCreditsPage> {
               ),
             ),
 
-            if (!_isLoading && _ledgerEntries.isNotEmpty)
+            if (!_isLoading && _ledgerEntries.isNotEmpty) ...[
               SliverPadding(
                 padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24),
                 sliver: SliverList(
@@ -505,7 +505,6 @@ class _SupplierCreditsPageState extends State<SupplierCreditsPage> {
                   }, childCount: _paginatedEntries.length),
                 ),
               ),
-            if (!_isLoading && _ledgerEntries.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
@@ -517,7 +516,7 @@ class _SupplierCreditsPageState extends State<SupplierCreditsPage> {
                   child: _buildPaginationControls(),
                 ),
               ),
-            else if (!_isLoading &&
+            ] else if (!_isLoading &&
                 _ledgerEntries.isEmpty &&
                 _supplierNameController.text.isNotEmpty)
               SliverFillRemaining(
