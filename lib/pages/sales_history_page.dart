@@ -525,7 +525,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                 showBackButton: true,
                 backLabel: 'Back to Dashboard',
                 wrapInSafeArea: false,
-                breadcrumbs: const [
+                breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
                   PageHeaderBreadcrumb(
                     label: 'Sales History',
@@ -533,7 +533,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                     current: true,
                   ),
                 ],
-                stats: const [
+                stats: [
                   PageHeaderStat(
                     label: 'Total Sales',
                     value: '...',
