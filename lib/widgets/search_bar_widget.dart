@@ -15,7 +15,7 @@ class SearchBarWidget extends StatefulWidget {
     required this.onSearchChanged,
     this.resultCount,
     this.totalCount,
-    this.headerTitle = '🔍 Search',
+    this.headerTitle = 'Search',
     this.compact = false,
     this.entityName = 'records',
   });
@@ -40,7 +40,10 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
         height: 40,
         child: TextField(
           controller: _controller,
-          onChanged: widget.onSearchChanged,
+          onChanged: (val) {
+            widget.onSearchChanged(val);
+            setState(() {});
+          },
           decoration: InputDecoration(
             hintText: widget.placeholder,
             prefixIcon: Icon(
@@ -50,6 +53,16 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
                 context,
               ).textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
             ),
+            suffixIcon: _controller.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 16),
+                    onPressed: () {
+                      _controller.clear();
+                      widget.onSearchChanged('');
+                      setState(() {});
+                    },
+                  )
+                : null,
             filled: true,
             fillColor:
                 Theme.of(context).inputDecorationTheme.fillColor ??
@@ -140,7 +153,10 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
           // Search Input
           TextField(
             controller: _controller,
-            onChanged: widget.onSearchChanged,
+            onChanged: (val) {
+              widget.onSearchChanged(val);
+              setState(() {});
+            },
             decoration: InputDecoration(
               hintText: widget.placeholder,
               prefixIcon: Icon(
@@ -149,6 +165,16 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
                   context,
                 ).textTheme.bodyMedium?.color?.withValues(alpha: 0.6),
               ),
+              suffixIcon: _controller.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _controller.clear();
+                        widget.onSearchChanged('');
+                        setState(() {});
+                      },
+                    )
+                  : null,
               filled: true,
               fillColor:
                   Theme.of(context).inputDecorationTheme.fillColor ??

@@ -527,11 +527,12 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                 wrapInSafeArea: false,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
-                  PageHeaderBreadcrumb(
-                    label: 'Sales History',
-                    icon: '🛍️',
-                    current: true,
-                  ),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Sales History',
+                      icon: '🛍️',
+                      current: true,
+                    ),
                 ],
                 stats: [
                   PageHeaderStat(
@@ -697,11 +698,12 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                 wrapInSafeArea: false,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
-                  PageHeaderBreadcrumb(
-                    label: 'Sales History',
-                    icon: '🛍️',
-                    current: true,
-                  ),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Sales History',
+                      icon: '🛍️',
+                      current: true,
+                    ),
                 ],
                 stats: [
                   PageHeaderStat(
@@ -933,7 +935,11 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
             ),
             _buildStatCard(
               'Total Revenue',
-              '₹${totalRevenue.toStringAsFixed(0)}',
+              NumberFormat.currency(
+                symbol: '₹',
+                decimalDigits: 0,
+                locale: 'en_IN',
+              ).format(totalRevenue),
               Icons.currency_rupee,
               problematicCount > 0 ? Colors.red : Colors.purple,
             ),
@@ -1844,138 +1850,154 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                           ],
                         );
 
-                        final actionsWrap = Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
+                        final actionRow1 = Row(
                           children: [
-                            OutlinedButton.icon(
-                              onPressed: () {
-                                setState(() {
-                                  _expandedSaleId = isExpanded
-                                      ? null
-                                      : sale.id;
-                                });
-                              },
-                              icon: Icon(
-                                isExpanded ? Icons.visibility_off : Icons.visibility,
-                                size: 15,
-                              ),
-                              label: Text(
-                                isExpanded
-                                    ? 'Hide Details'
-                                    : 'View Details',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                            Expanded(
+                              flex: 3,
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _expandedSaleId = isExpanded
+                                        ? null
+                                        : sale.id;
+                                  });
+                                },
+                                icon: Icon(
+                                  isExpanded ? Icons.visibility_off : Icons.visibility,
+                                  size: 14,
+                                ),
+                                label: Text(
+                                  isExpanded ? 'Hide' : 'Details',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 6,
+                                  ),
                                 ),
                               ),
                             ),
-                            ElevatedButton.icon(
-                              onPressed: () => _shareOnWhatsApp(sale),
-                              icon: const Icon(Icons.share, size: 15),
-                              label: const Text('Share', style: TextStyle(fontSize: 12)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                foregroundColor: Colors.white,
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                            const SizedBox(width: 6),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton.icon(
+                                onPressed: () => _generatePdf(sale),
+                                icon: const Icon(Icons.picture_as_pdf, size: 14),
+                                label: const Text('PDF', style: TextStyle(fontSize: 11)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 6,
+                                  ),
                                 ),
                               ),
                             ),
-                            ElevatedButton.icon(
-                              onPressed: () => _generatePdf(sale),
-                              icon: const Icon(Icons.picture_as_pdf, size: 15),
-                              label: const Text('PDF', style: TextStyle(fontSize: 12)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                            const SizedBox(width: 6),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton.icon(
+                                onPressed: () => _shareOnWhatsApp(sale),
+                                icon: const Icon(Icons.share, size: 14),
+                                label: const Text('Share', style: TextStyle(fontSize: 11)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green,
+                                  foregroundColor: Colors.white,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 6,
+                                  ),
                                 ),
                               ),
                             ),
-                            ElevatedButton.icon(
-                              onPressed: () => _showEditDialog(sale),
-                              icon: const Icon(Icons.edit, size: 15),
-                              label: const Text('Edit', style: TextStyle(fontSize: 12)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.orange,
-                                foregroundColor: Colors.white,
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                          ],
+                        );
+
+                        final actionRow2 = Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _showEditDialog(sale),
+                                icon: const Icon(Icons.edit, size: 12),
+                                label: const Text('Edit', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.orange,
+                                  foregroundColor: Colors.white,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
                                 ),
                               ),
                             ),
-                            ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.of(context).pushNamed(
-                                  '/returns',
-                                  arguments: {'sale_id': sale.id},
-                                );
-                              },
-                              icon: const Icon(
-                                Icons.keyboard_return_rounded,
-                                size: 15,
-                              ),
-                              label: const Text('Return', style: TextStyle(fontSize: 12)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.purple,
-                                foregroundColor: Colors.white,
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.of(context).pushNamed(
+                                    '/returns',
+                                    arguments: {'sale_id': sale.id},
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.keyboard_return_rounded,
+                                  size: 12,
+                                ),
+                                label: const Text('Return', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.purple,
+                                  foregroundColor: Colors.white,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
                                 ),
                               ),
                             ),
-                            ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.of(context).pushNamed(
-                                  '/replacements',
-                                  arguments: {'sale_id': sale.id},
-                                );
-                              },
-                              icon: const Icon(Icons.swap_horiz, size: 15),
-                              label: const Text('Replace', style: TextStyle(fontSize: 12)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.teal,
-                                foregroundColor: Colors.white,
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.of(context).pushNamed(
+                                    '/replacements',
+                                    arguments: {'sale_id': sale.id},
+                                  );
+                                },
+                                icon: const Icon(Icons.swap_horiz, size: 12),
+                                label: const Text('Replace', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.teal,
+                                  foregroundColor: Colors.white,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
                                 ),
                               ),
                             ),
-                            ElevatedButton.icon(
-                              onPressed: () =>
-                                  _confirmAndDeleteSale(sale.id!),
-                              icon: const Icon(Icons.delete, size: 15),
-                              label: const Text('Delete', style: TextStyle(fontSize: 12)),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(
-                                  context,
-                                ).colorScheme.error,
-                                foregroundColor: Theme.of(
-                                  context,
-                                ).colorScheme.onError,
-                                visualDensity: VisualDensity.compact,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () =>
+                                    _confirmAndDeleteSale(sale.id!),
+                                icon: const Icon(Icons.delete, size: 12),
+                                label: const Text('Delete', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.error,
+                                  foregroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.onError,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
                                 ),
                               ),
                             ),
+                          ],
+                        );
+
+                        final actionsColumn = Column(
+                          children: [
+                            actionRow1,
+                            const SizedBox(height: 6),
+                            actionRow2,
                           ],
                         );
 
@@ -1987,7 +2009,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                               const SizedBox(width: 14),
                               Expanded(child: col2),
                               const SizedBox(width: 14),
-                              Expanded(flex: 2, child: actionsWrap),
+                              Expanded(flex: 2, child: actionsColumn),
                             ],
                           );
                         } else {
@@ -2045,7 +2067,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                                 ],
                               ),
                               const SizedBox(height: 12),
-                              actionsWrap,
+                              actionsColumn,
                             ],
                           );
                         }
