@@ -157,8 +157,8 @@ class _ArchivedProductsPageState extends State<ArchivedProductsPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
-        bottom: false,
+        top: false,
+        bottom: true,
         child: SingleChildScrollView(
           child: Column(
             children: [
@@ -169,14 +169,17 @@ class _ArchivedProductsPageState extends State<ArchivedProductsPage> {
                 icon: '📦',
                 showBackButton: true,
                 backLabel: 'Back to Catalog',
+                wrapInSafeArea: true,
                 breadcrumbs: [
-                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
-                  PageHeaderBreadcrumb(label: 'Product Catalog', icon: '📦'),
-                  PageHeaderBreadcrumb(
-                    label: 'Archived Products',
-                    icon: '🗃️',
-                    current: true,
-                  ),
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(label: 'Product Catalog', icon: '📦', href: '/catalog'),
+                  if (MediaQuery.of(context).size.width >= 600)
+                    PageHeaderBreadcrumb(
+                      label: 'Archived Products',
+                      icon: '🗃️',
+                      current: true,
+                    ),
                 ],
                 stats: [
                   PageHeaderStat(

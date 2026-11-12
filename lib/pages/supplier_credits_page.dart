@@ -117,6 +117,8 @@ class _SupplierCreditsPageState extends State<SupplierCreditsPage> {
             )
           : null,
       body: SafeArea(
+        top: false,
+        bottom: true,
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
@@ -125,6 +127,16 @@ class _SupplierCreditsPageState extends State<SupplierCreditsPage> {
                 description: 'Track credits and payments',
                 icon: '💳',
                 showBackButton: true,
+                wrapInSafeArea: true,
+                breadcrumbs: [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Supplier Credits',
+                      icon: '💳',
+                      current: true,
+                    ),
+                ],
                 stats: [
                   PageHeaderStat(
                     label: 'Entries',

@@ -79,8 +79,8 @@ class _BillingPageState extends State<BillingPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
-        bottom: false,
+        top: false,
+        bottom: true,
         child: RefreshIndicator(
           onRefresh: _loadBillingData,
           child: SingleChildScrollView(
@@ -93,6 +93,16 @@ class _BillingPageState extends State<BillingPage> {
                   description: 'Monitor your plan limits, trial status, and usage quotas',
                   icon: '💳',
                   showBackButton: true,
+                  wrapInSafeArea: true,
+                  breadcrumbs: [
+                    PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                    if (MediaQuery.of(context).size.width >= 450)
+                      PageHeaderBreadcrumb(
+                        label: 'Billing & Plans',
+                        icon: '💳',
+                        current: true,
+                      ),
+                  ],
                   stats: [
                     PageHeaderStat(
                       label: 'Active Plan',

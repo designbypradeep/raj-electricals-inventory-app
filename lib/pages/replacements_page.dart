@@ -312,13 +312,15 @@ class _ReplacementsPageState extends State<ReplacementsPage> {
               icon: '🔄',
               showBackButton: true,
               backLabel: 'Back to Dashboard',
+              wrapInSafeArea: true,
               breadcrumbs: [
                 PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
-                PageHeaderBreadcrumb(
-                  label: 'Replacements',
-                  icon: '🔄',
-                  current: true,
-                ),
+                if (MediaQuery.of(context).size.width >= 450)
+                  PageHeaderBreadcrumb(
+                    label: 'Replacements',
+                    icon: '🔄',
+                    current: true,
+                  ),
               ],
               stats: [
                 PageHeaderStat(

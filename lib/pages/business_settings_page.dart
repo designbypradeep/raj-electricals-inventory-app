@@ -1410,8 +1410,8 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
-        bottom: false,
+        top: false,
+        bottom: true,
         child: SingleChildScrollView(
           child: Column(
             children: [
@@ -1421,6 +1421,16 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                 icon: '🏢',
                 showBackButton: true,
                 onBackPressed: () => Navigator.pop(context),
+                wrapInSafeArea: true,
+                breadcrumbs: [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Business Settings',
+                      icon: '🏢',
+                      current: true,
+                    ),
+                ],
                 stats: [
                   PageHeaderStat(
                     label: 'Profile Status',

@@ -537,6 +537,8 @@ class _CustomersPageState extends State<CustomersPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
+        top: false,
+        bottom: true,
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
@@ -545,6 +547,16 @@ class _CustomersPageState extends State<CustomersPage> {
                 description: 'Manage your customers and track debts',
                 icon: '👥',
                 showBackButton: true,
+                wrapInSafeArea: true,
+                breadcrumbs: [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Customers',
+                      icon: '👥',
+                      current: true,
+                    ),
+                ],
                 stats: [
                   PageHeaderStat(
                     label: 'Total Customers',

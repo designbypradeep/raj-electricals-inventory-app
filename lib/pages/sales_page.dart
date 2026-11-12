@@ -576,47 +576,59 @@ class _SalesPageState extends State<SalesPage> {
           ),
         ),
         child: SafeArea(
-          top: true,
-          bottom: false,
+          top: false,
+          bottom: true,
           child: SingleChildScrollView(
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: MediaQuery.of(context).size.width < 480 ? 12 : 16,
-                vertical: MediaQuery.of(context).size.width < 480 ? 16 : 24,
-              ),
-              child: Column(
-                children: [
-                  // Page Header - Exact SvelteKit structure
-                  PageHeader(
-                    title: 'Record Sale',
-                    description:
-                        'Create new sales transactions and manage customer orders',
-                    icon: '🛒',
-                    showBackButton: true,
-                    backLabel: 'Back to Dashboard',
-                    stats: [
-                      PageHeaderStat(
-                        label: 'Items in Cart',
-                        value: '${_salesItems.length}',
-                        description: _salesItems.isEmpty
-                            ? 'Cart is empty'
-                            : 'Ready for billing',
+            child: Column(
+              children: [
+                // Page Header - Exact SvelteKit structure
+                PageHeader(
+                  title: 'Record Sale',
+                  description:
+                      'Create new sales transactions and manage customer orders',
+                  icon: '🛒',
+                  showBackButton: true,
+                  backLabel: 'Back to Dashboard',
+                  wrapInSafeArea: true,
+                  breadcrumbs: [
+                    PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                    if (MediaQuery.of(context).size.width >= 450)
+                      PageHeaderBreadcrumb(
+                        label: 'Record Sale',
+                        icon: '🛒',
+                        current: true,
                       ),
-                      PageHeaderStat(
-                        label: 'Cart Total',
-                        value: '₹${_finalTotal.toStringAsFixed(0)}',
-                        description: _paymentMethod.isNotEmpty
-                            ? 'Payment: $_paymentMethod'
-                            : 'Pending payment',
-                      ),
+                  ],
+                  stats: [
+                    PageHeaderStat(
+                      label: 'Items in Cart',
+                      value: '${_salesItems.length}',
+                      description: _salesItems.isEmpty
+                          ? 'Cart is empty'
+                          : 'Ready for billing',
+                    ),
+                    PageHeaderStat(
+                      label: 'Cart Total',
+                      value: '₹${_finalTotal.toStringAsFixed(0)}',
+                      description: _paymentMethod.isNotEmpty
+                          ? 'Payment: $_paymentMethod'
+                          : 'Pending payment',
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: MediaQuery.of(context).size.width < 480 ? 12 : 16,
+                    vertical: MediaQuery.of(context).size.width < 480 ? 16 : 24,
+                  ),
+                  child: Column(
+                    children: [
+                      // Conditional display: Receipt or Sale Form (exact SvelteKit pattern)
+                      _receipt != null ? _buildSuccessReceipt() : _buildSaleForm(),
                     ],
                   ),
-                  const SizedBox(height: 32),
-
-                  // Conditional display: Receipt or Sale Form (exact SvelteKit pattern)
-                  _receipt != null ? _buildSuccessReceipt() : _buildSaleForm(),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

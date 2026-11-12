@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import '../services/supabase_service.dart';
+import '../widgets/page_header.dart';
 
 class OrderHistoryPage extends StatefulWidget {
   const OrderHistoryPage({super.key});
@@ -111,28 +112,73 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final totalOrders = _orders.length;
+    final totalValue = _orders.fold<double>(
+      0.0,
+      (s, r) => s + ((r['total_amount'] as num?)?.toDouble() ?? 0.0),
+    );
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Order History'),
-        actions: [
-          IconButton(
-            onPressed: () => _load(initial: true),
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: _loading && _orders.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(child: Text('Error: $_error'))
-          : _orders.isEmpty
-          ? const Center(child: Text('No order history found'))
-          : ListView.separated(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(12),
-              itemCount: _orders.length + (_loadingMore ? 1 : 0),
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        top: false,
+        bottom: true,
+        child: Column(
+          children: [
+            PageHeader(
+              title: 'Order History',
+              description: 'Customer shop orders and payment requests',
+              icon: '🛍️',
+              showBackButton: true,
+              onBackPressed: () => Navigator.pop(context),
+              wrapInSafeArea: true,
+              breadcrumbs: [
+                PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                if (MediaQuery.of(context).size.width >= 450)
+                  PageHeaderBreadcrumb(
+                    label: 'Order History',
+                    icon: '🛍️',
+                    current: true,
+                  ),
+              ],
+              stats: [
+                PageHeaderStat(
+                  label: 'Orders',
+                  value: '$totalOrders',
+                  description: 'Loaded orders',
+                ),
+                PageHeaderStat(
+                  label: 'Total Value',
+                  value: '₹${totalValue.toStringAsFixed(0)}',
+                  description: 'Total order volume',
+                ),
+              ],
+              actions: [
+                PageHeaderAction(
+                  label: 'Refresh',
+                  shortLabel: 'Refresh',
+                  icon: Icons.refresh,
+                  color: Theme.of(context).colorScheme.primary,
+                  onPressed: () => _load(initial: true),
+                ),
+              ],
+            ),
+            Expanded(
+              child: _loading && _orders.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Center(child: Text('Error: $_error'))
+                  : _orders.isEmpty
+                  ? const Center(child: Text('No order history found'))
+                  : RefreshIndicator(
+                      onRefresh: () => _load(initial: true),
+                      child: ListView.separated(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _orders.length + (_loadingMore ? 1 : 0),
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
                 if (index == _orders.length) {
                   return const Center(
                     child: Padding(
@@ -281,6 +327,11 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                 );
               },
             ),
-    );
+          ),
+        ),
+      ],
+    ),
+  ),
+);
   }
 }

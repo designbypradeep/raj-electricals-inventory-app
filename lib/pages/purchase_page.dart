@@ -520,43 +520,53 @@ class _PurchasePageState extends State<PurchasePage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
-        bottom: false,
+        top: false,
+        bottom: true,
         child: RefreshIndicator(
           onRefresh: _refreshProducts,
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: MediaQuery.of(context).size.width < 480 ? 12 : 16,
-                vertical: MediaQuery.of(context).size.width < 480 ? 16 : 24,
-              ),
-              child: Column(
-                children: [
-                  SizedBox(
-                    height: MediaQuery.of(context).size.width < 480 ? 12 : 32,
-                  ),
-                  PageHeader(
-                    title: 'Record Purchase',
-                    description:
-                        'Add new stock acquisitions and manage inventory purchases',
-                    icon: '🛍️',
-                    showBackButton: true,
-                    stats: [
-                      PageHeaderStat(
-                        label: 'Items Added',
-                        value: '${_purchaseItems.length}',
-                        description: _purchaseItems.isEmpty
-                            ? 'No items added'
-                            : 'Ready to record',
+            child: Column(
+              children: [
+                PageHeader(
+                  title: 'Record Purchase',
+                  description:
+                      'Add new stock acquisitions and manage inventory purchases',
+                  icon: '🛍️',
+                  showBackButton: true,
+                  backLabel: 'Back to Dashboard',
+                  wrapInSafeArea: true,
+                  breadcrumbs: [
+                    PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                    if (MediaQuery.of(context).size.width >= 450)
+                      PageHeaderBreadcrumb(
+                        label: 'Record Purchase',
+                        icon: '🛍️',
+                        current: true,
                       ),
-                      PageHeaderStat(
-                        label: 'Total Cost',
-                        value: '₹${_computeTotalAmount().toStringAsFixed(0)}',
-                        description: 'Estimated order value',
-                      ),
-                    ],
+                  ],
+                  stats: [
+                    PageHeaderStat(
+                      label: 'Items Added',
+                      value: '${_purchaseItems.length}',
+                      description: _purchaseItems.isEmpty
+                          ? 'No items added'
+                          : 'Ready to record',
+                    ),
+                    PageHeaderStat(
+                      label: 'Total Cost',
+                      value: '₹${_computeTotalAmount().toStringAsFixed(0)}',
+                      description: 'Estimated order value',
+                    ),
+                  ],
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: MediaQuery.of(context).size.width < 480 ? 12 : 16,
+                    vertical: MediaQuery.of(context).size.width < 480 ? 16 : 24,
                   ),
+                  child: Column(
+                    children: [
 
                   const SizedBox(height: 24),
                   // Error Message
@@ -1826,9 +1836,11 @@ class _PurchasePageState extends State<PurchasePage> {
                 ],
               ),
             ),
-          ),
+          ],
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 }

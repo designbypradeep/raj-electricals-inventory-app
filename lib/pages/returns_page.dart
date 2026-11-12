@@ -149,8 +149,8 @@ class _ReturnsPageState extends State<ReturnsPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
-        bottom: false,
+        top: false,
+        bottom: true,
         child: SingleChildScrollView(
           child: Column(
             children: [
@@ -160,13 +160,15 @@ class _ReturnsPageState extends State<ReturnsPage> {
                 icon: '↩️',
                 showBackButton: true,
                 backLabel: 'Back to Dashboard',
+                wrapInSafeArea: true,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
-                  PageHeaderBreadcrumb(
-                    label: 'Returns',
-                    icon: '↩️',
-                    current: true,
-                  ),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Returns',
+                      icon: '↩️',
+                      current: true,
+                    ),
                 ],
                 stats: [
                   PageHeaderStat(

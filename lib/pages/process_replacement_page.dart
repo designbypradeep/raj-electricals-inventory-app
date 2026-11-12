@@ -435,33 +435,36 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
-        bottom: false,
+        top: false,
+        bottom: true,
         child: SingleChildScrollView(
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: MediaQuery.of(context).size.width < 480 ? 12 : 16,
-              vertical: MediaQuery.of(context).size.width < 480 ? 8 : 12,
-            ),
-            child: Column(
-              children: [
-                PageHeader(
-                  title: 'Process Replacements',
-                  description: 'Handle product exchanges and replacements',
-                  icon: '🔄',
-                  showBackButton: true,
-                  backLabel: 'Back to Dashboard',
-                  breadcrumbs: [
-                    PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
+          child: Column(
+            children: [
+              PageHeader(
+                title: 'Process Replacements',
+                description: 'Handle product exchanges and replacements',
+                icon: '🔄',
+                showBackButton: true,
+                backLabel: 'Back to Dashboard',
+                wrapInSafeArea: true,
+                breadcrumbs: [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
                     PageHeaderBreadcrumb(
                       label: 'Replacements',
                       icon: '🔄',
                       current: true,
                     ),
-                  ],
+                ],
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: MediaQuery.of(context).size.width < 480 ? 12 : 16,
+                  vertical: MediaQuery.of(context).size.width < 480 ? 8 : 12,
                 ),
-
-                // Entry mode switch and stepper
+                child: Column(
+                  children: [
+                    // Entry mode switch and stepper
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
                   child: Column(
@@ -667,9 +670,11 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
               ],
             ),
           ),
-        ),
+        ],
       ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _buildCard({required Widget child}) {

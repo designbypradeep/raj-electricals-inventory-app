@@ -381,7 +381,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
+        top: false,
         bottom: true,
         child: SingleChildScrollView(
           child: Column(
@@ -392,7 +392,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                 icon: '🛒',
                 showBackButton: true,
                 backLabel: 'Back to Dashboard',
-                wrapInSafeArea: false,
+                wrapInSafeArea: true,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
                   if (MediaQuery.of(context).size.width >= 450)
@@ -500,7 +500,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
+        top: false,
         bottom: true,
         child: SingleChildScrollView(
           controller: _scrollController,
@@ -563,7 +563,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
           icon: '🛒',
           showBackButton: true,
           backLabel: 'Back to Dashboard',
-          wrapInSafeArea: false,
+          wrapInSafeArea: true,
           breadcrumbs: [
             PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
             if (MediaQuery.of(context).size.width >= 450)

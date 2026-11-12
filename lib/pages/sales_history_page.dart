@@ -513,7 +513,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
+        top: false,
         bottom: true,
         child: SingleChildScrollView(
           child: Column(
@@ -524,7 +524,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                 icon: '🛍️',
                 showBackButton: true,
                 backLabel: 'Back to Dashboard',
-                wrapInSafeArea: false,
+                wrapInSafeArea: true,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
                   if (MediaQuery.of(context).size.width >= 450)
@@ -680,7 +680,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
+        top: false,
         bottom: true,
         child: RefreshIndicator(
           onRefresh: () => _loadSales(forceRefresh: true),
@@ -695,7 +695,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                 icon: '🛍️',
                 showBackButton: true,
                 backLabel: 'Back to Dashboard',
-                wrapInSafeArea: false,
+                wrapInSafeArea: true,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
                   if (MediaQuery.of(context).size.width >= 450)

@@ -823,8 +823,8 @@ class _ReportsPageState extends State<ReportsPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
-        bottom: false,
+        top: false,
+        bottom: true,
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
@@ -833,13 +833,15 @@ class _ReportsPageState extends State<ReportsPage> {
                 description: 'Generate insights and track performance',
                 icon: '📈',
                 showBackButton: true,
+                wrapInSafeArea: true,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
-                  PageHeaderBreadcrumb(
-                    label: 'Reports',
-                    icon: '📈',
-                    current: true,
-                  ),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Reports',
+                      icon: '📈',
+                      current: true,
+                    ),
                 ],
                 actions: [
                   PageHeaderAction(

@@ -1268,6 +1268,8 @@ class _SystemHealthPageState extends State<SystemHealthPage>
           ),
         ),
         child: SafeArea(
+          top: false,
+          bottom: true,
           child: _isLoading
               ? SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
@@ -1286,6 +1288,16 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                               'Monitor and maintain data integrity across your inventory system',
                           icon: '🔍',
                           showBackButton: true,
+                          wrapInSafeArea: true,
+                          breadcrumbs: [
+                            PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                            if (MediaQuery.of(context).size.width >= 450)
+                              PageHeaderBreadcrumb(
+                                label: 'System Health',
+                                icon: '🔍',
+                                current: true,
+                              ),
+                          ],
                           stats: [
                             PageHeaderStat(
                               label: 'Health Score',

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
 import '../services/connectivity_service.dart';
+import '../widgets/page_header.dart';
 
 class PaymentVerificationPage extends StatefulWidget {
   const PaymentVerificationPage({super.key});
@@ -245,29 +246,73 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final pendingCount = _pending.length;
+    final totalPendingAmount = _pending.fold<double>(
+      0.0,
+      (s, r) => s + ((r['total_amount'] as num?)?.toDouble() ?? 0.0),
+    );
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Payment Verification'),
-        actions: [
-          IconButton(
-            onPressed: () => _load(initial: true),
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-          ? Center(child: Text(_error!))
-          : _pending.isEmpty
-          ? const Center(child: Text('No pending payments'))
-          : ListView.separated(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(12),
-              itemCount: _pending.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        top: false,
+        bottom: true,
+        child: Column(
+          children: [
+            PageHeader(
+              title: 'Payment Verification',
+              description: 'Verify UPI payments and approve customer orders',
+              icon: '💳',
+              showBackButton: true,
+              onBackPressed: () => Navigator.pop(context),
+              wrapInSafeArea: true,
+              breadcrumbs: [
+                PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                if (MediaQuery.of(context).size.width >= 450)
+                  PageHeaderBreadcrumb(
+                    label: 'Payment Verification',
+                    icon: '💳',
+                    current: true,
+                  ),
+              ],
+              stats: [
+                PageHeaderStat(
+                  label: 'Pending',
+                  value: '$pendingCount',
+                  description: 'Awaiting approval',
+                ),
+                PageHeaderStat(
+                  label: 'Pending Value',
+                  value: '₹${totalPendingAmount.toStringAsFixed(0)}',
+                  description: 'Unverified volume',
+                ),
+              ],
+              actions: [
+                PageHeaderAction(
+                  label: 'Refresh',
+                  shortLabel: 'Refresh',
+                  icon: Icons.refresh,
+                  color: Theme.of(context).colorScheme.primary,
+                  onPressed: () => _load(initial: true),
+                ),
+              ],
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Center(child: Text(_error!))
+                  : _pending.isEmpty
+                  ? const Center(child: Text('No pending payments'))
+                  : RefreshIndicator(
+                      onRefresh: () => _load(initial: true),
+                      child: ListView.separated(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _pending.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
                 final row = _pending[index];
                 final saleId = (row['id'] as num).toInt();
                 final customer =
@@ -539,6 +584,11 @@ class _PaymentVerificationPageState extends State<PaymentVerificationPage> {
                 );
               },
             ),
-    );
+          ),
+        ),
+      ],
+    ),
+  ),
+);
   }
 }

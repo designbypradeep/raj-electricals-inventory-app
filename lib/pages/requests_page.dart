@@ -480,6 +480,8 @@ class _RequestsPageState extends State<RequestsPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
+        top: false,
+        bottom: true,
         child: SingleChildScrollView(
           child: Column(
             children: [
@@ -490,6 +492,16 @@ class _RequestsPageState extends State<RequestsPage> {
                 icon: '📋',
                 showBackButton: true,
                 onBackPressed: () => Navigator.pop(context),
+                wrapInSafeArea: true,
+                breadcrumbs: [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Item Requests',
+                      icon: '📋',
+                      current: true,
+                    ),
+                ],
                 stats: [
                   PageHeaderStat(
                     label: 'Products Available',

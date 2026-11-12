@@ -643,8 +643,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
-        bottom: false,
+        top: false,
+        bottom: true,
         child: SingleChildScrollView(
           child: Column(
             children: [
@@ -655,13 +655,15 @@ class _DataManagementPageState extends State<DataManagementPage> {
                 icon: '💾',
                 showBackButton: true,
                 backLabel: 'Back to Dashboard',
+                wrapInSafeArea: true,
                 breadcrumbs: [
                   PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
-                  PageHeaderBreadcrumb(
-                    label: 'Data Management',
-                    icon: '💾',
-                    current: true,
-                  ),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Data Management',
+                      icon: '💾',
+                      current: true,
+                    ),
                 ],
                 stats: [
                   PageHeaderStat(

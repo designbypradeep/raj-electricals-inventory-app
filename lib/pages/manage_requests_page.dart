@@ -75,6 +75,8 @@ class _ManageRequestsPageState extends State<ManageRequestsPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
+        top: false,
+        bottom: true,
         child: SingleChildScrollView(
           child: Column(
             children: [
@@ -84,6 +86,16 @@ class _ManageRequestsPageState extends State<ManageRequestsPage> {
                 icon: '🗂️',
                 showBackButton: true,
                 onBackPressed: () => Navigator.pop(context),
+                wrapInSafeArea: true,
+                breadcrumbs: [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Manage Requests',
+                      icon: '🗂️',
+                      current: true,
+                    ),
+                ],
                 stats: [
                   PageHeaderStat(
                     label: 'Total Requests',

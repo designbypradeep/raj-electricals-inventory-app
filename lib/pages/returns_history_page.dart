@@ -174,7 +174,7 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
+        top: false,
         bottom: true,
         child: SingleChildScrollView(
           child: Column(
@@ -185,15 +185,17 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
                 icon: '↩️',
                 showBackButton: true,
                 backLabel: 'Back to Sales History',
-                wrapInSafeArea: false,
+                wrapInSafeArea: true,
                 breadcrumbs: [
-                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
-                  PageHeaderBreadcrumb(label: 'Sales History', icon: '📊'),
-                  PageHeaderBreadcrumb(
-                    label: 'Returns History',
-                    icon: '↩️',
-                    current: true,
-                  ),
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(label: 'Sales History', icon: '📊', href: '/sales-history'),
+                  if (MediaQuery.of(context).size.width >= 600)
+                    PageHeaderBreadcrumb(
+                      label: 'Returns History',
+                      icon: '↩️',
+                      current: true,
+                    ),
                 ],
                 stats: [
                   PageHeaderStat(

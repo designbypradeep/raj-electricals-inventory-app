@@ -221,6 +221,8 @@ class _SuppliersPageState extends State<SuppliersPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
+        top: false,
+        bottom: true,
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
@@ -229,6 +231,16 @@ class _SuppliersPageState extends State<SuppliersPage> {
                 description: 'Manage your dealers and suppliers',
                 icon: '🤝',
                 showBackButton: true,
+                wrapInSafeArea: true,
+                breadcrumbs: [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Suppliers',
+                      icon: '🤝',
+                      current: true,
+                    ),
+                ],
                 stats: [
                   PageHeaderStat(
                     label: 'Total Suppliers',

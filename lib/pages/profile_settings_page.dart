@@ -272,7 +272,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
+        top: false,
         bottom: true,
         child: SingleChildScrollView(
           child: Column(
@@ -284,7 +284,16 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
                 icon: '👤',
                 showBackButton: true,
                 onBackPressed: () => Navigator.pop(context),
-                wrapInSafeArea: false,
+                wrapInSafeArea: true,
+                breadcrumbs: [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Profile Settings',
+                      icon: '👤',
+                      current: true,
+                    ),
+                ],
                 stats: [
                   PageHeaderStat(
                     label: 'Account Status',

@@ -89,36 +89,46 @@ class _SupplierReturnsPageState extends State<SupplierReturnsPage> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        top: true,
-        bottom: false,
+        top: false,
+        bottom: true,
         child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 12 : 16,
-            vertical: isMobile ? 16 : 24,
-          ),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 8),
-                PageHeader(
-                  title: 'Supplier Returns & Credits',
-                  description:
-                      'Record items returned to suppliers and create credit notes or cash refunds',
-                  icon: '↩️',
-                  showBackButton: true,
-                  stats: [
-                    PageHeaderStat(
-                      label: 'Mode',
-                      value: 'Return',
-                      description: 'Create supplier return entries',
+          child: Column(
+            children: [
+              PageHeader(
+                title: 'Supplier Returns & Credits',
+                description:
+                    'Record items returned to suppliers and create credit notes or cash refunds',
+                icon: '↩️',
+                showBackButton: true,
+                wrapInSafeArea: true,
+                breadcrumbs: [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Supplier Returns',
+                      icon: '↩️',
+                      current: true,
                     ),
-                  ],
+                ],
+                stats: [
+                  PageHeaderStat(
+                    label: 'Mode',
+                    value: 'Return',
+                    description: 'Create supplier return entries',
+                  ),
+                ],
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 12 : 16,
+                  vertical: isMobile ? 16 : 24,
                 ),
-                const SizedBox(height: 16),
-
-                // Error / Success
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Error / Success
                 if (_errorMessage != null)
                   Container(
                     width: double.infinity,
@@ -346,8 +356,11 @@ class _SupplierReturnsPageState extends State<SupplierReturnsPage> {
             ),
           ),
         ),
-      ),
-    );
+      ],
+    ),
+  ),
+),
+);
   }
 
   Widget _buildReturnItemsList() {

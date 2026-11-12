@@ -788,41 +788,45 @@ class _AddProductPageState extends State<AddProductPage> {
           ),
         ),
         child: SafeArea(
+          top: false,
+          bottom: true,
           child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  // Page Header
-                  _buildPageHeader(),
+            child: Column(
+              children: [
+                // Page Header
+                _buildPageHeader(),
 
-                  const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      // Quota / Subscription Banner
+                      _buildQuotaBanner(),
 
-                  // Quota / Subscription Banner
-                  _buildQuotaBanner(),
+                      const SizedBox(height: 8),
 
-                  const SizedBox(height: 8),
-
-                  // Main Content
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1100),
-                      child: Form(
-                        key: _formKey,
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            if (constraints.maxWidth > 1024) {
-                              return _buildDesktopLayout();
-                            } else {
-                              return _buildMobileLayout();
-                            }
-                          },
+                      // Main Content
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 1100),
+                          child: Form(
+                            key: _formKey,
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                if (constraints.maxWidth > 1024) {
+                                  return _buildDesktopLayout();
+                                } else {
+                                  return _buildMobileLayout();
+                                }
+                              },
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1906,9 +1910,11 @@ class _AddProductPageState extends State<AddProductPage> {
       icon: '📝',
       showBackButton: true,
       onBackPressed: () => Navigator.pop(context),
+      wrapInSafeArea: true,
       breadcrumbs: [
         PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠'),
-        PageHeaderBreadcrumb(label: 'Add Product', icon: '📝', current: true),
+        if (MediaQuery.of(context).size.width >= 450)
+          PageHeaderBreadcrumb(label: 'Add Product', icon: '📝', current: true),
       ],
       stats: [
         PageHeaderStat(
