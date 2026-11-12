@@ -402,7 +402,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                       current: true,
                     ),
                 ],
-                stats: const [
+                stats: [
                   PageHeaderStat(
                     label: 'Total Purchases',
                     value: '...',
