@@ -2198,7 +2198,10 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                     ],
                   ),
                   const SizedBox(height: 24),
-                  Row(
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 10,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       ElevatedButton.icon(
                         onPressed: _isLoading
@@ -2227,7 +2230,7 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                           backgroundColor: Colors.orange.shade600,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
+                            horizontal: 20,
                             vertical: 12,
                           ),
                           shape: RoundedRectangleBorder(
@@ -2235,7 +2238,6 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
                       Text(
                         'or review and manage individual products below',
                         style: TextStyle(
