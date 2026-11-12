@@ -14,6 +14,7 @@ import 'inventory_page.dart';
 import 'business_settings_page.dart';
 import 'profile_settings_page.dart';
 import 'requests_page.dart';
+import 'manage_requests_page.dart';
 import 'system_health_page.dart';
 import 'sales_page.dart';
 import 'purchase_page.dart';
@@ -4344,6 +4345,12 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 if (!isRestricted)
                   _buildSecondaryActionCard(
+                    'Customers',
+                    Icons.people_alt_outlined,
+                    _twColor('indigo'),
+                  ),
+                if (!isRestricted)
+                  _buildSecondaryActionCard(
                     'Process Returns',
                     Icons.undo,
                     _twColor('orange'),
@@ -4357,13 +4364,13 @@ class _DashboardPageState extends State<DashboardPage> {
                 if (!isRestricted && !isCashier)
                   _buildSecondaryActionCard(
                     'Create Request',
-                    Icons.people,
-                    _statusColors(context).warning,
+                    Icons.post_add_rounded,
+                    _twColor('teal'),
                   ),
                 if (!isRestricted && !isCashier)
                   _buildSecondaryActionCard(
                     'Manage Requests',
-                    Icons.settings,
+                    Icons.rule_folder_rounded,
                     _twColor('purple'),
                   ),
               ],
@@ -4559,6 +4566,10 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildSecondaryActionCard(String title, IconData icon, Color color) {
     final isMobile = MediaQuery.of(context).size.width < 480;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color effectiveColor = (!isDark && color.computeLuminance() > 0.55)
+        ? HSLColor.fromColor(color).withLightness(0.35).toColor()
+        : color;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -4635,10 +4646,20 @@ class _DashboardPageState extends State<DashboardPage> {
             if (!_assertWritable(context, 'process a replacement')) return;
             if (!_assertFeature(context, 'returns', 'Customer Replacements')) return;
             Navigator.pushNamed(context, '/replacements');
-          } else if (title == 'Create Request' || title == 'Manage Requests') {
+          } else if (title == 'Customers') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const CustomersPage()),
+            );
+          } else if (title == 'Create Request') {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const RequestsPage()),
+            );
+          } else if (title == 'Manage Requests') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ManageRequestsPage()),
             );
           } else if (title == 'Payment Verification') {
             Navigator.pushNamed(context, '/payments/verification');
@@ -4727,13 +4748,13 @@ class _DashboardPageState extends State<DashboardPage> {
                   : Theme.of(context).cardColor.withAlpha(191),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: hovered ? color.withAlpha(115) : color.withAlpha(64),
+                color: hovered ? effectiveColor.withAlpha(115) : effectiveColor.withAlpha(64),
                 width: hovered ? 1.8 : 1.2,
               ),
               boxShadow: [
                 // Primary colored shadow
                 BoxShadow(
-                  color: color.withAlpha(hovered ? 46 : 26),
+                  color: effectiveColor.withAlpha(hovered ? 46 : 26),
                   blurRadius: hovered ? 24 : 16,
                   offset: Offset(0, hovered ? 10 : 6),
                   spreadRadius: hovered ? 2 : 0,
@@ -4759,9 +4780,9 @@ class _DashboardPageState extends State<DashboardPage> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          color.withAlpha(hovered ? 15 : 8),
+                          effectiveColor.withAlpha(hovered ? 15 : 8),
                           Colors.transparent,
-                          color.withAlpha(hovered ? 10 : 5),
+                          effectiveColor.withAlpha(hovered ? 10 : 5),
                         ],
                       ),
                     ),
@@ -4780,27 +4801,27 @@ class _DashboardPageState extends State<DashboardPage> {
                             ? LinearGradient(
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
-                                colors: [color, color.withAlpha(204)],
+                                colors: [effectiveColor, effectiveColor.withAlpha(204)],
                               )
                             : LinearGradient(
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                                 colors: [
-                                  color.withAlpha(38),
-                                  color.withAlpha(26),
+                                  effectiveColor.withAlpha(38),
+                                  effectiveColor.withAlpha(26),
                                 ],
                               ),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: hovered
-                              ? color.withAlpha(102)
-                              : color.withAlpha(64),
+                              ? effectiveColor.withAlpha(102)
+                              : effectiveColor.withAlpha(64),
                           width: 1.5,
                         ),
                         boxShadow: hovered
                             ? [
                                 BoxShadow(
-                                  color: color.withAlpha(89),
+                                  color: effectiveColor.withAlpha(89),
                                   blurRadius: 10,
                                   offset: const Offset(0, 5),
                                 ),
@@ -4809,7 +4830,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                       child: Icon(
                         icon,
-                        color: hovered ? Colors.white : color,
+                        color: hovered ? Colors.white : effectiveColor,
                         size: isMobile ? 20 : 22,
                       ),
                     ),
