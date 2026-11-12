@@ -38,7 +38,6 @@ class _CatalogPageState extends State<CatalogPage> {
   // UI state
   final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
-  StreamSubscription<List<Map<String, dynamic>>>? _productsSub;
 
   supabase_models.BusinessProfile? _businessProfile;
 
@@ -60,7 +59,6 @@ class _CatalogPageState extends State<CatalogPage> {
   void initState() {
     super.initState();
     _checkAuthAndLoadData();
-    _initRealtime();
     // Add keyboard shortcuts listener
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -73,42 +71,7 @@ class _CatalogPageState extends State<CatalogPage> {
   void dispose() {
     _searchFocusNode.dispose();
     _scrollController.dispose();
-    _productsSub?.cancel();
     super.dispose();
-  }
-
-  void _initRealtime() async {
-    try {
-      // Ensure business profile is ready to read business_id
-      final current = SupabaseService.getCurrentBusinessId();
-      if (current == null) {
-        await SupabaseService.getCurrentBusinessProfile();
-      }
-      final businessId = SupabaseService.getCurrentBusinessId();
-      if (businessId == null) return;
-
-      // Recreate subscription
-      await _productsSub?.cancel();
-      _productsSub = SupabaseService.client
-          .from('products')
-          .stream(primaryKey: ['id'])
-          .eq('business_id', businessId)
-          .listen(
-            (_) {
-              if (!mounted) return;
-              // Lightweight approach: simply reload products on any change
-              _loadProducts();
-            },
-            onError: (error) {
-              // Realtime might not be enabled for 'products' in Supabase publication.
-              // Gracefully handle without crashing or triggering critical startup error.
-              debugPrint('Products realtime subscription unavailable: $error');
-            },
-            cancelOnError: true,
-          );
-    } catch (_) {
-      // ignore realtime init errors to avoid crashing the page
-    }
   }
 
   Future<void> _checkAuthAndLoadData() async {
