@@ -2575,26 +2575,38 @@ class _SystemHealthPageState extends State<SystemHealthPage>
   }
 
   Widget _buildHealthChecksGrid(bool isDesktop) {
+    final cards = [
+      _buildStockIssuesCard(),
+      _buildDataCompletenessCard(),
+      _buildDuplicateProductsCard(),
+      _buildProblematicPurchasesCard(),
+      _buildStockReconciliationCard(),
+    ];
+
+    if (!isDesktop) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (int i = 0; i < cards.length; i++) ...[
+            if (i > 0) const SizedBox(height: 24),
+            cards[i],
+          ],
+        ],
+      );
+    }
+
     final hasInvalidPurchases =
         (_healthCheck['invalidPurchases'] as List).isNotEmpty;
-    final childAspect = isDesktop
-        ? (hasInvalidPurchases ? 0.8 : 1.2)
-        : (hasInvalidPurchases ? 0.8 : 0.9);
+    final childAspect = hasInvalidPurchases ? 0.8 : 1.2;
 
     return GridView.count(
-      crossAxisCount: isDesktop ? 4 : 1,
+      crossAxisCount: 4,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       childAspectRatio: childAspect,
       mainAxisSpacing: 24,
       crossAxisSpacing: 24,
-      children: [
-        _buildStockIssuesCard(),
-        _buildDataCompletenessCard(),
-        _buildDuplicateProductsCard(),
-        _buildProblematicPurchasesCard(),
-        _buildStockReconciliationCard(),
-      ],
+      children: cards,
     );
   }
 
