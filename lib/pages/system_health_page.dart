@@ -473,17 +473,19 @@ class _SystemHealthPageState extends State<SystemHealthPage>
               _buildDuplicateSectionSkeleton(),
               const SizedBox(height: 32),
               // Other checks grid skeleton
-              GridView.count(
-                crossAxisCount: isDesktop ? 4 : 2,
+              GridView(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                childAspectRatio: 2.6,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: isDesktop ? 4 : 2,
+                  mainAxisExtent: 84,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                ),
                 children: List.generate(
                   isDesktop ? 4 : 4,
                   (i) => Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
                       color: Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(12),
@@ -500,7 +502,7 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Container(
-                          height: 24,
+                          height: 20,
                           width: 60,
                           decoration: BoxDecoration(
                             color: base,
@@ -509,7 +511,7 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                         ),
                         const SizedBox(height: 8),
                         Container(
-                          height: 14,
+                          height: 12,
                           width: 100,
                           decoration: BoxDecoration(
                             color: base,
@@ -1930,7 +1932,9 @@ class _SystemHealthPageState extends State<SystemHealthPage>
             ),
           ),
           const SizedBox(height: 16),
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
             children: [
               Container(
                 height: 40,
@@ -1940,7 +1944,6 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              const SizedBox(width: 12),
               Container(
                 height: 40,
                 width: 140,
