@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
 import '../theme/ui_tokens.dart';
 import '../models/sales_purchase_models.dart' as models;
 import '../services/supabase_service.dart';
 import '../services/connectivity_service.dart';
 import '../widgets/page_header.dart';
+import '../widgets/search_bar_widget.dart';
 
 class PurchaseHistoryPage extends StatefulWidget {
   const PurchaseHistoryPage({super.key});
@@ -15,11 +18,17 @@ class PurchaseHistoryPage extends StatefulWidget {
 
 class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
   // Search and filter states
-  final String _searchTerm = '';
+  String _searchTerm = '';
   String _dealerFilter = '';
   String _minAmount = '';
   String _maxAmount = '';
   String _statusFilter = 'all'; // all, problematic, normal
+
+  // Pagination and performance optimizations
+  final ScrollController _scrollController = ScrollController();
+  Timer? _searchDebounce;
+  int _currentPage = 1;
+  int _itemsPerPage = 25;
 
   // UI states
   bool _showFilters = false;
@@ -41,6 +50,26 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
   void initState() {
     super.initState();
     _loadPurchases();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() {
+          _searchTerm = query;
+          _currentPage = 1;
+          _filterAndSortPurchases();
+        });
+      }
+    });
   }
 
   Future<void> _confirmAndDeletePurchase(models.Purchase purchase) async {
@@ -191,12 +220,16 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
 
     // Apply search filter
     if (_searchTerm.isNotEmpty) {
-      final searchLower = _searchTerm.toLowerCase();
+      final searchLower = _searchTerm.toLowerCase().trim();
       filtered = filtered.where((purchase) {
         return (purchase.supplierName?.toLowerCase().contains(searchLower) ??
                 false) ||
             (purchase.supplierPhone?.toLowerCase().contains(searchLower) ??
                 false) ||
+            (purchase.billNumber?.toLowerCase().contains(searchLower) ??
+                false) ||
+            'pur-${purchase.id}'.toLowerCase().contains(searchLower) ||
+            '${purchase.id}'.contains(searchLower) ||
             (purchase.paymentMethod.toLowerCase().contains(searchLower));
       }).toList();
     }
@@ -267,7 +300,34 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
 
     setState(() {
       _filteredPurchases = filtered;
+      _currentPage = 1;
     });
+  }
+
+  int get _totalPages => (_filteredPurchases.length / _itemsPerPage).ceil();
+
+  List<models.Purchase> get _paginatedPurchases {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    if (startIndex >= _filteredPurchases.length) return [];
+    final endIndex = startIndex + _itemsPerPage;
+    return _filteredPurchases.sublist(
+      startIndex,
+      endIndex > _filteredPurchases.length
+          ? _filteredPurchases.length
+          : endIndex,
+    );
+  }
+
+  void _changePage(int page) {
+    if (page < 1 || (page > _totalPages && _totalPages > 0)) return;
+    setState(() {
+      _currentPage = page;
+    });
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
   }
 
   bool _isProblematicPurchase(models.Purchase purchase) {
@@ -313,40 +373,140 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
         .toList();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildSkeletonLoading(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final base = isDark ? Colors.grey[850]! : Colors.grey[300]!;
+    final highlight = isDark ? Colors.grey[750]! : Colors.grey[100]!;
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: _isLoading
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      Theme.of(context).colorScheme.primary,
+      body: SafeArea(
+        top: true,
+        bottom: true,
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              PageHeader(
+                title: 'Purchase History',
+                description: 'Track, manage, and analyze purchase records',
+                icon: '🛒',
+                showBackButton: true,
+                backLabel: 'Back to Dashboard',
+                wrapInSafeArea: false,
+                breadcrumbs: [
+                  PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
+                  if (MediaQuery.of(context).size.width >= 450)
+                    PageHeaderBreadcrumb(
+                      label: 'Purchase History',
+                      icon: '🛒',
+                      current: true,
                     ),
+                ],
+                stats: const [
+                  PageHeaderStat(
+                    label: 'Total Purchases',
+                    value: '...',
+                    description: 'Loading...',
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Loading purchase history...',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: 0.7),
-                    ),
+                  PageHeaderStat(
+                    label: 'Status',
+                    value: 'Syncing',
+                    description: 'Fetching live data',
                   ),
                 ],
               ),
-            )
-          : _error != null
-          ? _buildErrorState()
-          : SafeArea(
-              top: true,
-              bottom: true,
-              child: SingleChildScrollView(child: _buildContent()),
-            ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1100),
+                    child: Column(
+                      children: [
+                        // Skeleton 2x2 grid stats
+                        GridView.count(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisCount: 2,
+                          childAspectRatio: 2.1,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          children: List.generate(
+                            4,
+                            (_) => Shimmer.fromColors(
+                              baseColor: base,
+                              highlightColor: highlight,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).cardColor,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Skeleton search bar
+                        Shimmer.fromColors(
+                          baseColor: base,
+                          highlightColor: highlight,
+                          child: Container(
+                            height: 52,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).cardColor,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        // Skeleton purchase cards
+                        ...List.generate(
+                          3,
+                          (_) => Shimmer.fromColors(
+                            baseColor: base,
+                            highlightColor: highlight,
+                            child: Container(
+                              height: 140,
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).cardColor,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return _buildSkeletonLoading(context);
+    }
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: _buildErrorState(),
+      );
+    }
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        top: true,
+        bottom: true,
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          child: _buildContent(),
+        ),
+      ),
     );
   }
 
@@ -402,31 +562,33 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
           description: 'Track, manage, and analyze purchase records',
           icon: '🛒',
           showBackButton: true,
+          backLabel: 'Back to Dashboard',
           wrapInSafeArea: false,
           breadcrumbs: [
             PageHeaderBreadcrumb(label: 'Dashboard', icon: '🏠', href: '/'),
-            PageHeaderBreadcrumb(
-              label: 'Purchase History',
-              icon: '🛒',
-              current: true,
-            ),
+            if (MediaQuery.of(context).size.width >= 450)
+              PageHeaderBreadcrumb(
+                label: 'Purchase History',
+                icon: '🛒',
+                current: true,
+              ),
           ],
           stats: [
             PageHeaderStat(
               label: 'Total Purchases',
-              value: '${_purchases.length} records',
-              description: 'Total purchase transactions',
+              value: '${_purchases.length}',
+              description: 'All purchase records',
             ),
             PageHeaderStat(
               label: 'Status',
               value: 'Live Data',
-              description: 'Real-time purchase tracking',
+              description: 'Real-time tracking',
             ),
           ],
           actions: [
             PageHeaderAction(
               label: 'New Purchase',
-              shortLabel: 'New Purchase',
+              shortLabel: 'Add Purchase',
               icon: Icons.add,
               color: Theme.of(context).colorScheme.primary,
               onPressed: () => Navigator.pushNamed(context, '/purchase'),
@@ -446,22 +608,37 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                 children: [
                   // Action Buttons
                   _buildActionButtons(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
 
-                  // Statistics Cards
+                  // Search Bar
+                  SearchBarWidget(
+                    placeholder:
+                        'Search by dealer, bill, phone, or payment...',
+                    entityName: 'purchases',
+                    onSearchChanged: _onSearchChanged,
+                    resultCount: _searchTerm.isNotEmpty
+                        ? _filteredPurchases.length
+                        : null,
+                    totalCount: _searchTerm.isNotEmpty
+                        ? _purchases.length
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Statistics Cards (2x2 grid on mobile)
                   _buildStatisticsCards(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
                   // Filters Panel
                   if (_showFilters) ...[
                     _buildFiltersPanel(),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
                   ],
 
                   // Bulk Actions Panel
                   if (_showBulkActions) ...[
                     _buildBulkActionsPanel(),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
                   ],
 
                   // Purchase Cards
@@ -476,101 +653,125 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
   }
 
   Widget _buildActionButtons() {
-    return LayoutBuilder(
-      builder: (context, c) {
-        final isNarrow = c.maxWidth < 420;
-        final children = <Widget>[
-          _buildActionButton(
-            'Filters',
-            Icons.filter_list,
-            Colors.blue,
-            () => setState(() => _showFilters = !_showFilters),
-            isActive: _showFilters,
-          ),
-          const SizedBox(width: 12, height: 12),
-          _buildActionButton(
-            'Bulk Actions',
-            Icons.checklist,
-            Colors.purple,
-            () => setState(() => _showBulkActions = !_showBulkActions),
-            isActive: _showBulkActions,
-            badge: _selectedPurchases.isNotEmpty
-                ? _selectedPurchases.length.toString()
-                : null,
-          ),
-        ];
-        if (isNarrow) {
-          return Wrap(spacing: 12, runSpacing: 12, children: children);
-        }
-        return Row(children: children);
-      },
-    );
-  }
-
-  Widget _buildActionButton(
-    String label,
-    IconData icon,
-    Color color,
-    VoidCallback onPressed, {
-    bool isActive = false,
-    String? badge,
-  }) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      label: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label),
-          if (badge != null) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(UITokens.radius),
-              ),
-              child: Text(badge, style: TextStyle(fontSize: 12, color: color)),
+    return Row(
+      children: [
+        // Filters Button
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: () {
+              setState(() {
+                _showFilters = !_showFilters;
+              });
+            },
+            icon: Icon(
+              Icons.filter_list,
+              size: 18,
+              color: _showFilters
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : Theme.of(context).colorScheme.primary,
             ),
-          ],
-        ],
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isActive
-            ? color.withValues(alpha: 0.1)
-            : Theme.of(context).colorScheme.surface,
-        foregroundColor: color,
-        side: BorderSide(color: color.withValues(alpha: 0.3)),
-      ),
+            label: Text(
+              'Filters',
+              style: TextStyle(
+                color: _showFilters
+                    ? Theme.of(context).colorScheme.onPrimary
+                    : Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _showFilters
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withValues(alpha: 0.3),
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.3),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Bulk Actions Button
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: () {
+              setState(() {
+                _showBulkActions = !_showBulkActions;
+              });
+            },
+            icon: Icon(
+              Icons.checklist,
+              size: 18,
+              color: _showBulkActions
+                  ? Theme.of(context).colorScheme.onSecondary
+                  : Theme.of(context).colorScheme.secondary,
+            ),
+            label: Text(
+              _selectedPurchases.isNotEmpty
+                  ? 'Bulk (${_selectedPurchases.length})'
+                  : 'Bulk Actions',
+              style: TextStyle(
+                color: _showBulkActions
+                    ? Theme.of(context).colorScheme.onSecondary
+                    : Theme.of(context).colorScheme.secondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _showBulkActions
+                  ? Theme.of(context).colorScheme.secondary
+                  : Theme.of(
+                      context,
+                    ).colorScheme.secondaryContainer.withValues(alpha: 0.3),
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.3),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildStatisticsCards() {
+    final totalVal = _calculateTotalValue();
+    final uniqueDealers = _getUniqueDealersCount();
+
     return LayoutBuilder(
       builder: (context, c) {
         final w = c.maxWidth;
-        final cross = w >= 1000
+        final cross = w >= 900
             ? 4
-            : w >= 700
-            ? 3
-            : w >= 480
-            ? 2
-            : 1;
-        // Give tiles a bit more height at smaller widths to avoid overflow
-        final aspect = w < 360
-            ? 1.6
-            : w < 480
-            ? 1.8
-            : w < 700
+            : w >= 550
+            ? 4
+            : 2; // Always at least 2 columns on mobile (2x2 grid)
+        final aspect = w < 380
             ? 2.0
-            : 2.2;
+            : w < 550
+            ? 2.2
+            : 2.4;
         return GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           crossAxisCount: cross,
           childAspectRatio: aspect,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
           children: [
             _buildStatCard(
               'Total Purchases',
@@ -586,13 +787,17 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
             ),
             _buildStatCard(
               'Unique Dealers',
-              '${_getUniqueDealersCount()}',
+              '$uniqueDealers',
               Icons.people,
               Colors.orange,
             ),
             _buildStatCard(
               'Total Value',
-              '₹${_calculateTotalValue().toStringAsFixed(0)}',
+              NumberFormat.currency(
+                symbol: '₹',
+                decimalDigits: 0,
+                locale: 'en_IN',
+              ).format(totalVal),
               Icons.trending_up,
               Colors.purple,
             ),
@@ -609,36 +814,37 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     Color color,
   ) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.2)),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
-            blurRadius: 10,
+            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.04),
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             children: [
-              Icon(icon, color: color, size: 20),
+              Icon(icon, color: color, size: 18),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   'Live',
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 9,
                     color: color,
                     fontWeight: FontWeight.bold,
                   ),
@@ -651,23 +857,18 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            softWrap: false,
-            style: TextStyle(
-              fontSize: 22,
+            style: const TextStyle(
+              fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: color,
             ),
           ),
           Text(
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            softWrap: false,
             style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.6),
+              fontSize: 11,
+              color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
             ),
           ),
         ],
@@ -1068,22 +1269,221 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
       );
     }
 
+    final paginated = _paginatedPurchases;
+
     return Column(
       children: [
         // Bulk select header
         if (_showBulkActions) _buildBulkSelectHeader(),
 
-        // Purchase cards
+        // Purchase cards (paginated)
         ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: _filteredPurchases.length,
+          itemCount: paginated.length,
           itemBuilder: (context, index) {
-            final purchase = _filteredPurchases[index];
+            final purchase = paginated[index];
             return _buildPurchaseCard(purchase);
           },
         ),
+
+        // Pagination controls
+        if (_filteredPurchases.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _buildPaginationControls(),
+        ],
       ],
+    );
+  }
+
+  Widget _buildPaginationControls() {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    final startItem = _filteredPurchases.isEmpty ? 0 : startIndex + 1;
+    final endItem = (_currentPage * _itemsPerPage > _filteredPurchases.length)
+        ? _filteredPurchases.length
+        : _currentPage * _itemsPerPage;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Theme.of(
+            context,
+          ).colorScheme.outline.withValues(alpha: 0.1),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(
+              context,
+            ).colorScheme.shadow.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Items per page:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  DropdownButton<int>(
+                    value: _itemsPerPage,
+                    underline: Container(),
+                    items: [10, 25, 50, 100].map((int value) {
+                      return DropdownMenuItem<int>(
+                        value: value,
+                        child: Text('$value'),
+                      );
+                    }).toList(),
+                    onChanged: (int? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _itemsPerPage = newValue;
+                          _currentPage = 1;
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+              Text(
+                'Showing $startItem-$endItem of ${_filteredPurchases.length} purchases',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          ),
+          if (_totalPages > 1) ...[
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: _currentPage > 1
+                        ? () => _changePage(1)
+                        : null,
+                    icon: const Icon(Icons.first_page),
+                    tooltip: 'First page',
+                  ),
+                  IconButton(
+                    onPressed: _currentPage > 1
+                        ? () => _changePage(_currentPage - 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_left),
+                    tooltip: 'Previous page',
+                  ),
+                  const SizedBox(width: 8),
+                  ...List.generate(_totalPages, (index) {
+                    final pageNum = index + 1;
+                    final isCurrentPage = pageNum == _currentPage;
+                    final showPage =
+                        pageNum == 1 ||
+                        pageNum == _totalPages ||
+                        (pageNum >= _currentPage - 2 &&
+                            pageNum <= _currentPage + 2);
+
+                    if (!showPage) {
+                      if (pageNum == _currentPage - 3 ||
+                          pageNum == _currentPage + 3) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Text('...'),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: isCurrentPage
+                              ? null
+                              : () => _changePage(pageNum),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: isCurrentPage
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isCurrentPage
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(
+                                        context,
+                                      ).colorScheme.outline.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '$pageNum',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: isCurrentPage
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isCurrentPage
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: _currentPage < _totalPages
+                        ? () => _changePage(_currentPage + 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_right),
+                    tooltip: 'Next page',
+                  ),
+                  IconButton(
+                    onPressed: _currentPage < _totalPages
+                        ? () => _changePage(_totalPages)
+                        : null,
+                    icon: const Icon(Icons.last_page),
+                    tooltip: 'Last page',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -1147,17 +1547,17 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isProblematic
               ? Theme.of(context).colorScheme.error
-              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+              : Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
         ),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
-            blurRadius: 10,
+            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.04),
+            blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
@@ -1209,48 +1609,57 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                         },
                       ),
 
-                    Icon(
-                      Icons.shopping_cart,
-                      color: Theme.of(context).colorScheme.primary,
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.shopping_cart,
+                        color: Colors.blue,
+                        size: 20,
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              'PUR-${purchase.id}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.onSurface,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'PUR-${purchase.id}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
                               ),
-                            ),
-                            if (isProblematic) ...[
-                              const SizedBox(width: 8),
-                              Icon(
-                                Icons.warning,
-                                color: Theme.of(context).colorScheme.error,
-                                size: 16,
-                              ),
+                              if (isProblematic) ...[
+                                const SizedBox(width: 6),
+                                const Icon(
+                                  Icons.warning,
+                                  color: Colors.red,
+                                  size: 16,
+                                ),
+                              ],
                             ],
-                          ],
-                        ),
-                        Text(
-                          DateFormat('d/M/yyyy, h:mm:ss a').format(
-                            (purchase.createdAt ?? DateTime.now()).toLocal(),
                           ),
-                          style: TextStyle(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withValues(alpha: 0.6),
-                            fontSize: 12,
+                          Text(
+                            DateFormat('d/M/yyyy, h:mm:ss a').format(
+                              (purchase.createdAt ?? DateTime.now()).toLocal(),
+                            ),
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.6),
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-
-                    const Spacer(),
 
                     // Status badge (green for normal, red for problematic)
                     Container(
@@ -1260,8 +1669,8 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                       ),
                       decoration: BoxDecoration(
                         color: isProblematic
-                            ? Colors.red.withValues(alpha: 0.15)
-                            : Colors.green.withValues(alpha: 0.15),
+                            ? Colors.red.withValues(alpha: 0.12)
+                            : Colors.green.withValues(alpha: 0.12),
                         border: Border.all(
                           color: isProblematic
                               ? Colors.red.withValues(alpha: 0.3)
@@ -1272,19 +1681,12 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (isProblematic)
-                            const Icon(
-                              Icons.warning_amber,
-                              size: 14,
-                              color: Colors.red,
-                            )
-                          else
-                            const Icon(
-                              Icons.check,
-                              size: 14,
-                              color: Colors.green,
-                            ),
-                          const SizedBox(width: 6),
+                          Icon(
+                            isProblematic ? Icons.warning_amber : Icons.check,
+                            size: 14,
+                            color: isProblematic ? Colors.red : Colors.green,
+                          ),
+                          const SizedBox(width: 5),
                           Text(
                             isProblematic ? 'Issues Found' : 'Normal',
                             style: TextStyle(
@@ -1299,7 +1701,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                   ],
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Content grid
                 LayoutBuilder(
@@ -1322,33 +1724,31 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.person,
-                              size: 16,
-                              color: Theme.of(context).colorScheme.primary,
+                              size: 15,
+                              color: Colors.brown,
                             ),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 purchase.supplierName ?? 'Unknown Supplier',
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurface,
+                                  fontSize: 14,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Row(
                           children: [
                             Icon(
-                              Icons.lock,
+                              Icons.receipt_long,
                               size: 14,
-                              color: Theme.of(context).colorScheme.secondary,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                             const SizedBox(width: 6),
                             Text(
@@ -1356,166 +1756,226 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                               style: TextStyle(
                                 color: Theme.of(
                                   context,
-                                ).colorScheme.onSurface.withValues(alpha: 0.6),
+                                ).colorScheme.onSurface.withValues(alpha: 0.7),
                                 fontSize: 12,
                               ),
                             ),
+                            if (purchase.supplierPhone != null &&
+                                purchase.supplierPhone!.isNotEmpty) ...[
+                              const SizedBox(width: 12),
+                              Icon(
+                                Icons.phone,
+                                size: 13,
+                                color: Theme.of(context).colorScheme.secondary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                purchase.supplierPhone!,
+                                style: TextStyle(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface.withValues(alpha: 0.7),
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ],
                     );
 
-                    final col2 = Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    final actionRow = Row(
                       children: [
-                        Text(
-                          'AMOUNT DETAILS',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withValues(alpha: 0.6),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Total Amount:',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Items Count:',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ],
-                    );
-
-                    final col3 = Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        // Column header
-                        Text(
-                          'ACTIONS',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withValues(alpha: 0.6),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        // Amount + count in actions column
-                        Text(
-                          '₹${purchase.totalAmount.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        GestureDetector(
-                          onTap: () => setState(
-                            () => _expandedPurchaseId = isExpanded
-                                ? null
-                                : purchase.id,
-                          ),
-                          child: Text(
-                            '${items.length} items',
-                            style: const TextStyle(
-                              color: Colors.purple,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => setState(
+                              () => _expandedPurchaseId =
+                                  isExpanded ? null : purchase.id,
+                            ),
+                            icon: Icon(
+                              isExpanded ? Icons.visibility_off : Icons.visibility,
+                              size: 14,
+                            ),
+                            label: Text(
+                              isExpanded ? 'Hide' : 'Details',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            ElevatedButton.icon(
-                              onPressed: () => setState(
-                                () => _expandedPurchaseId = isExpanded
-                                    ? null
-                                    : purchase.id,
-                              ),
-                              icon: const Icon(Icons.visibility, size: 16),
-                              label: Text(
-                                isExpanded ? 'Hide Details' : 'View Details',
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(
-                                  context,
-                                ).colorScheme.primaryContainer,
-                                foregroundColor: Theme.of(
-                                  context,
-                                ).colorScheme.onPrimaryContainer,
-                                elevation: 0,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _showEditDialog(purchase),
+                            icon: const Icon(Icons.edit, size: 14),
+                            label: const Text(
+                              'Edit',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                            ElevatedButton.icon(
-                              onPressed: () => _showEditDialog(purchase),
-                              icon: const Icon(Icons.edit, size: 16),
-                              label: const Text('Edit'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.orange.withValues(
-                                  alpha: 0.15,
-                                ),
-                                foregroundColor: Colors.orange.shade700,
-                                elevation: 0,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            ElevatedButton.icon(
-                              onPressed: () =>
-                                  _confirmAndDeletePurchase(purchase),
-                              icon: const Icon(Icons.delete_outline, size: 16),
-                              label: const Text('Delete'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red.withValues(
-                                  alpha: 0.15,
-                                ),
-                                foregroundColor: Colors.red.shade700,
-                                elevation: 0,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () =>
+                                _confirmAndDeletePurchase(purchase),
+                            icon: const Icon(Icons.delete_outline, size: 14),
+                            label: const Text(
+                              'Delete',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          ],
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context).colorScheme.error,
+                              foregroundColor:
+                                  Theme.of(context).colorScheme.onError,
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     );
 
                     if (isWide) {
                       return Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Expanded(child: col1),
-                          const SizedBox(width: 12),
-                          Expanded(child: col2),
-                          const SizedBox(width: 12),
-                          Expanded(child: col3),
+                          Expanded(flex: 3, child: col1),
+                          const SizedBox(width: 16),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                NumberFormat.currency(
+                                  locale: 'en_IN',
+                                  symbol: '₹',
+                                  decimalDigits: 2,
+                                ).format(purchase.totalAmount),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue,
+                                  fontSize: 18,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              InkWell(
+                                onTap: () => setState(
+                                  () => _expandedPurchaseId =
+                                      isExpanded ? null : purchase.id,
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.purple.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    isExpanded
+                                        ? 'Hide items'
+                                        : 'View items (${items.length})',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.purple,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 24),
+                          Expanded(flex: 3, child: actionRow),
                         ],
                       );
                     } else {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          col1,
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: col1),
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    NumberFormat.currency(
+                                      locale: 'en_IN',
+                                      symbol: '₹',
+                                      decimalDigits: 2,
+                                    ).format(purchase.totalAmount),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue,
+                                      fontSize: 18,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  InkWell(
+                                    onTap: () => setState(
+                                      () => _expandedPurchaseId =
+                                          isExpanded ? null : purchase.id,
+                                    ),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.purple.withValues(
+                                          alpha: 0.08,
+                                        ),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        isExpanded
+                                            ? 'Hide items'
+                                            : 'View items (${items.length})',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.purple,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 12),
-                          col2,
-                          const SizedBox(height: 12),
-                          col3,
+                          actionRow,
                         ],
                       );
                     }
