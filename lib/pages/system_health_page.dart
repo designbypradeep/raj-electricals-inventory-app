@@ -59,15 +59,7 @@ class _SystemHealthPageState extends State<SystemHealthPage>
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
-    _loadHealthData();
-
-    // Auto-refresh every 30 seconds when page is mounted and not loading
-    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (!mounted) return;
-      if (!_isLoading) {
-        _loadHealthData();
-      }
-    });
+    _loadHealthData(showSkeleton: true);
   }
 
   Future<void> _runStockReconPreview() async {
@@ -686,15 +678,18 @@ class _SystemHealthPageState extends State<SystemHealthPage>
     );
   }
 
-  Future<void> _loadHealthData() async {
+  Future<void> _loadHealthData({bool showSkeleton = false}) async {
     try {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = null;
-      });
+      if (showSkeleton) {
+        setState(() {
+          _isLoading = true;
+          _errorMessage = null;
+        });
+      }
 
       final healthData = await _performHealthChecks();
 
+      if (!mounted) return;
       setState(() {
         _healthCheck = healthData;
         _isLoading = false;
@@ -702,6 +697,7 @@ class _SystemHealthPageState extends State<SystemHealthPage>
 
       _animationController.forward();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
         _errorMessage = 'Failed to load health data: $e';
@@ -1086,7 +1082,6 @@ class _SystemHealthPageState extends State<SystemHealthPage>
 
   Future<void> _handleAction(String action, {int? productId}) async {
     setState(() {
-      _isLoading = true;
       _loadingAction = action;
       _successMessage = null;
       _errorMessage = null;
@@ -1108,13 +1103,12 @@ class _SystemHealthPageState extends State<SystemHealthPage>
         }
 
         setState(() {
-          _isLoading = false;
           _loadingAction = '';
           _successMessage = message;
         });
 
         // Reload health data after successful action
-        await _loadHealthData();
+        await _loadHealthData(showSkeleton: false);
 
         // Clear messages after 3 seconds
         Future.delayed(const Duration(seconds: 3), () {
@@ -1142,12 +1136,11 @@ class _SystemHealthPageState extends State<SystemHealthPage>
         }
 
         setState(() {
-          _isLoading = false;
           _loadingAction = '';
           _successMessage = message;
         });
 
-        await _loadHealthData();
+        await _loadHealthData(showSkeleton: false);
         // Clear messages after 3 seconds
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted) {
@@ -1174,12 +1167,11 @@ class _SystemHealthPageState extends State<SystemHealthPage>
         }
 
         setState(() {
-          _isLoading = false;
           _loadingAction = '';
           _successMessage = message;
         });
 
-        await _loadHealthData();
+        await _loadHealthData(showSkeleton: false);
         // Clear messages after 3 seconds
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted) {
@@ -1226,16 +1218,14 @@ class _SystemHealthPageState extends State<SystemHealthPage>
       }
 
       setState(() {
-        _isLoading = false;
         _loadingAction = '';
         _successMessage = message;
       });
 
       // Reload health data after successful action
-      await _loadHealthData();
+      await _loadHealthData(showSkeleton: false);
     } catch (e) {
       setState(() {
-        _isLoading = false;
         _loadingAction = '';
         _errorMessage = 'Action failed: $e';
       });
