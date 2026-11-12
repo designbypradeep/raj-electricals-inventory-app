@@ -6112,7 +6112,13 @@ class SupabaseService {
         .from('products')
         .stream(primaryKey: ['id'])
         .eq('business_id', businessId)
-        .listen(onData);
+        .listen(
+          onData,
+          onError: (error) {
+            debugPrint('Products stream subscription error: $error');
+          },
+          cancelOnError: true,
+        );
   }
 
   // In-memory sales cache

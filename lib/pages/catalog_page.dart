@@ -93,11 +93,19 @@ class _CatalogPageState extends State<CatalogPage> {
           .from('products')
           .stream(primaryKey: ['id'])
           .eq('business_id', businessId)
-          .listen((_) {
-            if (!mounted) return;
-            // Lightweight approach: simply reload products on any change
-            _loadProducts();
-          });
+          .listen(
+            (_) {
+              if (!mounted) return;
+              // Lightweight approach: simply reload products on any change
+              _loadProducts();
+            },
+            onError: (error) {
+              // Realtime might not be enabled for 'products' in Supabase publication.
+              // Gracefully handle without crashing or triggering critical startup error.
+              debugPrint('Products realtime subscription unavailable: $error');
+            },
+            cancelOnError: true,
+          );
     } catch (_) {
       // ignore realtime init errors to avoid crashing the page
     }
