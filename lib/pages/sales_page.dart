@@ -615,6 +615,16 @@ class _SalesPageState extends State<SalesPage> {
                           : 'Pending payment',
                     ),
                   ],
+                  actions: [
+                    PageHeaderAction(
+                      label: 'Sales History',
+                      shortLabel: 'History',
+                      icon: Icons.history,
+                      color: Theme.of(context).colorScheme.primary,
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/sales-history'),
+                    ),
+                  ],
                 ),
                 Padding(
                   padding: EdgeInsets.symmetric(

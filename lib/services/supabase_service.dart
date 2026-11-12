@@ -4621,38 +4621,83 @@ class SupabaseService {
   }
 
   // Replacements methods (raw maps for flexible UI mapping)
-  static Future<List<Map<String, dynamic>>> getReplacements() async {
+  static List<Map<String, dynamic>>? _cachedReplacements;
+  static DateTime? _replacementsCacheTime;
+
+  static void invalidateReplacementsCache() {
+    _cachedReplacements = null;
+    _replacementsCacheTime = null;
+  }
+
+  static Future<List<Map<String, dynamic>>> getReplacements({
+    bool forceRefresh = false,
+    int? limit,
+  }) async {
+    if (!forceRefresh &&
+        _cachedReplacements != null &&
+        _replacementsCacheTime != null &&
+        DateTime.now().difference(_replacementsCacheTime!) <
+            const Duration(minutes: 3)) {
+      return List<Map<String, dynamic>>.from(_cachedReplacements!);
+    }
+
     await getCurrentBusinessProfile();
     final businessId = getCurrentBusinessId();
     if (businessId == null) {
       if (kDebugMode) {
         print('No business ID found for fetching replacements');
       }
-      return [];
+      return _cachedReplacements ?? [];
     }
 
     try {
+      final fetchLimit = limit ?? 200;
       final response = await _client
           .from('replacements')
           .select(
             '*, sales!inner(id, customer_name, created_at), replacement_items_out(*, products(*)), replacement_items_in(*, products(*))',
           )
           .eq('business_id', businessId)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .limit(fetchLimit);
 
-      return (response as List)
+      final list = (response as List)
           .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
           .toList();
+
+      _cachedReplacements = list;
+      _replacementsCacheTime = DateTime.now();
+
+      return list;
     } catch (e) {
       if (kDebugMode) {
         print('Error fetching replacements: $e');
       }
-      return [];
+      return _cachedReplacements ?? [];
     }
   }
 
   // Returns methods (raw maps for flexible UI mapping)
-  static Future<List<Map<String, dynamic>>> getReturns() async {
+  static List<Map<String, dynamic>>? _cachedReturns;
+  static DateTime? _returnsCacheTime;
+
+  static void invalidateReturnsCache() {
+    _cachedReturns = null;
+    _returnsCacheTime = null;
+  }
+
+  static Future<List<Map<String, dynamic>>> getReturns({
+    bool forceRefresh = false,
+    int? limit,
+  }) async {
+    if (!forceRefresh &&
+        _cachedReturns != null &&
+        _returnsCacheTime != null &&
+        DateTime.now().difference(_returnsCacheTime!) <
+            const Duration(minutes: 3)) {
+      return List<Map<String, dynamic>>.from(_cachedReturns!);
+    }
+
     // Ensure business profile is loaded
     await getCurrentBusinessProfile();
 
@@ -4661,26 +4706,33 @@ class SupabaseService {
       if (kDebugMode) {
         print('No business ID found for fetching returns');
       }
-      return [];
+      return _cachedReturns ?? [];
     }
 
     try {
+      final fetchLimit = limit ?? 200;
       final response = await _client
           .from('returns')
           .select(
             '*, sales:sales!returns_original_sale_id_fkey(id, customer_name, created_at), return_items(*, products(*))',
           )
           .eq('business_id', businessId)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .limit(fetchLimit);
 
-      return (response as List)
+      final list = (response as List)
           .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
           .toList();
+
+      _cachedReturns = list;
+      _returnsCacheTime = DateTime.now();
+
+      return list;
     } catch (e) {
       if (kDebugMode) {
         print('Error fetching returns: $e');
       }
-      return [];
+      return _cachedReturns ?? [];
     }
   }
 
@@ -5364,9 +5416,31 @@ class SupabaseService {
   }
 
   // Products CRUD operations
-  static Future<List<supabase_models.Product>> getProducts() async {
+  static List<supabase_models.Product>? _cachedProducts;
+  static DateTime? _productsCacheTime;
+
+  static List<supabase_models.Product>? get cachedProducts => _cachedProducts;
+  static bool get hasCachedProducts =>
+      _cachedProducts != null && _cachedProducts!.isNotEmpty;
+
+  static void invalidateProductsCache() {
+    _cachedProducts = null;
+    _productsCacheTime = null;
+  }
+
+  static Future<List<supabase_models.Product>> getProducts({
+    bool forceRefresh = false,
+  }) async {
     final businessId = getCurrentBusinessId();
     if (businessId == null) return [];
+
+    if (!forceRefresh &&
+        _cachedProducts != null &&
+        _productsCacheTime != null &&
+        DateTime.now().difference(_productsCacheTime!) <
+            const Duration(minutes: 3)) {
+      return List<supabase_models.Product>.from(_cachedProducts!);
+    }
 
     try {
       dynamic response;
@@ -5386,16 +5460,21 @@ class SupabaseService {
             .neq('status', 'archived');
       }
 
-      return (response as List)
+      final list = (response as List)
           .map<supabase_models.Product>(
             (json) => supabase_models.Product.fromJson(json),
           )
           .toList();
+
+      _cachedProducts = list;
+      _productsCacheTime = DateTime.now();
+
+      return list;
     } catch (e) {
       if (kDebugMode) {
         print('Error getting products: $e');
       }
-      return [];
+      return _cachedProducts ?? [];
     }
   }
 
@@ -6050,7 +6129,10 @@ class SupabaseService {
   }
 
   // Sales methods
-  static Future<List<Sale>> getSales({bool forceRefresh = false}) async {
+  static Future<List<Sale>> getSales({
+    bool forceRefresh = false,
+    int? limit,
+  }) async {
     // Return cache if fresh (within 3 minutes)
     if (!forceRefresh &&
         _cachedSales != null &&
@@ -6072,28 +6154,19 @@ class SupabaseService {
     }
 
     try {
-      final List<Sale> allSales = [];
-      const int pageSize = 1000;
-      int from = 0;
+      final fetchLimit = limit ?? 300;
+      final response = await _client
+          .from('sales')
+          .select(
+            '*, sales_items(*, products(id, name, brand, current_stock))',
+          )
+          .eq('business_id', businessId)
+          .order('created_at', ascending: false)
+          .limit(fetchLimit);
 
-      while (true) {
-        final response = await _client
-            .from('sales')
-            .select(
-              '*, sales_items(*, products(id, name, brand, current_stock))',
-            )
-            .eq('business_id', businessId)
-            .order('created_at', ascending: false)
-            .range(from, from + pageSize - 1);
-
-        final list = (response as List)
-            .map((json) => Sale.fromJson(Map<String, dynamic>.from(json)))
-            .toList();
-        allSales.addAll(list);
-
-        if (list.length < pageSize) break;
-        from += pageSize;
-      }
+      final allSales = (response as List)
+          .map((json) => Sale.fromJson(Map<String, dynamic>.from(json)))
+          .toList();
 
       _cachedSales = allSales;
       _salesCacheTime = DateTime.now();
@@ -6107,8 +6180,32 @@ class SupabaseService {
     }
   }
 
+  // In-memory purchases cache
+  static List<Purchase>? _cachedPurchases;
+  static DateTime? _purchasesCacheTime;
+
+  static List<Purchase>? get cachedPurchases => _cachedPurchases;
+  static bool get hasCachedPurchases =>
+      _cachedPurchases != null && _cachedPurchases!.isNotEmpty;
+
+  static void invalidatePurchasesCache() {
+    _cachedPurchases = null;
+    _purchasesCacheTime = null;
+  }
+
   // Purchase methods
-  static Future<List<Purchase>> getPurchases() async {
+  static Future<List<Purchase>> getPurchases({
+    bool forceRefresh = false,
+    int? limit,
+  }) async {
+    if (!forceRefresh &&
+        _cachedPurchases != null &&
+        _purchasesCacheTime != null &&
+        DateTime.now().difference(_purchasesCacheTime!) <
+            const Duration(minutes: 3)) {
+      return List<Purchase>.from(_cachedPurchases!);
+    }
+
     // Ensure business profile is loaded
     await getCurrentBusinessProfile();
 
@@ -6117,37 +6214,31 @@ class SupabaseService {
       if (kDebugMode) {
         print('No business ID found for fetching purchases');
       }
-      return [];
+      return _cachedPurchases ?? [];
     }
 
     try {
-      final List<Purchase> allPurchases = [];
-      const int pageSize = 1000;
-      int from = 0;
+      final fetchLimit = limit ?? 300;
+      final response = await _client
+          .from('purchases')
+          .select('*, purchase_items(*, products(*))')
+          .eq('business_id', businessId)
+          .order('created_at', ascending: false)
+          .limit(fetchLimit);
 
-      while (true) {
-        final response = await _client
-            .from('purchases')
-            .select('*, purchase_items(*, products(*))')
-            .eq('business_id', businessId)
-            .order('created_at', ascending: false)
-            .range(from, from + pageSize - 1);
+      final allPurchases = (response as List)
+          .map((json) => Purchase.fromJson(json))
+          .toList();
 
-        final list = (response as List)
-            .map((json) => Purchase.fromJson(json))
-            .toList();
-        allPurchases.addAll(list);
-
-        if (list.length < pageSize) break;
-        from += pageSize;
-      }
+      _cachedPurchases = allPurchases;
+      _purchasesCacheTime = DateTime.now();
 
       return allPurchases;
     } catch (e) {
       if (kDebugMode) {
         print('Error fetching purchases: $e');
       }
-      return [];
+      return _cachedPurchases ?? [];
     }
   }
 

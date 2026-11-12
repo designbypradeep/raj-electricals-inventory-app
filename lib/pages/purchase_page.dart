@@ -559,6 +559,16 @@ class _PurchasePageState extends State<PurchasePage> {
                       description: 'Estimated order value',
                     ),
                   ],
+                  actions: [
+                    PageHeaderAction(
+                      label: 'Purchase History',
+                      shortLabel: 'History',
+                      icon: Icons.history,
+                      color: Theme.of(context).colorScheme.primary,
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/purchase-history'),
+                    ),
+                  ],
                 ),
                 Padding(
                   padding: EdgeInsets.symmetric(

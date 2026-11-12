@@ -19,6 +19,41 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
   String _statusFilter = 'all'; // all, completed, pending, cancelled
   String _dateFilter = 'all'; // all, today, week, month
 
+  // Pagination
+  int _currentPage = 1;
+  int _itemsPerPage = 25;
+  final ScrollController _scrollController = ScrollController();
+
+  List<Map<String, dynamic>> get _paginatedReturns {
+    final list = _filteredReturns;
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    if (startIndex >= list.length) {
+      if (list.isEmpty) return [];
+      return list.take(_itemsPerPage).toList();
+    }
+    final endIndex = (startIndex + _itemsPerPage < list.length)
+        ? startIndex + _itemsPerPage
+        : list.length;
+    return list.sublist(startIndex, endIndex);
+  }
+
+  int get _totalPages => _filteredReturns.isEmpty
+      ? 1
+      : (_filteredReturns.length / _itemsPerPage).ceil();
+
+  void _changePage(int newPage) {
+    setState(() {
+      _currentPage = newPage;
+    });
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -177,6 +212,7 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
         top: false,
         bottom: true,
         child: SingleChildScrollView(
+          controller: _scrollController,
           child: Column(
             children: [
               PageHeader(
@@ -249,8 +285,13 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
                           _buildLoading()
                         else if (returns.isEmpty)
                           _buildEmptyState()
-                        else
-                          _buildReturnsList(returns),
+                        else ...[
+                          _buildReturnsList(_paginatedReturns),
+                          if (returns.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            _buildPaginationControls(),
+                          ],
+                        ],
                       ],
                     ),
                   ),
@@ -471,6 +512,172 @@ class _ReturnsHistoryPageState extends State<ReturnsHistoryPage> {
             icon: const Icon(Icons.add),
             label: const Text('Process New Return'),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaginationControls() {
+    final totalItems = _filteredReturns.length;
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    final startItem = totalItems == 0 ? 0 : startIndex + 1;
+    final endItem = (_currentPage * _itemsPerPage > totalItems)
+        ? totalItems
+        : _currentPage * _itemsPerPage;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Showing $startItem-$endItem of $totalItems',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).textTheme.bodySmall?.color,
+                ),
+              ),
+              Row(
+                children: [
+                  Text(
+                    'Per page:',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  DropdownButton<int>(
+                    value: _itemsPerPage,
+                    underline: Container(),
+                    items: [10, 25, 50, 100].map((int value) {
+                      return DropdownMenuItem<int>(
+                        value: value,
+                        child:
+                            Text('$value', style: const TextStyle(fontSize: 13)),
+                      );
+                    }).toList(),
+                    onChanged: (int? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _itemsPerPage = newValue;
+                          _currentPage = 1;
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (_totalPages > 1) ...[
+            const Divider(height: 20),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: _currentPage > 1 ? () => _changePage(1) : null,
+                    icon: const Icon(Icons.first_page, size: 20),
+                    tooltip: 'First page',
+                  ),
+                  IconButton(
+                    onPressed:
+                        _currentPage > 1 ? () => _changePage(_currentPage - 1) : null,
+                    icon: const Icon(Icons.chevron_left, size: 20),
+                    tooltip: 'Previous page',
+                  ),
+                  ...List.generate(_totalPages, (index) {
+                    final pageNum = index + 1;
+                    final isCurrentPage = pageNum == _currentPage;
+                    final showPage = pageNum == 1 ||
+                        pageNum == _totalPages ||
+                        (pageNum >= _currentPage - 2 &&
+                            pageNum <= _currentPage + 2);
+
+                    if (!showPage) {
+                      if (pageNum == _currentPage - 3 ||
+                          pageNum == _currentPage + 3) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Text('...'),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: InkWell(
+                        onTap: isCurrentPage
+                            ? null
+                            : () => _changePage(pageNum),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: isCurrentPage
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: isCurrentPage
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context)
+                                      .dividerColor
+                                      .withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$pageNum',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: isCurrentPage
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isCurrentPage
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.color,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  IconButton(
+                    onPressed: _currentPage < _totalPages
+                        ? () => _changePage(_currentPage + 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_right, size: 20),
+                    tooltip: 'Next page',
+                  ),
+                  IconButton(
+                    onPressed: _currentPage < _totalPages
+                        ? () => _changePage(_totalPages)
+                        : null,
+                    icon: const Icon(Icons.last_page, size: 20),
+                    tooltip: 'Last page',
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
