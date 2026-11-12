@@ -2279,22 +2279,25 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
-                          product['name'],
+                          product['name'] ?? '',
                           style: TextStyle(
-                            fontSize: 18,
+                            fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: isDark ? Colors.white : Colors.black,
                           ),
                         ),
-                        if (product['brand'] != null) ...[
-                          const SizedBox(width: 12),
+                        if (product['brand'] != null &&
+                            product['brand'].toString().isNotEmpty) ...[
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
-                              vertical: 4,
+                              vertical: 3,
                             ),
                             decoration: BoxDecoration(
                               color: isDark
@@ -2310,7 +2313,7 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                             child: Text(
                               product['brand'],
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w500,
                                 color: isDark
                                     ? Colors.blue.shade300
@@ -2394,35 +2397,67 @@ class _SystemHealthPageState extends State<SystemHealthPage>
   }
 
   Widget _buildProductDetails(Map<String, dynamic> product) {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildDetailItem(
-            Icons.inventory_2,
-            'Stock Level',
-            '${product['current_stock']} ${product['unit_type_single'] ?? 'units'}',
-            Colors.red,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildDetailItem(
-            Icons.calendar_today,
-            'Date Created',
-            _formatDate(product['created_at']),
-            Colors.blue,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildDetailItem(
-            Icons.warning,
-            'Status',
-            'No Purchase History',
-            Colors.orange,
-          ),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 550;
+        if (isCompact) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDetailItem(
+                Icons.inventory_2,
+                'Stock Level',
+                '${product['current_stock']} ${product['unit_type_single'] ?? 'units'}',
+                Colors.red,
+              ),
+              const SizedBox(height: 10),
+              _buildDetailItem(
+                Icons.calendar_today,
+                'Date Created',
+                _formatDate(product['created_at']),
+                Colors.blue,
+              ),
+              const SizedBox(height: 10),
+              _buildDetailItem(
+                Icons.warning,
+                'Status',
+                'No Purchase History',
+                Colors.orange,
+              ),
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(
+              child: _buildDetailItem(
+                Icons.inventory_2,
+                'Stock Level',
+                '${product['current_stock']} ${product['unit_type_single'] ?? 'units'}',
+                Colors.red,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildDetailItem(
+                Icons.calendar_today,
+                'Date Created',
+                _formatDate(product['created_at']),
+                Colors.blue,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildDetailItem(
+                Icons.warning,
+                'Status',
+                'No Purchase History',
+                Colors.orange,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2478,8 +2513,9 @@ class _SystemHealthPageState extends State<SystemHealthPage>
   }
 
   Widget _buildProductActions(Map<String, dynamic> product) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
       children: [
         ElevatedButton.icon(
           onPressed: _isLoading
@@ -2508,7 +2544,6 @@ class _SystemHealthPageState extends State<SystemHealthPage>
             ),
           ),
         ),
-        const SizedBox(width: 12),
         ElevatedButton.icon(
           onPressed: _isLoading
               ? null

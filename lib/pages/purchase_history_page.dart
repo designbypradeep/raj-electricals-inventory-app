@@ -323,11 +323,13 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
     setState(() {
       _currentPage = page;
     });
-    _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
   }
 
   bool _isProblematicPurchase(models.Purchase purchase) {
@@ -427,7 +429,7 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           crossAxisCount: 2,
-                          childAspectRatio: 2.1,
+                          childAspectRatio: 1.8,
                           crossAxisSpacing: 10,
                           mainAxisSpacing: 10,
                           children: List.generate(
@@ -761,10 +763,10 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
             ? 4
             : 2; // Always at least 2 columns on mobile (2x2 grid)
         final aspect = w < 380
-            ? 2.0
+            ? 1.7
             : w < 550
-            ? 2.2
-            : 2.4;
+            ? 1.8
+            : 2.2;
         return GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -1743,42 +1745,53 @@ class _PurchaseHistoryPageState extends State<PurchaseHistoryPage> {
                           ],
                         ),
                         const SizedBox(height: 4),
-                        Row(
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Icon(
-                              Icons.receipt_long,
-                              size: 14,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Bill: ${purchase.billNumber ?? 'N/A'}',
-                              style: TextStyle(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurface.withValues(alpha: 0.7),
-                                fontSize: 12,
-                              ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.receipt_long,
+                                  size: 14,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Bill: ${purchase.billNumber ?? 'N/A'}',
+                                  style: TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface.withValues(alpha: 0.7),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                             if (purchase.supplierPhone != null &&
-                                purchase.supplierPhone!.isNotEmpty) ...[
-                              const SizedBox(width: 12),
-                              Icon(
-                                Icons.phone,
-                                size: 13,
-                                color: Theme.of(context).colorScheme.secondary,
+                                purchase.supplierPhone!.isNotEmpty)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.phone,
+                                    size: 13,
+                                    color: Theme.of(context).colorScheme.secondary,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    purchase.supplierPhone!,
+                                    style: TextStyle(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface.withValues(alpha: 0.7),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                purchase.supplierPhone!,
-                                style: TextStyle(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurface.withValues(alpha: 0.7),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ],
