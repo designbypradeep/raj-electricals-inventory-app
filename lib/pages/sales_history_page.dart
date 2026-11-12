@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../widgets/page_header.dart';
 import '../widgets/search_bar_widget.dart';
@@ -36,6 +37,64 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
   bool _showBulkActions = false;
   Set<int> _selectedSales = <int>{};
   int? _expandedSaleId;
+
+  // Pagination and performance optimizations
+  final ScrollController _scrollController = ScrollController();
+  Timer? _searchDebounce;
+  int _currentPage = 1;
+  int _itemsPerPage = 25;
+
+  // Precomputed statistics
+  int _uniqueCustomersCount = 0;
+  double _totalRevenue = 0.0;
+  int _problematicCount = 0;
+
+  List<models.Sale> get _paginatedSales {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    if (startIndex >= _filteredSales.length) {
+      if (_filteredSales.isEmpty) return [];
+      return _filteredSales.take(_itemsPerPage).toList();
+    }
+    final endIndex = startIndex + _itemsPerPage;
+    return _filteredSales.sublist(
+      startIndex,
+      endIndex > _filteredSales.length ? _filteredSales.length : endIndex,
+    );
+  }
+
+  int get _totalPages => _filteredSales.isEmpty
+      ? 1
+      : (_filteredSales.length / _itemsPerPage).ceil();
+
+  void _changePage(int newPage) {
+    setState(() {
+      _currentPage = newPage;
+    });
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        380.0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) {
+        _searchTerm = value;
+        _filterAndSortSales();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -94,13 +153,17 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
 
     // Apply search filter
     if (_searchTerm.isNotEmpty) {
-      final searchLower = _searchTerm.toLowerCase();
+      final searchLower = _searchTerm.toLowerCase().trim();
       filtered = filtered.where((sale) {
+        final idStr = sale.id?.toString() ?? '';
+        final invStr = 'inv-$idStr'.toLowerCase();
         return (sale.customerName?.toLowerCase().contains(searchLower) ??
                 false) ||
             (sale.customerPhone?.toLowerCase().contains(searchLower) ??
                 false) ||
-            sale.paymentMethod.toLowerCase().contains(searchLower);
+            sale.paymentMethod.toLowerCase().contains(searchLower) ||
+            idStr.contains(searchLower) ||
+            invStr.contains(searchLower);
       }).toList();
     }
 
@@ -161,8 +224,25 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
         break;
     }
 
+    // Precompute statistics for O(1) rendering in build()
+    final uniqueCustomers = filtered
+        .map((sale) => sale.customerName ?? 'Unknown')
+        .toSet()
+        .length;
+    final totalRev = filtered.fold<double>(
+      0.0,
+      (sum, sale) => sum + sale.totalAmount,
+    );
+    final probCount = filtered
+        .where((sale) => _isProblematicSale(sale))
+        .length;
+
     setState(() {
       _filteredSales = filtered;
+      _uniqueCustomersCount = uniqueCustomers;
+      _totalRevenue = totalRev;
+      _problematicCount = probCount;
+      _currentPage = 1;
     });
   }
 
@@ -495,17 +575,9 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
       );
     }
 
-    final uniqueCustomers = _filteredSales
-        .map((sale) => sale.customerName ?? 'Unknown')
-        .toSet()
-        .length;
-    final totalRevenue = _filteredSales.fold(
-      0.0,
-      (sum, sale) => sum + (sale.totalAmount ?? 0.0),
-    );
-    final problematicCount = _filteredSales
-        .where((sale) => _isProblematicSale(sale))
-        .length;
+    final uniqueCustomers = _uniqueCustomersCount;
+    final totalRevenue = _totalRevenue;
+    final problematicCount = _problematicCount;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -513,6 +585,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
         top: true,
         bottom: true,
         child: SingleChildScrollView(
+          controller: _scrollController,
           child: Column(
             children: [
               PageHeader(
@@ -582,13 +655,9 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                         // Search Bar
                         SearchBarWidget(
                           placeholder:
-                              'Search by customer, phone, or payment method...',
-                          onSearchChanged: (value) {
-                            setState(() {
-                              _searchTerm = value;
-                              _filterAndSortSales();
-                            });
-                          },
+                              'Search by customer, phone, invoice, or payment...',
+                          entityName: 'sales',
+                          onSearchChanged: _onSearchChanged,
                           resultCount: _searchTerm.isNotEmpty
                               ? _filteredSales.length
                               : null,
@@ -1198,18 +1267,214 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
               ],
             ),
           ),
-        // Sales cards (separate cards with gap)
+        // Sales cards (paginated for smooth 60fps performance)
         ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: _filteredSales.length,
+          itemCount: _paginatedSales.length,
           separatorBuilder: (_, __) => const SizedBox(height: 16),
           itemBuilder: (context, index) {
-            final sale = _filteredSales[index];
+            final sale = _paginatedSales[index];
             return _buildSaleCard(sale, index);
           },
         ),
+        if (_filteredSales.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _buildPaginationControls(),
+        ],
       ],
+    );
+  }
+
+  Widget _buildPaginationControls() {
+    final startIndex = (_currentPage - 1) * _itemsPerPage;
+    final startItem = _filteredSales.isEmpty ? 0 : startIndex + 1;
+    final endItem = (_currentPage * _itemsPerPage > _filteredSales.length)
+        ? _filteredSales.length
+        : _currentPage * _itemsPerPage;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Theme.of(
+            context,
+          ).colorScheme.outline.withValues(alpha: 0.1),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(
+              context,
+            ).colorScheme.shadow.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Items per page:',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  DropdownButton<int>(
+                    value: _itemsPerPage,
+                    underline: Container(),
+                    items: [10, 25, 50, 100].map((int value) {
+                      return DropdownMenuItem<int>(
+                        value: value,
+                        child: Text('$value'),
+                      );
+                    }).toList(),
+                    onChanged: (int? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _itemsPerPage = newValue;
+                          _currentPage = 1;
+                        });
+                      }
+                    },
+                  ),
+                ],
+              ),
+              Text(
+                'Showing $startItem-$endItem of ${_filteredSales.length} sales',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          ),
+          if (_totalPages > 1) ...[
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: _currentPage > 1
+                        ? () => _changePage(1)
+                        : null,
+                    icon: const Icon(Icons.first_page),
+                    tooltip: 'First page',
+                  ),
+                  IconButton(
+                    onPressed: _currentPage > 1
+                        ? () => _changePage(_currentPage - 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_left),
+                    tooltip: 'Previous page',
+                  ),
+                  const SizedBox(width: 8),
+                  ...List.generate(_totalPages, (index) {
+                    final pageNum = index + 1;
+                    final isCurrentPage = pageNum == _currentPage;
+                    final showPage =
+                        pageNum == 1 ||
+                        pageNum == _totalPages ||
+                        (pageNum >= _currentPage - 2 &&
+                            pageNum <= _currentPage + 2);
+
+                    if (!showPage) {
+                      if (pageNum == _currentPage - 3 ||
+                          pageNum == _currentPage + 3) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Text('...'),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: isCurrentPage
+                              ? null
+                              : () => _changePage(pageNum),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: isCurrentPage
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isCurrentPage
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(
+                                        context,
+                                      ).colorScheme.outline.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '$pageNum',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: isCurrentPage
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  color: isCurrentPage
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(
+                                          context,
+                                        ).colorScheme.onSurface,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: _currentPage < _totalPages
+                        ? () => _changePage(_currentPage + 1)
+                        : null,
+                    icon: const Icon(Icons.chevron_right),
+                    tooltip: 'Next page',
+                  ),
+                  IconButton(
+                    onPressed: _currentPage < _totalPages
+                        ? () => _changePage(_totalPages)
+                        : null,
+                    icon: const Icon(Icons.last_page),
+                    tooltip: 'Last page',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 

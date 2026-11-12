@@ -7,6 +7,7 @@ class SearchBarWidget extends StatefulWidget {
   final int? totalCount;
   final String headerTitle;
   final bool compact;
+  final String entityName;
 
   const SearchBarWidget({
     super.key,
@@ -16,6 +17,7 @@ class SearchBarWidget extends StatefulWidget {
     this.totalCount,
     this.headerTitle = '🔍 Search',
     this.compact = false,
+    this.entityName = 'records',
   });
 
   @override
@@ -192,7 +194,7 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
                 ),
               ),
               child: Text(
-                '📊 Showing ${widget.resultCount} of ${widget.totalCount} products',
+                '📊 Showing ${widget.resultCount} of ${widget.totalCount} ${widget.entityName}',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,

@@ -6054,7 +6054,9 @@ class SupabaseService {
       while (true) {
         final response = await _client
             .from('sales')
-            .select('*, sales_items(*, products(*))')
+            .select(
+              '*, sales_items(*, products(id, name, brand, current_stock))',
+            )
             .eq('business_id', businessId)
             .order('created_at', ascending: false)
             .range(from, from + pageSize - 1);
