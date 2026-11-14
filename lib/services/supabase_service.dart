@@ -390,91 +390,195 @@ class SupabaseService {
   // =====================
   // System Health: Stock reconciliation (preview and apply)
   // =====================
+  static Future<List<Map<String, dynamic>>> _fetchAllPaged(
+    Future<dynamic> Function(int from, int to) queryFn, {
+    int limit = 1000,
+  }) async {
+    final allData = <Map<String, dynamic>>[];
+    int offset = 0;
+    while (true) {
+      final res = await queryFn(offset, offset + limit - 1);
+      final list = (res as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      if (list.isEmpty) break;
+      allData.addAll(list);
+      if (list.length < limit) break;
+      offset += limit;
+    }
+    return allData;
+  }
+
   static Future<List<Map<String, dynamic>>> healthStockReconcilePreview({
-    bool includeAllMismatches = false,
+    bool includeAllMismatches = true,
   }) async {
     await getCurrentBusinessProfile();
     final businessId = getCurrentBusinessId();
     if (businessId == null) throw Exception('No business selected');
 
-    // Load products base
-    final productsRows = await _client
-        .from('products')
-        .select(
-          'id, name, current_stock, items_per_wholesale_unit, unit_type_wholesale',
-        )
-        .eq('business_id', businessId);
+    // 1. Load products base (paged to avoid PostgREST 1000-row cap)
+    final productsRows = await _fetchAllPaged(
+      (from, to) => _client
+          .from('products')
+          .select(
+            'id, name, current_stock, items_per_wholesale_unit, unit_type_wholesale',
+          )
+          .eq('business_id', businessId)
+          .range(from, to),
+    );
     final products = <int, Map<String, dynamic>>{};
-    for (final r in (productsRows as List)) {
-      final m = Map<String, dynamic>.from(r as Map);
+    for (final m in productsRows) {
       products[(m['id'] as num).toInt()] = m;
     }
 
-    // Sum purchased units (with wholesale conversion) scoped to business
-    final purchItems = await _client
-        .from('purchase_items')
-        .select('product_id, quantity, unit, purchases!inner(business_id)')
-        .eq('purchases.business_id', businessId);
+    // 2. Sum purchased units (with wholesale conversion) scoped to business
+    final purchItems = await _fetchAllPaged(
+      (from, to) => _client
+          .from('purchase_items')
+          .select('product_id, quantity, unit, purchases!inner(business_id)')
+          .eq('purchases.business_id', businessId)
+          .range(from, to),
+    );
     final purchased = <int, int>{};
-    for (final r in (purchItems as List)) {
-      final m = Map<String, dynamic>.from(r as Map);
+    for (final m in purchItems) {
       final pid = (m['product_id'] as num?)?.toInt();
       final qty = (m['quantity'] as num?)?.toInt() ?? 0;
       if (pid == null) continue;
       final prod = products[pid];
       if (prod == null) continue;
       final ipwu = (prod['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
-      final uwh = (prod['unit_type_wholesale'] ?? '').toString().toLowerCase();
-      final unit = (m['unit'] ?? '').toString().toLowerCase();
-      final add = (unit.isNotEmpty && uwh.isNotEmpty && unit == uwh && ipwu > 0)
-          ? qty * ipwu
-          : qty;
+      final uwh = (prod['unit_type_wholesale'] ?? '').toString().trim().toLowerCase();
+      final unit = (m['unit'] ?? '').toString().trim().toLowerCase();
+      final isWholesale = unit.isNotEmpty && (
+        (uwh.isNotEmpty && unit == uwh) ||
+        unit == 'pkt' || unit == 'pack' || unit == 'pkg' || unit == 'wholesale' || unit == 'bundle'
+      );
+      final add = isWholesale ? qty * ipwu : qty;
       purchased[pid] = (purchased[pid] ?? 0) + add;
     }
 
-    // Sum sold units (sales_items assumed in single units) scoped to business
-    final salesItems = await _client
-        .from('sales_items')
-        .select('product_id, quantity, sales!inner(business_id)')
-        .eq('sales.business_id', businessId);
+    // 3. Sum sold units (with wholesale conversion) scoped to business
+    final salesItems = await _fetchAllPaged(
+      (from, to) => _client
+          .from('sales_items')
+          .select('product_id, quantity, unit, sales!inner(business_id)')
+          .eq('sales.business_id', businessId)
+          .range(from, to),
+    );
     final sold = <int, int>{};
-    for (final r in (salesItems as List)) {
-      final m = Map<String, dynamic>.from(r as Map);
+    for (final m in salesItems) {
       final pid = (m['product_id'] as num?)?.toInt();
       final qty = (m['quantity'] as num?)?.toInt() ?? 0;
       if (pid == null) continue;
-      sold[pid] = (sold[pid] ?? 0) + qty;
+      final prod = products[pid];
+      if (prod == null) continue;
+      final ipwu = (prod['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
+      final uwh = (prod['unit_type_wholesale'] ?? '').toString().trim().toLowerCase();
+      final unit = (m['unit'] ?? '').toString().trim().toLowerCase();
+      final isWholesale = unit.isNotEmpty && (
+        (uwh.isNotEmpty && unit == uwh) ||
+        unit == 'pkt' || unit == 'pack' || unit == 'pkg' || unit == 'wholesale' || unit == 'bundle'
+      );
+      final add = isWholesale ? qty * ipwu : qty;
+      sold[pid] = (sold[pid] ?? 0) + add;
     }
 
-    // Build discrepancies
+    // 4. Compute restocked quantities from resalable customer returns
+    final resalableReturnItems = await _fetchAllPaged(
+      (from, to) => _client
+          .from('return_items')
+          .select('product_id, quantity_returned, returns!inner(business_id)')
+          .eq('returns.business_id', businessId)
+          .eq('restock_eligible', true)
+          .range(from, to),
+    );
+    final restocked = <int, int>{};
+    for (final m in resalableReturnItems) {
+      final pid = (m['product_id'] as num?)?.toInt();
+      if (pid == null) continue;
+      restocked[pid] = (restocked[pid] ?? 0) + ((m['quantity_returned'] as num?)?.toInt() ?? 0);
+    }
+
+    // 5. Compute restocked quantities from replacement items returned by customer
+    final replacementOutItems = await _fetchAllPaged(
+      (from, to) => _client
+          .from('replacement_items_out')
+          .select('product_id, quantity_returned, replacements!inner(business_id), restock_eligible')
+          .eq('replacements.business_id', businessId)
+          .eq('restock_eligible', true)
+          .range(from, to),
+    );
+    for (final m in replacementOutItems) {
+      final pid = (m['product_id'] as num?)?.toInt();
+      if (pid == null) continue;
+      restocked[pid] = (restocked[pid] ?? 0) + ((m['quantity_returned'] as num?)?.toInt() ?? 0);
+    }
+
+    // 6. Compute replacement items given out to customers
+    final replacementInItems = await _fetchAllPaged(
+      (from, to) => _client
+          .from('replacement_items_in')
+          .select('product_id, quantity_given, replacements!inner(business_id)')
+          .eq('replacements.business_id', businessId)
+          .range(from, to),
+    );
+    final replacementGiven = <int, int>{};
+    for (final m in replacementInItems) {
+      final pid = (m['product_id'] as num?)?.toInt();
+      if (pid == null) continue;
+      replacementGiven[pid] = (replacementGiven[pid] ?? 0) + ((m['quantity_given'] as num?)?.toInt() ?? 0);
+    }
+
+    // 7. Compute supplier returns
+    final supplierReturnItems = await _fetchAllPaged(
+      (from, to) => _client
+          .from('supplier_return_items')
+          .select('product_id, quantity, supplier_returns!inner(business_id)')
+          .eq('supplier_returns.business_id', businessId)
+          .range(from, to),
+    );
+    final supplierReturned = <int, int>{};
+    for (final m in supplierReturnItems) {
+      final pid = (m['product_id'] as num?)?.toInt();
+      if (pid == null) continue;
+      supplierReturned[pid] = (supplierReturned[pid] ?? 0) + ((m['quantity'] as num?)?.toInt() ?? 0);
+    }
+
+    // 8. Build discrepancies
     final results = <Map<String, dynamic>>[];
     products.forEach((pid, prod) {
       final current = (prod['current_stock'] as num?)?.toInt() ?? 0;
-      final exp = (purchased[pid] ?? 0) - (sold[pid] ?? 0);
+      final purchasedUnits = purchased[pid] ?? 0;
+      final soldUnits = sold[pid] ?? 0;
+      final restockedUnits = restocked[pid] ?? 0;
+      final replacementGivenUnits = replacementGiven[pid] ?? 0;
+      final supplierReturnedUnits = supplierReturned[pid] ?? 0;
+
+      final calculatedExpected = purchasedUnits - soldUnits + restockedUnits - replacementGivenUnits - supplierReturnedUnits;
+      final exp = calculatedExpected < 0 ? 0 : calculatedExpected;
       final diff = exp - current;
-      final row = {
-        'id': pid,
-        'name': prod['name'],
-        'current_stock': current,
-        'expected_units': exp,
-        'diff': diff,
-        'items_per_wholesale_unit': (prod['items_per_wholesale_unit'] as num?)
-            ?.toInt(),
-        'unit_type_wholesale': prod['unit_type_wholesale'],
-        'should_fix_simple': (current == 0 && exp > 0),
-      };
-      if (includeAllMismatches) {
-        if (diff != 0) results.add(row);
-      } else {
-        if (row['should_fix_simple'] == true) results.add(row);
+
+      if (diff != 0) {
+        final row = {
+          'id': pid,
+          'name': prod['name'],
+          'current_stock': current,
+          'expected_units': exp,
+          'diff': diff,
+          'items_per_wholesale_unit': (prod['items_per_wholesale_unit'] as num?)?.toInt(),
+          'unit_type_wholesale': prod['unit_type_wholesale'],
+          'should_fix_simple': (current == 0 && exp > 0),
+        };
+        results.add(row);
       }
     });
 
-    // Sort by diff desc
-    results.sort(
-      (a, b) =>
-          ((b['diff'] as num).toInt()).compareTo((a['diff'] as num).toInt()),
-    );
+    // Sort by absolute diff descending (highest magnitude mismatch first, matching web)
+    results.sort((a, b) {
+      final diffA = ((a['diff'] as num).abs());
+      final diffB = ((b['diff'] as num).abs());
+      return diffB.compareTo(diffA);
+    });
     return results;
   }
 
@@ -6394,9 +6498,14 @@ class SupabaseService {
   // Health Check Methods
   Future<List<supabase_models.Product>> getProductsWithNegativeStock() async {
     try {
+      await getCurrentBusinessProfile();
+      final businessId = getCurrentBusinessId();
+      if (businessId == null) return [];
+
       final response = await _client
           .from('products')
           .select()
+          .eq('business_id', businessId)
           .lt('current_stock', 0);
 
       return (response as List)
@@ -6412,9 +6521,14 @@ class SupabaseService {
 
   Future<List<supabase_models.Product>> getIncompleteProducts() async {
     try {
+      await getCurrentBusinessProfile();
+      final businessId = getCurrentBusinessId();
+      if (businessId == null) return [];
+
       final response = await _client
           .from('products')
           .select()
+          .eq('business_id', businessId)
           .or('name.is.null,unit_type_single.is.null');
 
       return (response as List)
@@ -6430,9 +6544,14 @@ class SupabaseService {
 
   Future<List<supabase_models.Product>> getProductsWithStock() async {
     try {
+      await getCurrentBusinessProfile();
+      final businessId = getCurrentBusinessId();
+      if (businessId == null) return [];
+
       final response = await _client
           .from('products')
           .select()
+          .eq('business_id', businessId)
           .gt('current_stock', 0);
 
       return (response as List)
@@ -6448,10 +6567,15 @@ class SupabaseService {
 
   Future<bool> productHasPurchaseHistory(int productId) async {
     try {
+      await getCurrentBusinessProfile();
+      final businessId = getCurrentBusinessId();
+      if (businessId == null) return false;
+
       final response = await _client
           .from('purchase_items')
-          .select('id')
+          .select('id, purchases!inner(business_id)')
           .eq('product_id', productId)
+          .eq('purchases.business_id', businessId)
           .limit(1);
 
       return (response as List).isNotEmpty;
@@ -6465,6 +6589,7 @@ class SupabaseService {
 
   Future<List<supabase_models.Product>> getAllProducts() async {
     try {
+      await getCurrentBusinessProfile();
       final businessId = getCurrentBusinessId();
       if (businessId == null) return [];
       final response = await _client
@@ -6490,9 +6615,14 @@ class SupabaseService {
     DateTime date,
   ) async {
     try {
+      await getCurrentBusinessProfile();
+      final businessId = getCurrentBusinessId();
+      if (businessId == null) return [];
+
       final response = await _client
           .from('products')
           .select()
+          .eq('business_id', businessId)
           .gte('created_at', date.toIso8601String())
           .order('created_at', ascending: false);
 
@@ -6510,59 +6640,126 @@ class SupabaseService {
   // Health Check Fix Actions
   Future<bool> correctProductStock(int productId) async {
     try {
-      // Get product details - will throw if not found
-      await _client.from('products').select().eq('id', productId).single();
+      await getCurrentBusinessProfile();
+      final businessId = getCurrentBusinessId();
+      if (businessId == null) throw Exception('No business selected');
 
-      // Check for purchase history
-      final purchaseItems = await _client
-          .from('purchase_items')
-          .select('quantity')
-          .eq('product_id', productId);
+      // 1. Get product details
+      final prodRes = await _client
+          .from('products')
+          .select('id, items_per_wholesale_unit, unit_type_wholesale')
+          .eq('id', productId)
+          .eq('business_id', businessId)
+          .single();
+      final prod = Map<String, dynamic>.from(prodRes as Map);
+      final ipwu = (prod['items_per_wholesale_unit'] as num?)?.toInt() ?? 1;
+      final uwh = (prod['unit_type_wholesale'] ?? '').toString().trim().toLowerCase();
 
-      // Check for sales history
-      final salesItems = await _client
-          .from('sales_items')
-          .select('quantity')
-          .eq('product_id', productId);
-
-      final hasPurchaseHistory = (purchaseItems as List).isNotEmpty;
-      final hasSalesHistory = (salesItems as List).isNotEmpty;
-
-      if (hasPurchaseHistory) {
-        // Calculate correct stock from purchase/sales history
-        final totalPurchased = (purchaseItems as List).fold<int>(
-          0,
-          (sum, item) => sum + ((item['quantity'] as num?)?.toInt() ?? 0),
+      // 2. Fetch purchases (paged)
+      final purchaseItems = await _fetchAllPaged(
+        (from, to) => _client
+            .from('purchase_items')
+            .select('quantity, unit, purchases!inner(business_id)')
+            .eq('product_id', productId)
+            .eq('purchases.business_id', businessId)
+            .range(from, to),
+      );
+      int totalPurchased = 0;
+      for (final item in purchaseItems) {
+        final unit = (item['unit'] ?? '').toString().trim().toLowerCase();
+        final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+        final isWholesale = unit.isNotEmpty && (
+          (uwh.isNotEmpty && unit == uwh) ||
+          unit == 'pkt' || unit == 'pack' || unit == 'pkg' || unit == 'wholesale' || unit == 'bundle'
         );
-        final totalSold = (salesItems as List).fold<int>(
-          0,
-          (sum, item) => sum + ((item['quantity'] as num?)?.toInt() ?? 0),
-        );
-
-        final correctStock = totalPurchased - totalSold;
-
-        await _client
-            .from('products')
-            .update({'current_stock': correctStock})
-            .eq('id', productId);
-      } else if (hasSalesHistory) {
-        // Set stock to total sold to prevent negative stock
-        final totalSold = (salesItems as List).fold<int>(
-          0,
-          (sum, item) => sum + ((item['quantity'] as num?)?.toInt() ?? 0),
-        );
-
-        await _client
-            .from('products')
-            .update({'current_stock': totalSold})
-            .eq('id', productId);
-      } else {
-        // No history, safe to reset to 0
-        await _client
-            .from('products')
-            .update({'current_stock': 0})
-            .eq('id', productId);
+        totalPurchased += isWholesale ? qty * ipwu : qty;
       }
+
+      // 3. Fetch sales (paged)
+      final salesItems = await _fetchAllPaged(
+        (from, to) => _client
+            .from('sales_items')
+            .select('quantity, unit, sales!inner(business_id)')
+            .eq('product_id', productId)
+            .eq('sales.business_id', businessId)
+            .range(from, to),
+      );
+      int totalSold = 0;
+      for (final item in salesItems) {
+        final unit = (item['unit'] ?? '').toString().trim().toLowerCase();
+        final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+        final isWholesale = unit.isNotEmpty && (
+          (uwh.isNotEmpty && unit == uwh) ||
+          unit == 'pkt' || unit == 'pack' || unit == 'pkg' || unit == 'wholesale' || unit == 'bundle'
+        );
+        totalSold += isWholesale ? qty * ipwu : qty;
+      }
+
+      // 4. Fetch returns (paged)
+      final returnItems = await _fetchAllPaged(
+        (from, to) => _client
+            .from('return_items')
+            .select('quantity_returned, returns!inner(business_id)')
+            .eq('product_id', productId)
+            .eq('returns.business_id', businessId)
+            .eq('restock_eligible', true)
+            .range(from, to),
+      );
+      int restocked = 0;
+      for (final item in returnItems) {
+        restocked += (item['quantity_returned'] as num?)?.toInt() ?? 0;
+      }
+
+      // 5. Fetch replacements out (paged)
+      final replacementOut = await _fetchAllPaged(
+        (from, to) => _client
+            .from('replacement_items_out')
+            .select('quantity_returned, replacements!inner(business_id), restock_eligible')
+            .eq('product_id', productId)
+            .eq('replacements.business_id', businessId)
+            .eq('restock_eligible', true)
+            .range(from, to),
+      );
+      for (final item in replacementOut) {
+        restocked += (item['quantity_returned'] as num?)?.toInt() ?? 0;
+      }
+
+      // 6. Fetch replacements in (paged)
+      final replacementIn = await _fetchAllPaged(
+        (from, to) => _client
+            .from('replacement_items_in')
+            .select('quantity_given, replacements!inner(business_id)')
+            .eq('product_id', productId)
+            .eq('replacements.business_id', businessId)
+            .range(from, to),
+      );
+      int replacementGiven = 0;
+      for (final item in replacementIn) {
+        replacementGiven += (item['quantity_given'] as num?)?.toInt() ?? 0;
+      }
+
+      // 7. Fetch supplier returns (paged)
+      final supplierReturns = await _fetchAllPaged(
+        (from, to) => _client
+            .from('supplier_return_items')
+            .select('quantity, supplier_returns!inner(business_id)')
+            .eq('product_id', productId)
+            .eq('supplier_returns.business_id', businessId)
+            .range(from, to),
+      );
+      int supplierReturned = 0;
+      for (final item in supplierReturns) {
+        supplierReturned += (item['quantity'] as num?)?.toInt() ?? 0;
+      }
+
+      final calculatedExpected = totalPurchased - totalSold + restocked - replacementGiven - supplierReturned;
+      final expectedStock = calculatedExpected < 0 ? 0 : calculatedExpected;
+
+      await _client
+          .from('products')
+          .update({'current_stock': expectedStock})
+          .eq('id', productId)
+          .eq('business_id', businessId);
 
       return true;
     } catch (e) {
@@ -6575,17 +6772,23 @@ class SupabaseService {
 
   Future<bool> deleteProductSafely(int productId) async {
     try {
-      // Check for related records
+      await getCurrentBusinessProfile();
+      final businessId = getCurrentBusinessId();
+      if (businessId == null) return false;
+
+      // Check for related records scoped to business
       final purchaseItems = await _client
           .from('purchase_items')
-          .select('id')
+          .select('id, purchases!inner(business_id)')
           .eq('product_id', productId)
+          .eq('purchases.business_id', businessId)
           .limit(1);
 
       final salesItems = await _client
           .from('sales_items')
-          .select('id')
+          .select('id, sales!inner(business_id)')
           .eq('product_id', productId)
+          .eq('sales.business_id', businessId)
           .limit(1);
 
       final hasPurchaseItems = (purchaseItems as List).isNotEmpty;
@@ -6596,10 +6799,15 @@ class SupabaseService {
         await _client
             .from('products')
             .update({'current_stock': 0, 'status': 'archived'})
-            .eq('id', productId);
+            .eq('id', productId)
+            .eq('business_id', businessId);
       } else {
         // Safe to delete
-        await _client.from('products').delete().eq('id', productId);
+        await _client
+            .from('products')
+            .delete()
+            .eq('id', productId)
+            .eq('business_id', businessId);
       }
 
       return true;
@@ -6613,6 +6821,10 @@ class SupabaseService {
 
   Future<int> resetAllSuspiciousStock() async {
     try {
+      await getCurrentBusinessProfile();
+      final businessId = getCurrentBusinessId();
+      if (businessId == null) return 0;
+
       final productsWithStock = await getProductsWithStock();
       int resetCount = 0;
 
@@ -6624,7 +6836,8 @@ class SupabaseService {
             await _client
                 .from('products')
                 .update({'current_stock': 0})
-                .eq('id', productId);
+                .eq('id', productId)
+                .eq('business_id', businessId);
             resetCount++;
           }
         }

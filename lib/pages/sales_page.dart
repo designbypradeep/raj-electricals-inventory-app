@@ -51,6 +51,7 @@ class SaleReceipt {
   final double subTotal;
   final double discount;
   final double finalTotal;
+  final double amountPaid;
   final String paymentMethod;
   final DateTime saleDate;
 
@@ -63,6 +64,7 @@ class SaleReceipt {
     required this.subTotal,
     required this.discount,
     required this.finalTotal,
+    required this.amountPaid,
     required this.paymentMethod,
     required this.saleDate,
   });
@@ -437,6 +439,7 @@ class _SalesPageState extends State<SalesPage> {
           subTotal: _subTotal,
           discount: _discount,
           finalTotal: _finalTotal,
+          amountPaid: computedPaid,
           paymentMethod: _paymentMethod,
           saleDate: _customDate ?? DateTime.now(),
         );
@@ -476,15 +479,21 @@ class _SalesPageState extends State<SalesPage> {
       return;
     }
 
-    // Compose a brief message; user can send the PDF via the Download/Share button
-    final msg =
-        'Thank you for your purchase! Invoice ${_receipt!.saleId} — '
-        'Total: ₹${_receipt!.finalTotal.toStringAsFixed(2)}';
+    final data = _buildReceiptDataFromState();
+    final profile = await SupabaseService.getCurrentBusinessProfile();
+    final msg = ReceiptService.getWhatsAppMessage(
+      data,
+      businessName: profile?.businessName,
+    );
     final encoded = Uri.encodeComponent(msg);
 
-    // Prefer whatsapp:// scheme (opens app directly); fallback to wa.me
-    final direct = Uri.parse('whatsapp://send?phone=91$phone&text=$encoded');
-    final web = Uri.parse('https://wa.me/91$phone?text=$encoded');
+    final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+    final phoneWithCode =
+        cleanPhone.startsWith('91') ? cleanPhone : '91$cleanPhone';
+
+    final direct =
+        Uri.parse('whatsapp://send?phone=$phoneWithCode&text=$encoded');
+    final web = Uri.parse('https://wa.me/$phoneWithCode?text=$encoded');
 
     try {
       if (await canLaunchUrl(direct)) {
@@ -527,6 +536,22 @@ class _SalesPageState extends State<SalesPage> {
     }
   }
 
+  Future<void> _printReceipt() async {
+    if (_receipt == null) return;
+    try {
+      final data = _buildReceiptDataFromState();
+      await ReceiptService.printReceipt(data);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to print receipt: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
+  }
+
   ReceiptData _buildReceiptDataFromState() {
     final r = _receipt!;
     return ReceiptData(
@@ -541,12 +566,14 @@ class _SalesPageState extends State<SalesPage> {
               quantity: it.quantity,
               pricePerUnit: it.pricePerUnit,
               itemCode: it.itemCode,
+              unit: it.unit,
             ),
           )
           .toList(),
       subTotal: r.subTotal,
       discount: r.discount,
       finalTotal: r.finalTotal,
+      amountPaid: r.amountPaid,
       paymentMethod: r.paymentMethod,
       saleDate: r.saleDate,
     );
@@ -648,178 +675,377 @@ class _SalesPageState extends State<SalesPage> {
 
   Widget _buildSuccessReceipt() {
     if (_receipt == null) return const SizedBox();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final r = _receipt!;
+    final isPartial = r.amountPaid < r.finalTotal;
+    final dueAmount = r.finalTotal - r.amountPaid;
 
     return Container(
       padding: EdgeInsets.all(
-        MediaQuery.of(context).size.width < 480 ? 20 : 32,
+        MediaQuery.of(context).size.width < 480 ? 18 : 28,
       ),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12),
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+          color: theme.dividerColor.withValues(alpha: 0.12),
         ),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).shadowColor.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: theme.shadowColor.withValues(alpha: 0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
         children: [
-          // Success Header - Exact SvelteKit styling
+          // Glowing check circle
+          Container(
+            width: 68,
+            height: 68,
+            decoration: BoxDecoration(
+              color: const Color(0xFF16A34A).withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: const Color(0xFF16A34A).withValues(alpha: 0.25),
+                width: 2,
+              ),
+            ),
+            child: const Center(
+              child: Icon(
+                Icons.check_rounded,
+                size: 38,
+                color: Color(0xFF16A34A),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           Text(
-            '✅ Sale Recorded!',
+            'Sale Confirmed',
             style: TextStyle(
-              fontSize: MediaQuery.of(context).size.width < 480 ? 24 : 32,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.secondary,
+              fontSize: MediaQuery.of(context).size.width < 480 ? 24 : 28,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
+              color: theme.textTheme.titleLarge?.color,
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.receipt_long,
+                size: 16,
+                color: theme.textTheme.bodySmall?.color,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Invoice ID: ',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: theme.textTheme.bodySmall?.color,
+                ),
+              ),
+              Text(
+                'INV-${r.saleId}',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
 
           // Receipt Details Container - SvelteKit card styling
           Container(
-            padding: EdgeInsets.all(
-              MediaQuery.of(context).size.width < 480 ? 16 : 24,
-            ),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Theme.of(context).dividerColor.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(8),
+              color: isDark
+                  ? const Color(0xFF1E222A)
+                  : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+                color: theme.dividerColor.withValues(alpha: 0.15),
               ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildReceiptRow('Customer:', _receipt!.customerName),
-                if (_receipt!.customerPhone != null)
-                  _buildReceiptRow('Phone:', _receipt!.customerPhone!),
-
-                Divider(
-                  color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
-                  height: 32,
+                // Customer & Phone 2-column header
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'CUSTOMER',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.1,
+                              color: theme.textTheme.bodySmall?.color,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            r.customerName,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: theme.textTheme.bodyLarge?.color,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (r.customerPhone != null &&
+                        r.customerPhone!.trim().isNotEmpty) ...[
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'PHONE NUMBER',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.1,
+                              color: theme.textTheme.bodySmall?.color,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            r.customerPhone!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'monospace',
+                              color: theme.textTheme.bodyLarge?.color,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
 
+                const SizedBox(height: 16),
+                Divider(
+                  color: theme.dividerColor.withValues(alpha: 0.12),
+                  height: 1,
+                ),
+                const SizedBox(height: 14),
+
+                // Products section
                 Text(
-                  'Items:',
+                  'PRODUCTS',
                   style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Theme.of(context).textTheme.titleMedium?.color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
+                    color: theme.textTheme.bodySmall?.color,
                   ),
+                ),
+                const SizedBox(height: 10),
+
+                // Items list
+                ...r.items.map((item) {
+                  final lineTotal = item.quantity * item.pricePerUnit;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(
+                              text: item.name,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w500,
+                                color: theme.textTheme.bodyMedium?.color,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text:
+                                      ' × ${item.quantity}${item.unit.isNotEmpty ? ' ${item.unit}' : ''}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.textTheme.bodySmall?.color,
+                                    fontWeight: FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          '₹${lineTotal.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13.5,
+                            color: theme.textTheme.bodyLarge?.color,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+
+                const SizedBox(height: 14),
+                Divider(
+                  color: theme.dividerColor.withValues(alpha: 0.12),
+                  height: 1,
                 ),
                 const SizedBox(height: 12),
 
-                // Items list
-                ..._receipt!.items.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '${item.name} - ${item.quantity} ${item.unit} @ ₹${item.pricePerUnit.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        color: Theme.of(context).textTheme.bodyMedium?.color,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ),
-
-                Divider(
-                  color: Theme.of(context).dividerColor.withValues(alpha: 0.2),
-                  height: 32,
-                ),
-
+                // Subtotal
                 _buildReceiptRow(
                   'Subtotal:',
-                  '₹${_receipt!.subTotal.toStringAsFixed(2)}',
+                  '₹${r.subTotal.toStringAsFixed(2)}',
                 ),
-                _buildReceiptRow(
-                  'Discount:',
-                  '- ₹${_receipt!.discount.toStringAsFixed(2)}',
-                ),
-                if (_receipt!.paymentMethod.isNotEmpty)
-                  _buildReceiptRow('Paid via:', _receipt!.paymentMethod),
 
-                const SizedBox(height: 16),
+                // Discount
+                if (r.discount > 0)
+                  _buildReceiptRow(
+                    'Discount:',
+                    '- ₹${r.discount.toStringAsFixed(2)}',
+                    valueColor: const Color(0xFF16A34A),
+                  ),
+
+                // Paid via
+                if (r.paymentMethod.isNotEmpty)
+                  _buildReceiptRow(
+                    'Payment Method:',
+                    r.paymentMethod.toUpperCase(),
+                  ),
+
+                const SizedBox(height: 8),
+                Divider(
+                  color: theme.dividerColor.withValues(alpha: 0.15),
+                  height: 1,
+                ),
+                const SizedBox(height: 8),
+
+                // Total Amount
                 _buildReceiptRow(
-                  'Final Total:',
-                  '₹${_receipt!.finalTotal.toStringAsFixed(2)}',
+                  'Total Amount:',
+                  '₹${r.finalTotal.toStringAsFixed(2)}',
                   isTotal: true,
                 ),
+
+                // Payment Due Box (if partial payment)
+                if (isPartial) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF451A1A)
+                          : const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color:
+                            const Color(0xFFEF4444).withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Payment Due:',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFDC2626),
+                          ),
+                        ),
+                        Text(
+                          '₹${dueAmount.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            fontStyle: FontStyle.italic,
+                            color: Color(0xFFDC2626),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
 
-          // Action Buttons - SvelteKit grid layout
+          // Action Buttons (Responsive Layout)
           LayoutBuilder(
             builder: (context, constraints) {
-              if (constraints.maxWidth > 600) {
-                // Desktop: 3 columns
+              final isWide = constraints.maxWidth > 580;
+              final buttons = [
+                _buildActionButton(
+                  onPressed: _startNewSale,
+                  icon: Icons.add_circle_outline,
+                  label: 'New Sale',
+                  variant: 'outline',
+                ),
+                _buildActionButton(
+                  onPressed: _printReceipt,
+                  icon: Icons.print_outlined,
+                  label: 'Print',
+                  variant: 'secondary',
+                ),
+                _buildActionButton(
+                  onPressed: _generatePdf,
+                  icon: Icons.picture_as_pdf_outlined,
+                  label: 'Save PDF',
+                  variant: 'primary',
+                ),
+                if (r.customerPhone != null &&
+                    r.customerPhone!.trim().isNotEmpty)
+                  _buildActionButton(
+                    onPressed: _shareOnWhatsApp,
+                    icon: Icons.share_rounded,
+                    label: 'WhatsApp',
+                    variant: 'whatsapp',
+                  ),
+              ];
+
+              if (isWide) {
                 return Row(
                   children: [
-                    Expanded(
-                      child: _buildActionButton(
-                        onPressed: _startNewSale,
-                        icon: Icons.refresh,
-                        label: 'Start New Sale',
-                        variant: 'outline',
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildActionButton(
-                        onPressed: _generatePdf,
-                        icon: Icons.picture_as_pdf,
-                        label: 'Download PDF',
-                        variant: 'primary',
-                      ),
-                    ),
-                    if (_receipt!.customerPhone != null) ...[
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildActionButton(
-                          onPressed: _shareOnWhatsApp,
-                          icon: Icons.share,
-                          label: 'Share on WhatsApp',
-                          variant: 'whatsapp',
-                        ),
-                      ),
+                    for (int i = 0; i < buttons.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 10),
+                      Expanded(child: buttons[i]),
                     ],
                   ],
                 );
               } else {
-                // Mobile: Stacked
-                return Column(
+                return Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
                   children: [
-                    _buildActionButton(
-                      onPressed: _startNewSale,
-                      icon: Icons.refresh,
-                      label: 'Start New Sale',
-                      variant: 'outline',
-                    ),
-                    const SizedBox(height: 12),
-                    _buildActionButton(
-                      onPressed: _generatePdf,
-                      icon: Icons.picture_as_pdf,
-                      label: 'Download PDF',
-                      variant: 'primary',
-                    ),
-                    if (_receipt!.customerPhone != null) ...[
-                      const SizedBox(height: 12),
-                      _buildActionButton(
-                        onPressed: _shareOnWhatsApp,
-                        icon: Icons.share,
-                        label: 'Share on WhatsApp',
-                        variant: 'whatsapp',
+                    for (final b in buttons)
+                      SizedBox(
+                        width: (constraints.maxWidth - 10) / 2,
+                        child: b,
                       ),
-                    ],
                   ],
                 );
               }
@@ -830,7 +1056,12 @@ class _SalesPageState extends State<SalesPage> {
     );
   }
 
-  Widget _buildReceiptRow(String label, String value, {bool isTotal = false}) {
+  Widget _buildReceiptRow(
+    String label,
+    String value, {
+    bool isTotal = false,
+    Color? valueColor,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -840,18 +1071,22 @@ class _SalesPageState extends State<SalesPage> {
             label,
             style: TextStyle(
               fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
-              fontSize: isTotal ? 18 : 14,
-              color: Theme.of(context).textTheme.bodyMedium?.color,
+              fontSize: isTotal ? 16 : 13.5,
+              color: isTotal
+                  ? Theme.of(context).textTheme.titleMedium?.color
+                  : Theme.of(context).textTheme.bodySmall?.color,
             ),
           ),
           Text(
             value,
             style: TextStyle(
-              fontWeight: isTotal ? FontWeight.bold : FontWeight.w600,
-              fontSize: isTotal ? 20 : 14,
-              color: isTotal
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).textTheme.bodyMedium?.color,
+              fontWeight: isTotal ? FontWeight.w900 : FontWeight.bold,
+              fontSize: isTotal ? 20 : 13.5,
+              fontFamily: 'monospace',
+              color: valueColor ??
+                  (isTotal
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).textTheme.bodyLarge?.color),
             ),
           ),
         ],
@@ -878,6 +1113,13 @@ class _SalesPageState extends State<SalesPage> {
           color: Theme.of(context).dividerColor.withValues(alpha: 0.3),
         );
         break;
+      case 'secondary':
+        backgroundColor =
+            Theme.of(context).colorScheme.secondaryContainer;
+        foregroundColor =
+            Theme.of(context).colorScheme.onSecondaryContainer;
+        border = null;
+        break;
       case 'primary':
         backgroundColor = Theme.of(context).colorScheme.primary;
         foregroundColor = Theme.of(context).colorScheme.onPrimary;
@@ -888,6 +1130,11 @@ class _SalesPageState extends State<SalesPage> {
         foregroundColor = Colors.white;
         border = null;
         break;
+      default:
+        backgroundColor = Theme.of(context).colorScheme.primary;
+        foregroundColor = Theme.of(context).colorScheme.onPrimary;
+        border = null;
+    }
       default:
         backgroundColor = Theme.of(context).colorScheme.primary;
         foregroundColor = Theme.of(context).colorScheme.onPrimary;

@@ -23,7 +23,7 @@ class _SystemHealthPageState extends State<SystemHealthPage>
   List<Map<String, dynamic>> _stockRecon = [];
   bool _stockReconLoading = false;
   bool _stockReconApplying = false;
-  bool _stockReconAllMismatches = false;
+  bool _stockReconAllMismatches = true;
 
   // Real health check data
   Map<String, dynamic> _healthCheck = {
@@ -67,9 +67,7 @@ class _SystemHealthPageState extends State<SystemHealthPage>
       _stockReconLoading = true;
     });
     try {
-      final rows = await SupabaseService.healthStockReconcilePreview(
-        includeAllMismatches: _stockReconAllMismatches,
-      );
+      final rows = await SupabaseService.healthStockReconcilePreview();
       setState(() {
         _stockRecon = rows;
         _stockReconLoading = false;
@@ -696,6 +694,8 @@ class _SystemHealthPageState extends State<SystemHealthPage>
       });
 
       _animationController.forward();
+      // Auto-load stock reconciliation preview to match web dashboard
+      _runStockReconPreview();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -770,26 +770,47 @@ class _SystemHealthPageState extends State<SystemHealthPage>
 
   Future<List<Map<String, dynamic>>> _getProductsWithoutPurchases() async {
     final supabaseService = SupabaseService();
+    await SupabaseService.getCurrentBusinessProfile();
+    final businessId = SupabaseService.getCurrentBusinessId();
+    if (businessId == null) return [];
 
     final productsWithStock = await supabaseService.getProductsWithStock();
-    final productsWithoutPurchases = <Map<String, dynamic>>[];
+    if (productsWithStock.isEmpty) return [];
 
-    // Check each product for purchase history
+    final productIdsWithStock = productsWithStock
+        .map((p) => p.id)
+        .whereType<int>()
+        .toList();
+
+    // Batch query purchase history scoped to business (matching web performance)
+    final productIdsWithHistory = <int>{};
+    for (int i = 0; i < productIdsWithStock.length; i += 100) {
+      final chunk = productIdsWithStock.sublist(
+        i,
+        i + 100 > productIdsWithStock.length ? productIdsWithStock.length : i + 100,
+      );
+      final itemsFound = await SupabaseService.supabase
+          .from('purchase_items')
+          .select('product_id, purchases!inner(business_id)')
+          .eq('purchases.business_id', businessId)
+          .inFilter('product_id', chunk);
+      for (final item in (itemsFound as List)) {
+        final pid = (item['product_id'] as num?)?.toInt();
+        if (pid != null) productIdsWithHistory.add(pid);
+      }
+    }
+
+    final productsWithoutPurchases = <Map<String, dynamic>>[];
     for (final product in productsWithStock) {
-      final productId = product.id;
-      if (productId != null) {
-        final hasPurchases = await supabaseService.productHasPurchaseHistory(
-          productId,
-        );
-        if (!hasPurchases) {
-          productsWithoutPurchases.add({
-            'id': productId,
-            'name': product.name,
-            'brand': product.brand,
-            'current_stock': product.currentStock,
-            'unit_type_single': product.unitTypeSingle,
-          });
-        }
+      final pid = product.id;
+      if (pid != null && !productIdsWithHistory.contains(pid)) {
+        productsWithoutPurchases.add({
+          'id': pid,
+          'name': product.name,
+          'brand': product.brand,
+          'current_stock': product.currentStock,
+          'unit_type_single': product.unitTypeSingle,
+        });
       }
     }
 
@@ -2659,18 +2680,69 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Stock Reconciliation',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          'Stock Reconciliation',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                        if (_stockRecon.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade900.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.amber.shade700.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            child: Text(
+                              '${_stockRecon.length} Mismatches',
+                              style: TextStyle(
+                                color: Colors.amber.shade300,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          )
+                        else if (!_stockReconLoading)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade900.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.green.shade700.withValues(alpha: 0.5),
+                              ),
+                            ),
+                            child: Text(
+                              'All Matched',
+                              style: TextStyle(
+                                color: Colors.green.shade400,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     Text(
                       _stockReconAllMismatches
-                          ? 'All mismatches (advanced)'
-                          : 'Fix zeros where history shows stock',
+                          ? 'Apply mode: Fix all mismatches'
+                          : 'Apply mode: Fix only zero-stock items',
                       style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(
@@ -2687,7 +2759,9 @@ class _SystemHealthPageState extends State<SystemHealthPage>
                     value: _stockReconAllMismatches,
                     onChanged: _stockReconLoading || _stockReconApplying
                         ? null
-                        : (v) => setState(() => _stockReconAllMismatches = v),
+                        : (v) {
+                            setState(() => _stockReconAllMismatches = v);
+                          },
                   ),
                 ],
               ),
@@ -2797,11 +2871,19 @@ class _SystemHealthPageState extends State<SystemHealthPage>
               ),
             )
           else
-            Center(
-              child: Text(
-                'No items to fix. Run preview.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).hintColor,
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  _stockReconLoading
+                      ? 'Analyzing stock transactions...'
+                      : (_stockReconAllMismatches
+                          ? '✅ All stock matched with history. No discrepancies found.'
+                          : 'No zero-stock items needing simple fix.\nToggle switch above to check all mismatches.'),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).hintColor,
+                  ),
                 ),
               ),
             ),

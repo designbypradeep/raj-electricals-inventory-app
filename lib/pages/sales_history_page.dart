@@ -387,46 +387,41 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
       return;
     }
 
-    final dateStr = DateFormat(
-      'dd/MM/yyyy',
-    ).format(sale.createdAt ?? DateTime.now());
+    final items = _safeSalesItems(sale)
+        .map(
+          (i) => ReceiptItem(
+            name: i.product?.name ?? 'Unknown Product',
+            quantity: i.quantity,
+            pricePerUnit: i.pricePerUnit,
+            itemCode: i.product?.itemCode,
+            unit: i.product?.unitTypeSingle,
+          ),
+        )
+        .toList();
 
-    // Build the receipt text
-    final StringBuffer sb = StringBuffer();
-    sb.writeln('*Receipt from $businessName*');
-    sb.writeln('--------------------------------');
-    sb.writeln('Inv: ${sale.id} | Date: $dateStr');
-    sb.writeln('--------------------------------');
-
-    final items = _safeSalesItems(sale);
-    for (final item in items) {
-      final name = item.product?.name ?? 'Unknown Product';
-      final qty = item.quantity;
-      final price = item.pricePerUnit;
-      final total = qty * price;
-      // Using toStringAsFixed(2) roughly matches logic, ignoring potential int/double precision nuances for display
-      sb.writeln('$name x $qty = ₹${total.toStringAsFixed(2)}');
-    }
-
-    sb.writeln('--------------------------------');
-
-    // Calculate totals locally
     final subTotal = items.fold<double>(
       0.0,
       (sum, item) => sum + (item.quantity * item.pricePerUnit),
     );
-    final discount = sale.discountAmount ?? 0.0;
-    final finalTotal = sale.totalAmount;
 
-    sb.writeln('*Subtotal: ₹${subTotal.toStringAsFixed(2)}*');
-    if (discount > 0) {
-      sb.writeln('Discount: - ₹${discount.toStringAsFixed(2)}');
-    }
-    sb.writeln('*Final Total: ₹${finalTotal.toStringAsFixed(2)}*');
-    sb.writeln('--------------------------------');
-    sb.writeln('Thank you for your business!');
+    final data = ReceiptData(
+      saleId: sale.id.toString(),
+      customerName: sale.customerName ?? 'Walk-in Customer',
+      customerPhone: sale.customerPhone,
+      items: items,
+      subTotal: subTotal,
+      discount: sale.discountAmount ?? 0.0,
+      finalTotal: sale.totalAmount,
+      paymentMethod: sale.paymentMethod,
+      saleDate: sale.createdAt ?? DateTime.now(),
+      status: sale.status,
+    );
 
-    final text = Uri.encodeComponent(sb.toString());
+    final msg = ReceiptService.getWhatsAppMessage(
+      data,
+      businessName: businessName,
+    );
+    final text = Uri.encodeComponent(msg);
     String phone = sale.customerPhone!.replaceAll(RegExp(r'\D'), '');
     if (phone.length == 10) {
       phone = '91$phone'; // Prepend 91 if likely Indian mobile
@@ -467,7 +462,8 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
               name: i.product?.name ?? 'Unknown',
               quantity: i.quantity,
               pricePerUnit: i.pricePerUnit,
-              itemCode: null,
+              itemCode: i.product?.itemCode,
+              unit: i.product?.unitTypeSingle,
             ),
           )
           .toList();
@@ -498,6 +494,52 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to generate PDF: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _printReceipt(models.Sale sale) async {
+    try {
+      final items = _safeSalesItems(sale)
+          .map(
+            (i) => ReceiptItem(
+              name: i.product?.name ?? 'Unknown',
+              quantity: i.quantity,
+              pricePerUnit: i.pricePerUnit,
+              itemCode: i.product?.itemCode,
+              unit: i.product?.unitTypeSingle,
+            ),
+          )
+          .toList();
+
+      final subTotal = items.fold<double>(
+        0,
+        (sum, i) => sum + (i.quantity * i.pricePerUnit),
+      );
+
+      final data = ReceiptData(
+        saleId: sale.id.toString(),
+        customerName: sale.customerName ?? 'Walk-in Customer',
+        customerPhone: sale.customerPhone,
+        transactionId: null,
+        items: items,
+        subTotal: subTotal,
+        discount: sale.discountAmount ?? 0.0,
+        finalTotal: sale.totalAmount,
+        paymentMethod: sale.paymentMethod,
+        saleDate: sale.createdAt ?? DateTime.now(),
+        status: sale.status,
+      );
+
+      await ReceiptService.printReceipt(data);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to print receipt: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1878,36 +1920,56 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton.icon(
+                                onPressed: () => _printReceipt(sale),
+                                icon: const Icon(Icons.print, size: 13),
+                                label: const Text('Print', style: TextStyle(fontSize: 10.5)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.indigo,
+                                  foregroundColor: Colors.white,
+                                  visualDensity: VisualDensity.compact,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 6,
+                                    horizontal: 2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 5),
                             Expanded(
                               flex: 2,
                               child: ElevatedButton.icon(
                                 onPressed: () => _generatePdf(sale),
-                                icon: const Icon(Icons.picture_as_pdf, size: 14),
-                                label: const Text('PDF', style: TextStyle(fontSize: 11)),
+                                icon: const Icon(Icons.picture_as_pdf, size: 13),
+                                label: const Text('PDF', style: TextStyle(fontSize: 10.5)),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.blue,
                                   foregroundColor: Colors.white,
                                   visualDensity: VisualDensity.compact,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 6,
+                                    horizontal: 2,
                                   ),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 5),
                             Expanded(
                               flex: 2,
                               child: ElevatedButton.icon(
                                 onPressed: () => _shareOnWhatsApp(sale),
-                                icon: const Icon(Icons.share, size: 14),
-                                label: const Text('Share', style: TextStyle(fontSize: 11)),
+                                icon: const Icon(Icons.share, size: 13),
+                                label: const Text('Share', style: TextStyle(fontSize: 10.5)),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.green,
                                   foregroundColor: Colors.white,
                                   visualDensity: VisualDensity.compact,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 6,
+                                    horizontal: 2,
                                   ),
                                 ),
                               ),
