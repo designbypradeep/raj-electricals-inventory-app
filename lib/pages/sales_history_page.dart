@@ -393,8 +393,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
             name: i.product?.name ?? 'Unknown Product',
             quantity: i.quantity,
             pricePerUnit: i.pricePerUnit,
-            itemCode: i.product?.itemCode,
-            unit: i.product?.unitTypeSingle,
+            unit: i.unit,
           ),
         )
         .toList();
@@ -462,8 +461,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
               name: i.product?.name ?? 'Unknown',
               quantity: i.quantity,
               pricePerUnit: i.pricePerUnit,
-              itemCode: i.product?.itemCode,
-              unit: i.product?.unitTypeSingle,
+              unit: i.unit,
             ),
           )
           .toList();
@@ -509,8 +507,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
               name: i.product?.name ?? 'Unknown',
               quantity: i.quantity,
               pricePerUnit: i.pricePerUnit,
-              itemCode: i.product?.itemCode,
-              unit: i.product?.unitTypeSingle,
+              unit: i.unit,
             ),
           )
           .toList();
