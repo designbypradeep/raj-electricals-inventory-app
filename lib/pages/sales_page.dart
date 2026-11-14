@@ -1135,11 +1135,6 @@ class _SalesPageState extends State<SalesPage> {
         foregroundColor = Theme.of(context).colorScheme.onPrimary;
         border = null;
     }
-      default:
-        backgroundColor = Theme.of(context).colorScheme.primary;
-        foregroundColor = Theme.of(context).colorScheme.onPrimary;
-        border = null;
-    }
 
     return SizedBox(
       width: double.infinity,
