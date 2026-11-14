@@ -224,7 +224,7 @@ class ReceiptService {
                   ),
                 ),
 
-                const pw.SizedBox(width: 16),
+                pw.SizedBox(width: 16),
 
                 // Right: Invoice Meta & Status
                 pw.Expanded(
@@ -528,7 +528,7 @@ class ReceiptService {
                       : pw.SizedBox(),
                 ),
 
-                const pw.SizedBox(width: 16),
+                pw.SizedBox(width: 16),
 
                 // Right: Boxed Totals
                 pw.Expanded(
