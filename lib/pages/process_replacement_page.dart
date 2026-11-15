@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:raj_electricals_inventory_app/theme/ui_tokens.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../widgets/page_header.dart';
 import '../data/app_database.dart';
 import '../services/supabase_service.dart';
 import '../services/connectivity_service.dart';
+import '../services/receipt_service.dart';
 
 class ProcessReplacementPage extends StatefulWidget {
   final AppDatabase db;
@@ -25,6 +27,11 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
   String _replacementReason = '';
   String _notes = '';
   bool _isSubmitting = false;
+
+  // Settlement & Payment Mode
+  String _settlementMethod = 'cash'; // 'cash', 'upi', 'due'
+  bool _waiveDifference = false;
+  String _waiverReason = '';
 
   // Controllers
   late TextEditingController _customerNameController;
@@ -300,29 +307,63 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
     }
   }
 
-  void _selectSale(Map<String, dynamic> sale) {
+  void _selectSale(Map<String, dynamic> sale) async {
+    final saleId = sale['id'] as int?;
+    final customer = (sale['customer_name'] as String?) ?? '';
+    _customerNameController.text = customer;
+
+    // Build itemsOut from sales_items
+    final List items = (sale['sales_items'] as List?) ?? const [];
+    final builtItemsOut = items.map<Map<String, dynamic>>((it) {
+      final prod = (it['products'] as Map<String, dynamic>?) ?? const {};
+      final qty = (it['quantity'] as num?)?.toInt() ?? 0;
+      final price = (it['price_per_unit'] as num?)?.toDouble() ?? 0.0;
+      return {
+        'product_id': it['product_id'],
+        'product_name': it['product_name'] ?? prod['name'] ?? 'Item',
+        'original_quantity': qty,
+        'quantity_returned': 0,
+        'price_per_unit': price,
+        'item_condition': 'good',
+        'original_sale_item_id': it['id'],
+      };
+    }).toList();
+
+    // Also include any items issued in prior replacements for this sale (Scenario 4)
+    if (saleId != null) {
+      try {
+        final priorReplacements = await SupabaseService.getReplacementsForSale(saleId);
+        for (final rep in priorReplacements) {
+          final List inList = (rep['replacement_items_in'] as List?) ?? const [];
+          for (final rIn in inList) {
+            final prod = (rIn['products'] as Map<String, dynamic>?) ?? const {};
+            final qty = (rIn['quantity_given'] as num?)?.toInt() ?? 1;
+            final price = (rIn['price_per_unit'] as num?)?.toDouble() ?? 0.0;
+            final rId = rep['id'];
+            builtItemsOut.add({
+              'product_id': rIn['product_id'],
+              'product_name': '${prod['name'] ?? 'Item'} (from Exch #$rId)',
+              'original_quantity': qty,
+              'quantity_returned': 0,
+              'price_per_unit': price,
+              'item_condition': 'good',
+              'is_prior_replacement': true,
+            });
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
     setState(() {
       _selectedSale = sale;
-      _customerName = (sale['customer_name'] as String?) ?? '';
-      _customerNameController.text = _customerName;
-      // Build itemsOut from sales_items
-      final List items = (sale['sales_items'] as List?) ?? const [];
-      _itemsOut = items.map<Map<String, dynamic>>((it) {
-        final prod = (it['products'] as Map<String, dynamic>?) ?? const {};
-        final qty = (it['quantity'] as num?)?.toInt() ?? 0;
-        final price = (it['price_per_unit'] as num?)?.toDouble() ?? 0.0;
-        return {
-          'product_id': it['product_id'],
-          'product_name': it['product_name'] ?? prod['name'] ?? 'Item',
-          'original_quantity': qty,
-          'quantity_returned': 0,
-          'price_per_unit': price,
-          'item_condition': 'good',
-        };
-      }).toList();
+      _customerName = customer;
+      _itemsOut = builtItemsOut;
       _itemsIn = [];
       _saleSearch = '';
       _saleResults = [];
+      _waiveDifference = false;
+      _settlementMethod = 'cash';
     });
   }
 
@@ -397,29 +438,78 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
 
     setState(() => _isSubmitting = true);
     try {
-      await SupabaseService.createReplacement(
+      final double effectiveDiff = _waiveDifference ? 0.0 : _priceDifference;
+      final String effectiveMethod = _waiveDifference
+          ? 'waived'
+          : (_priceDifference == 0 ? 'even' : _settlementMethod);
+
+      final result = await SupabaseService.createReplacement(
         originalSaleId: _selectedSale!['id'] as int,
         customerName: _customerName.trim(),
+        customerPhone: (_selectedSale!['customer_phone'] as String?) ?? '',
         replacementReason: _replacementReason.trim(),
         notes: _notes.trim(),
         itemsOut: _validItemsOut,
         itemsIn: _validItemsIn,
-        amountDifference: _priceDifference,
+        priceDifference: effectiveDiff,
+        amountDifference: effectiveDiff,
+        paymentMethod: effectiveMethod,
+        collectMethod: effectiveMethod,
+        waived: _waiveDifference,
+        waiverNote: _waiveDifference
+            ? (_waiverReason.isNotEmpty
+                ? _waiverReason
+                : 'Waived difference as customer courtesy')
+            : null,
+        status: 'Completed',
+      );
+
+      final replNo = (result['replacement_number'] as String?) ??
+          'REP-${result['id'] ?? DateTime.now().millisecondsSinceEpoch}';
+
+      final replData = ReplacementReceiptData(
+        replacementNumber: replNo,
+        originalSaleId: _selectedSale!['id']?.toString(),
+        customerName: _customerName.trim(),
+        customerPhone: (_selectedSale!['customer_phone'] as String?),
+        date: DateTime.now(),
+        itemsReturned: _validItemsOut.map((it) {
+          final cond = (it['item_condition'] as String?)?.toLowerCase() ?? 'good';
+          return ReplacementItemOutReceipt(
+            name: it['product_name']?.toString() ?? 'Item',
+            quantity: (it['quantity_returned'] as num).toInt(),
+            pricePerUnit: (it['price_per_unit'] as num).toDouble(),
+            condition: cond,
+            restocked: cond != 'defective' && cond != 'damaged',
+          );
+        }).toList(),
+        itemsIssued: _validItemsIn.map((it) {
+          return ReplacementItemInReceipt(
+            name: it['product_name']?.toString() ?? 'Item',
+            quantity: (it['quantity_given'] as num).toInt(),
+            pricePerUnit: (it['price_per_unit'] as num).toDouble(),
+          );
+        }).toList(),
+        returnedTotal: _totalOutAmount,
+        issuedTotal: _totalInAmount,
+        priceDifference: _priceDifference,
+        isWaived: _waiveDifference,
+        waiverNote: _waiveDifference ? 'Waived difference as courtesy' : null,
+        settlementMethod: effectiveMethod,
+        amountPaid: _waiveDifference
+            ? 0.0
+            : (_settlementMethod == 'due'
+                ? 0.0
+                : (_priceDifference > 0 ? _priceDifference : 0.0)),
+        balanceDue: !_waiveDifference && _settlementMethod == 'due' && _priceDifference > 0
+            ? _priceDifference
+            : 0.0,
+        reason: _replacementReason,
+        notes: _notes,
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Replacement processed successfully')),
-      );
-
-      setState(() {
-        _selectedSale = null;
-        _itemsOut = [];
-        _itemsIn = [];
-        _customerName = '';
-        _replacementReason = '';
-        _notes = '';
-      });
+      _showReplacementSuccessSheet(replData);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -428,6 +518,216 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  void _showReplacementSuccessSheet(ReplacementReceiptData replData) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return Container(
+          decoration: BoxDecoration(
+            color: theme.scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: theme.dividerColor.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.check_circle, color: Colors.green, size: 28),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Exchange Processed!',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '${replData.replacementNumber} • ${_settlementMethod.toUpperCase()}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.textTheme.bodySmall?.color,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: theme.dividerColor.withValues(alpha: 0.2)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Returned Credit:', style: TextStyle(fontSize: 12.5)),
+                        Text(
+                          '-₹${replData.returnedTotal.toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.red),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('New Items Value:', style: TextStyle(fontSize: 12.5)),
+                        Text(
+                          '₹${replData.issuedTotal.toStringAsFixed(2)}',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.green),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          replData.isWaived
+                              ? 'Difference (Waived):'
+                              : (replData.priceDifference >= 0 ? 'Amount Settled:' : 'Refunded:'),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          replData.isWaived
+                              ? '₹0.00 (Waived)'
+                              : '₹${replData.priceDifference.abs().toStringAsFixed(2)} (${replData.settlementMethod.toUpperCase()})',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: replData.balanceDue > 0 ? Colors.orange : Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        ReceiptService.printReplacementReceipt(replData);
+                      },
+                      icon: const Icon(Icons.print, size: 16),
+                      label: const Text('Print Slip'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        ReceiptService.shareReplacementReceiptPdf(replData);
+                      },
+                      icon: const Icon(Icons.picture_as_pdf, size: 16),
+                      label: const Text('PDF'),
+                    ),
+                  ),
+                  if (replData.customerPhone != null && replData.customerPhone!.trim().isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF25D366),
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () => _shareReplacementWhatsApp(replData),
+                        icon: const Icon(Icons.share, size: 16),
+                        label: const Text('WhatsApp'),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonal(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _selectedSale = null;
+                      _itemsOut = [];
+                      _itemsIn = [];
+                      _customerName = '';
+                      _customerNameController.clear();
+                      _replacementReason = '';
+                      _notes = '';
+                      _waiveDifference = false;
+                      _settlementMethod = 'cash';
+                    });
+                  },
+                  child: const Text('Done / New Exchange'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _shareReplacementWhatsApp(ReplacementReceiptData r) async {
+    final phone = r.customerPhone ?? '';
+    if (phone.isEmpty) return;
+
+    final profile = await SupabaseService.getCurrentBusinessProfile();
+    final msg = ReceiptService.getReplacementWhatsAppMessage(
+      r,
+      businessName: profile?.businessName,
+    );
+    final encoded = Uri.encodeComponent(msg);
+    final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+    final phoneWithCode = cleanPhone.startsWith('91') ? cleanPhone : '91$cleanPhone';
+    final direct = Uri.parse('whatsapp://send?phone=$phoneWithCode&text=$encoded');
+    final web = Uri.parse('https://wa.me/$phoneWithCode?text=$encoded');
+
+    try {
+      if (await canLaunchUrl(direct)) {
+        await launchUrl(direct, mode: LaunchMode.externalApplication);
+        return;
+      }
+      if (await canLaunchUrl(web)) {
+        await launchUrl(web, mode: LaunchMode.externalApplication);
+        return;
+      }
+    } catch (_) {}
   }
 
   @override
@@ -910,14 +1210,17 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
                     final cond = DropdownButton<String>(
                       value: (item['item_condition'] as String?) ?? 'good',
                       items: const [
-                        DropdownMenuItem(value: 'good', child: Text('Good')),
                         DropdownMenuItem(
-                          value: 'damaged',
-                          child: Text('Damaged'),
+                          value: 'good',
+                          child: Text('Resellable (+Stock)'),
                         ),
                         DropdownMenuItem(
                           value: 'defective',
-                          child: Text('Defective'),
+                          child: Text('Defective (Warranty Loss)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'damaged',
+                          child: Text('Damaged (Write-off)'),
                         ),
                       ],
                       onChanged: (v) =>
@@ -1340,6 +1643,135 @@ class _ProcessReplacementPageState extends State<ProcessReplacementPage> {
               ],
             ),
           ),
+          if (_priceDifference > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Customer Difference Settlement',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Waive (Free)', style: TextStyle(fontSize: 11)),
+                          const SizedBox(width: 4),
+                          Switch(
+                            value: _waiveDifference,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            onChanged: (v) => setState(() => _waiveDifference = v),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  if (_waiveDifference) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.volunteer_activism, size: 14, color: Colors.green),
+                          SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Courtesy Upgrade: ₹0 will be charged to customer.',
+                              style: TextStyle(fontSize: 11.5, color: Colors.green, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 8),
+                    const Text('Payment Method:', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Cash'),
+                          selected: _settlementMethod == 'cash',
+                          onSelected: (v) {
+                            if (v) setState(() => _settlementMethod = 'cash');
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('UPI'),
+                          selected: _settlementMethod == 'upi',
+                          onSelected: (v) {
+                            if (v) setState(() => _settlementMethod = 'upi');
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('Pay Later (Due)'),
+                          selected: _settlementMethod == 'due',
+                          onSelected: (v) {
+                            if (v) setState(() => _settlementMethod = 'due');
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ] else if (_priceDifference < 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Store Refund to Customer',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Refund Cash'),
+                        selected: _settlementMethod == 'cash',
+                        onSelected: (v) {
+                          if (v) setState(() => _settlementMethod = 'cash');
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('Refund UPI'),
+                        selected: _settlementMethod == 'upi',
+                        onSelected: (v) {
+                          if (v) setState(() => _settlementMethod = 'upi');
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,

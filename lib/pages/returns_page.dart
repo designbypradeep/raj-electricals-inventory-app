@@ -189,6 +189,16 @@ class _ReturnsPageState extends State<ReturnsPage> {
                     description: 'Processed refunds',
                   ),
                 ],
+                actions: [
+                  PageHeaderAction(
+                    label: 'Process Return / Exchange',
+                    shortLabel: 'New Return',
+                    icon: Icons.add,
+                    color: Theme.of(context).colorScheme.primary,
+                    onPressed: () =>
+                        Navigator.of(context).pushNamed('/replacements'),
+                  ),
+                ],
               ),
 
               Padding(

@@ -1994,7 +1994,7 @@ class _SalesHistoryPageState extends State<SalesHistoryPage> {
                               child: ElevatedButton.icon(
                                 onPressed: () {
                                   Navigator.of(context).pushNamed(
-                                    '/returns',
+                                    '/replacements',
                                     arguments: {'sale_id': sale.id},
                                   );
                                 },

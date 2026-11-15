@@ -55,6 +55,74 @@ class ReceiptData {
   });
 }
 
+class ReplacementItemOutReceipt {
+  final String name;
+  final int quantity;
+  final double pricePerUnit;
+  final String condition;
+  final bool restocked;
+
+  const ReplacementItemOutReceipt({
+    required this.name,
+    required this.quantity,
+    required this.pricePerUnit,
+    this.condition = 'resellable',
+    this.restocked = true,
+  });
+}
+
+class ReplacementItemInReceipt {
+  final String name;
+  final int quantity;
+  final double pricePerUnit;
+
+  const ReplacementItemInReceipt({
+    required this.name,
+    required this.quantity,
+    required this.pricePerUnit,
+  });
+}
+
+class ReplacementReceiptData {
+  final String replacementNumber;
+  final String? originalSaleId;
+  final String customerName;
+  final String? customerPhone;
+  final DateTime date;
+  final List<ReplacementItemOutReceipt> itemsReturned;
+  final List<ReplacementItemInReceipt> itemsIssued;
+  final double returnedTotal;
+  final double issuedTotal;
+  final double priceDifference;
+  final bool isWaived;
+  final String? waiverNote;
+  final String settlementMethod;
+  final double amountPaid;
+  final double balanceDue;
+  final String reason;
+  final String? notes;
+
+  const ReplacementReceiptData({
+    required this.replacementNumber,
+    this.originalSaleId,
+    required this.customerName,
+    this.customerPhone,
+    required this.date,
+    required this.itemsReturned,
+    required this.itemsIssued,
+    required this.returnedTotal,
+    required this.issuedTotal,
+    required this.priceDifference,
+    this.isWaived = false,
+    this.waiverNote,
+    required this.settlementMethod,
+    required this.amountPaid,
+    required this.balanceDue,
+    required this.reason,
+    this.notes,
+  });
+}
+
 class ReceiptService {
   /// Generates a professional A4 invoice PDF matching the web version design and layout.
   static Future<Uint8List> generateInvoicePdf(ReceiptData r) async {
@@ -773,6 +841,566 @@ class ReceiptService {
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => await generateInvoicePdf(r),
       name: 'Invoice-${r.saleId}',
+    );
+  }
+
+  /// Generates a professional A4 Product Exchange / Replacement PDF invoice.
+  static Future<Uint8List> generateReplacementInvoicePdf(ReplacementReceiptData r) async {
+    final fontRegular = pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Poppins-Regular.ttf'),
+    );
+    final fontBold = pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Poppins-Bold.ttf'),
+    );
+
+    final theme = pw.ThemeData.withFont(
+      base: fontRegular,
+      bold: fontBold,
+    );
+
+    final profile = await SupabaseService.getCurrentBusinessProfile();
+    String businessName = 'Raj Electricals And Hardware';
+    String address = '';
+    String phone = '';
+    String email = '';
+    String gst = '';
+    String? upiVpa;
+    String? upiPayee;
+    PdfColor brandColor = const PdfColor.fromInt(0xFFEA580C); // Warm amber-orange
+
+    if (profile != null) {
+      if (profile.businessName.trim().isNotEmpty) {
+        businessName = profile.businessName.trim();
+      }
+      final parts = <String>[
+        profile.address?.trim() ?? '',
+        profile.city?.trim() ?? '',
+        profile.state?.trim() ?? '',
+        profile.postalCode?.trim() ?? '',
+      ]..removeWhere((s) => s.isEmpty);
+      address = parts.join(', ');
+
+      if (profile.phone != null && profile.phone!.trim().isNotEmpty) {
+        phone = profile.phone!.trim();
+      }
+      if (profile.email != null && profile.email!.trim().isNotEmpty) {
+        email = profile.email!.trim();
+      }
+      if (profile.gstNumber != null && profile.gstNumber!.trim().isNotEmpty) {
+        gst = profile.gstNumber!.trim();
+      }
+      if (profile.upiVpa != null && profile.upiVpa!.trim().isNotEmpty) {
+        upiVpa = profile.upiVpa!.trim();
+      }
+      if (profile.upiPayeeName != null && profile.upiPayeeName!.trim().isNotEmpty) {
+        upiPayee = profile.upiPayeeName!.trim();
+      }
+      if (profile.primaryColor != null && profile.primaryColor!.trim().isNotEmpty) {
+        try {
+          final hex = profile.primaryColor!.replaceAll('#', '').trim();
+          if (hex.length == 6) {
+            final intVal = int.parse('FF$hex', radix: 16);
+            brandColor = PdfColor.fromInt(intVal);
+          }
+        } catch (_) {}
+      }
+    }
+
+    pw.MemoryImage? logoImage;
+    if (profile != null && profile.logoUrl != null && profile.logoUrl!.trim().isNotEmpty) {
+      try {
+        final uri = Uri.parse(profile.logoUrl!.trim());
+        final res = await http.get(uri).timeout(const Duration(seconds: 3));
+        if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+          logoImage = pw.MemoryImage(res.bodyBytes);
+        }
+      } catch (_) {}
+    }
+
+    final dateStr = DateFormat('dd MMM yyyy, hh:mm a').format(r.date);
+    final hasDue = r.balanceDue > 0;
+
+    final pdf = pw.Document(theme: theme);
+
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // 1. Top Brand Accent Bar
+              pw.Container(
+                height: 5,
+                decoration: pw.BoxDecoration(
+                  color: brandColor,
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
+                ),
+              ),
+              pw.SizedBox(height: 18),
+
+              // 2. Header: Logo/Name on Left, Exchange Badge on Right
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Expanded(
+                    child: pw.Row(
+                      crossAxisAlignment: pw.CrossAxisAlignment.center,
+                      children: [
+                        if (logoImage != null) ...[
+                          pw.Container(
+                            width: 48,
+                            height: 48,
+                            decoration: pw.BoxDecoration(
+                              borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                              image: pw.DecorationImage(image: logoImage, fit: pw.BoxFit.contain),
+                            ),
+                          ),
+                          pw.SizedBox(width: 14),
+                        ],
+                        pw.Expanded(
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text(
+                                businessName,
+                                style: pw.TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: const PdfColor.fromInt(0xFF0F172A),
+                                ),
+                              ),
+                              if (address.isNotEmpty) ...[
+                                pw.SizedBox(height: 2),
+                                pw.Text(
+                                  address,
+                                  style: const pw.TextStyle(fontSize: 8.5, color: PdfColor.fromInt(0xFF64748B)),
+                                ),
+                              ],
+                              if (phone.isNotEmpty || gst.isNotEmpty) ...[
+                                pw.SizedBox(height: 2),
+                                pw.Row(
+                                  children: [
+                                    if (phone.isNotEmpty)
+                                      pw.Text('Ph: $phone   ', style: const pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
+                                    if (gst.isNotEmpty)
+                                      pw.Text('GSTIN: $gst', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF475569))),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(width: 16),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Container(
+                        padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: pw.BoxDecoration(
+                          color: hasDue ? const PdfColor.fromInt(0xFFFFFBEB) : const PdfColor.fromInt(0xFFF0FDF4),
+                          border: pw.Border.all(
+                            color: hasDue ? const PdfColor.fromInt(0xFFF59E0B) : const PdfColor.fromInt(0xFF22C55E),
+                            width: 1,
+                          ),
+                          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                        ),
+                        child: pw.Text(
+                          hasDue ? 'BALANCE DUE' : (r.isWaived ? 'COURTESY EXCHANGE' : 'COMPLETED'),
+                          style: pw.TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: pw.FontWeight.bold,
+                            color: hasDue ? const PdfColor.fromInt(0xFFB45309) : const PdfColor.fromInt(0xFF15803D),
+                          ),
+                        ),
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Text(
+                        'EXCHANGE INVOICE',
+                        style: pw.TextStyle(
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                          color: brandColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 16),
+
+              // 3. Exchange Meta Card
+              pw.Container(
+                padding: const pw.EdgeInsets.all(12),
+                decoration: pw.BoxDecoration(
+                  color: const PdfColor.fromInt(0xFFF8FAFC),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                  border: pw.Border.all(color: const PdfColor.fromInt(0xFFE2E8F0)),
+                ),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text('CUSTOMER DETAILS', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF94A3B8))),
+                          pw.SizedBox(height: 3),
+                          pw.Text(r.customerName, style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF0F172A))),
+                          if (r.customerPhone != null && r.customerPhone!.isNotEmpty)
+                            pw.Text('Phone: ${r.customerPhone}', style: const pw.TextStyle(fontSize: 8.5, color: PdfColor.fromInt(0xFF475569))),
+                          if (r.originalSaleId != null) ...[
+                            pw.SizedBox(height: 2),
+                            pw.Text('Original Bill Ref: #${r.originalSaleId}', style: const pw.TextStyle(fontSize: 8.5, color: PdfColor.fromInt(0xFF64748B))),
+                          ],
+                        ],
+                      ),
+                    ),
+                    pw.Container(width: 1, height: 42, color: const PdfColor.fromInt(0xFFE2E8F0), margin: const pw.EdgeInsets.symmetric(horizontal: 16)),
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text('REFERENCE & DATE', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF94A3B8))),
+                          pw.SizedBox(height: 3),
+                          pw.Text(r.replacementNumber, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF0F172A))),
+                          pw.Text('Date: $dateStr', style: const pw.TextStyle(fontSize: 8.5, color: PdfColor.fromInt(0xFF475569))),
+                          pw.Text('Reason: ${r.reason}', style: const pw.TextStyle(fontSize: 8.5, color: PdfColor.fromInt(0xFF64748B))),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 14),
+
+              // 4. Section: Returned Items
+              pw.Text(
+                'RETURNED PRODUCT(S)',
+                style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFFDC2626)),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Table(
+                border: pw.TableBorder(
+                  bottom: const pw.BorderSide(color: PdfColor.fromInt(0xFFE2E8F0)),
+                  horizontalInside: const pw.BorderSide(color: PdfColor.fromInt(0xFFF1F5F9)),
+                ),
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFFEF2F2)),
+                    children: [
+                      _th('Item Description'),
+                      _th('Condition', align: pw.TextAlign.center),
+                      _th('Qty', align: pw.TextAlign.center),
+                      _th('Rate', align: pw.TextAlign.right),
+                      _th('Credit Total', align: pw.TextAlign.right),
+                    ],
+                  ),
+                  for (final it in r.itemsReturned)
+                    pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                          child: pw.Text(it.name, style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF0F172A))),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                          child: pw.Text(
+                            it.condition == 'defective' || it.condition == 'damaged'
+                                ? 'Defective (Quarantined)'
+                                : 'Resellable (Restocked)',
+                            textAlign: pw.TextAlign.center,
+                            style: pw.TextStyle(
+                              fontSize: 7.5,
+                              color: it.condition == 'defective' || it.condition == 'damaged'
+                                  ? const PdfColor.fromInt(0xFFDC2626)
+                                  : const PdfColor.fromInt(0xFF15803D),
+                            ),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                          child: pw.Text('${it.quantity}', textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 8.5)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                          child: pw.Text('₹${it.pricePerUnit.toStringAsFixed(2)}', textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 8.5)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                          child: pw.Text('-₹${(it.quantity * it.pricePerUnit).toStringAsFixed(2)}', textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFFDC2626))),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              pw.SizedBox(height: 12),
+
+              // 5. Section: New Items Issued
+              pw.Text(
+                'NEW PRODUCT(S) ISSUED',
+                style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF16A34A)),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Table(
+                border: pw.TableBorder(
+                  bottom: const pw.BorderSide(color: PdfColor.fromInt(0xFFE2E8F0)),
+                  horizontalInside: const pw.BorderSide(color: PdfColor.fromInt(0xFFF1F5F9)),
+                ),
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFF0FDF4)),
+                    children: [
+                      _th('Item Description'),
+                      _th('Qty', align: pw.TextAlign.center),
+                      _th('Rate', align: pw.TextAlign.right),
+                      _th('Line Total', align: pw.TextAlign.right),
+                    ],
+                  ),
+                  for (final it in r.itemsIssued)
+                    pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                          child: pw.Text(it.name, style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF0F172A))),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                          child: pw.Text('${it.quantity}', textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 8.5)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                          child: pw.Text('₹${it.pricePerUnit.toStringAsFixed(2)}', textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 8.5)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                          child: pw.Text('₹${(it.quantity * it.pricePerUnit).toStringAsFixed(2)}', textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF0F172A))),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              pw.SizedBox(height: 16),
+
+              // 6. Totals Breakdown Card
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  // Left side: UPI QR (if balance due) or Settlement note
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Container(
+                          padding: const pw.EdgeInsets.all(10),
+                          decoration: pw.BoxDecoration(
+                            color: const PdfColor.fromInt(0xFFF8FAFC),
+                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                            border: pw.Border.all(color: const PdfColor.fromInt(0xFFE2E8F0)),
+                          ),
+                          child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Text('SETTLEMENT DETAILS', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF64748B))),
+                              pw.SizedBox(height: 4),
+                              pw.Text('Payment Mode: ${r.settlementMethod.toUpperCase()}', style: const pw.TextStyle(fontSize: 8.5, color: PdfColor.fromInt(0xFF0F172A))),
+                              if (r.isWaived)
+                                pw.Text('Notice: Difference was waived as customer courtesy.', style: const pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF16A34A))),
+                              if (r.notes != null && r.notes!.isNotEmpty)
+                                pw.Text('Notes: ${r.notes}', style: const pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
+                            ],
+                          ),
+                        ),
+                        if (hasDue && upiVpa != null) ...[
+                          pw.SizedBox(height: 10),
+                          pw.Row(
+                            children: [
+                              pw.BarcodeWidget(
+                                barcode: pw.Barcode.qrCode(),
+                                data: _buildUpiString(
+                                  vpa: upiVpa,
+                                  payeeName: upiPayee ?? businessName,
+                                  amount: r.balanceDue,
+                                  saleId: r.replacementNumber,
+                                ),
+                                width: 56,
+                                height: 56,
+                              ),
+                              pw.SizedBox(width: 10),
+                              pw.Column(
+                                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                children: [
+                                  pw.Text('Scan to Pay Due Balance', style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFF0F172A))),
+                                  pw.Text('UPI: $upiVpa', style: const pw.TextStyle(fontSize: 7.5, color: PdfColor.fromInt(0xFF64748B))),
+                                  pw.Text('Due: ₹${r.balanceDue.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: const PdfColor.fromInt(0xFFDC2626))),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(width: 24),
+
+                  // Right side: Math breakdown
+                  pw.Container(
+                    width: 210,
+                    padding: const pw.EdgeInsets.all(12),
+                    decoration: pw.BoxDecoration(
+                      color: const PdfColor.fromInt(0xFFF8FAFC),
+                      borderRadius: const pw.BorderRadius.all(pw.Radius.circular(8)),
+                      border: pw.Border.all(color: const PdfColor.fromInt(0xFFE2E8F0)),
+                    ),
+                    child: pw.Column(
+                      children: [
+                        _buildSummaryRow('New Items Total', '₹${r.issuedTotal.toStringAsFixed(2)}'),
+                        pw.SizedBox(height: 5),
+                        _buildSummaryRow('Returned Credit', '-₹${r.returnedTotal.toStringAsFixed(2)}', valueColor: const PdfColor.fromInt(0xFFDC2626)),
+                        if (r.isWaived) ...[
+                          pw.SizedBox(height: 5),
+                          _buildSummaryRow('Courtesy Waived', '-₹${r.priceDifference.toStringAsFixed(2)}', valueColor: const PdfColor.fromInt(0xFF16A34A)),
+                        ],
+                        pw.Divider(color: const PdfColor.fromInt(0xFFCBD5E1), thickness: 0.8),
+                        _buildSummaryRow(
+                          'Price Difference',
+                          r.isWaived ? '₹0.00' : '₹${r.priceDifference.toStringAsFixed(2)}',
+                          isBold: true,
+                          valueColor: const PdfColor.fromInt(0xFF0F172A),
+                        ),
+                        pw.SizedBox(height: 5),
+                        _buildSummaryRow(
+                          'Amount Paid',
+                          '₹${r.amountPaid.toStringAsFixed(2)}',
+                          valueColor: const PdfColor.fromInt(0xFF16A34A),
+                        ),
+                        if (hasDue) ...[
+                          pw.SizedBox(height: 5),
+                          _buildSummaryRow(
+                            'Balance Due',
+                            '₹${r.balanceDue.toStringAsFixed(2)}',
+                            isBold: true,
+                            valueColor: const PdfColor.fromInt(0xFFDC2626),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              pw.Spacer(),
+
+              // 7. Footer
+              pw.Container(
+                padding: const pw.EdgeInsets.only(top: 10),
+                decoration: const pw.BoxDecoration(
+                  border: pw.Border(top: pw.BorderSide(color: PdfColor.fromInt(0xFFE2E8F0))),
+                ),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text('Thank you for shopping with us!', style: const pw.TextStyle(fontSize: 8, color: PdfColor.fromInt(0xFF64748B))),
+                    pw.Text('Computer Generated Exchange Invoice', style: const pw.TextStyle(fontSize: 7.5, color: PdfColor.fromInt(0xFF94A3B8))),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  static pw.Widget _th(String text, {pw.TextAlign align = pw.TextAlign.left}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 8),
+      child: pw.Text(
+        text,
+        textAlign: align,
+        style: pw.TextStyle(
+          fontSize: 8,
+          fontWeight: pw.FontWeight.bold,
+          color: const PdfColor.fromInt(0xFF475569),
+        ),
+      ),
+    );
+  }
+
+  /// Formats the product exchange receipt for sharing via WhatsApp.
+  static String getReplacementWhatsAppMessage(
+    ReplacementReceiptData r, {
+    String? businessName,
+  }) {
+    final bizName = (businessName != null && businessName.trim().isNotEmpty)
+        ? businessName.trim()
+        : 'Raj Electricals';
+    final dateStr = DateFormat('dd/MM/yyyy, hh:mm a').format(r.date);
+
+    final sb = StringBuffer();
+    sb.writeln('*Product Exchange Receipt*');
+    sb.writeln('*$bizName*');
+    sb.writeln('--------------------------------');
+    sb.writeln('Ref: ${r.replacementNumber} | Date: $dateStr');
+    if (r.originalSaleId != null) {
+      sb.writeln('Original Bill: #${r.originalSaleId}');
+    }
+    sb.writeln('Customer: ${r.customerName}');
+    sb.writeln('--------------------------------');
+    sb.writeln('*RETURNED ITEM(S):*');
+    for (final it in r.itemsReturned) {
+      final condStr = it.condition == 'defective' || it.condition == 'damaged'
+          ? ' [Defective - Not Restocked]'
+          : ' [Resellable]';
+      sb.writeln('- ${it.name} x${it.quantity} (₹${(it.quantity * it.pricePerUnit).toStringAsFixed(2)})$condStr');
+    }
+    sb.writeln('Credit: -₹${r.returnedTotal.toStringAsFixed(2)}');
+    sb.writeln('--------------------------------');
+    sb.writeln('*NEW ITEM(S) ISSUED:*');
+    for (final it in r.itemsIssued) {
+      sb.writeln('- ${it.name} x${it.quantity} (₹${(it.quantity * it.pricePerUnit).toStringAsFixed(2)})');
+    }
+    sb.writeln('Value: ₹${r.issuedTotal.toStringAsFixed(2)}');
+    sb.writeln('--------------------------------');
+    if (r.isWaived) {
+      sb.writeln('*Price Difference: ₹0.00 (Waived as Courtesy)*');
+    } else {
+      sb.writeln('*Net Difference: ₹${r.priceDifference.abs().toStringAsFixed(2)}*');
+      if (r.priceDifference >= 0) {
+        sb.writeln('Settlement: ${r.settlementMethod.toUpperCase()} (₹${r.amountPaid.toStringAsFixed(2)})');
+        if (r.balanceDue > 0) {
+          sb.writeln('*BALANCE DUE: ₹${r.balanceDue.toStringAsFixed(2)}*');
+        }
+      } else {
+        sb.writeln('Refund to Customer: ₹${r.priceDifference.abs().toStringAsFixed(2)} (${r.settlementMethod.toUpperCase()})');
+      }
+    }
+    sb.writeln('--------------------------------');
+    sb.writeln('Thank you for shopping with us!');
+    return sb.toString();
+  }
+
+  /// Opens the system share sheet with the generated replacement PDF.
+  static Future<void> shareReplacementReceiptPdf(ReplacementReceiptData r) async {
+    final bytes = await generateReplacementInvoicePdf(r);
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename: 'Exchange-${r.replacementNumber}.pdf',
+    );
+  }
+
+  /// Opens native print preview dialog for replacement invoice.
+  static Future<void> printReplacementReceipt(ReplacementReceiptData r) async {
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => await generateReplacementInvoicePdf(r),
+      name: 'Exchange-${r.replacementNumber}',
     );
   }
 }

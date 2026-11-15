@@ -3777,6 +3777,7 @@ class _DashboardPageState extends State<DashboardPage> {
             final crossAxisCount = constraints.maxWidth > 768 ? 3 : 2;
 
             final revenueNum = (_stats['totalRevenue'] as num?) ?? 0;
+            final grossRevenueNum = (_stats['grossRevenue'] as num?) ?? revenueNum;
             final profitNum = (_stats['totalProfit'] as num?) ?? 0;
             final refundNum = (_stats['totalRefund'] as num?) ?? 0;
 
@@ -3786,10 +3787,16 @@ class _DashboardPageState extends State<DashboardPage> {
               decimalDigits: 0,
             ).format(revenueNum);
 
-            final profitFormatted = NumberFormat.currency(
+            final grossFormatted = NumberFormat.currency(
               locale: 'en_IN',
               symbol: '₹',
               decimalDigits: 0,
+            ).format(grossRevenueNum);
+
+            final profitFormatted = NumberFormat.currency(
+              locale: 'en_IN',
+              symbol: '₹',
+              decimalDigits: profitNum.truncateToDouble() == profitNum ? 0 : 2,
             ).format(profitNum);
 
             final refundFormatted = NumberFormat.currency(
@@ -3813,8 +3820,8 @@ class _DashboardPageState extends State<DashboardPage> {
                   revenueFormatted,
                   Icons.account_balance_wallet_outlined,
                   _statusColors(context).success,
-                  refundNum > 0
-                      ? 'From ${_stats['salesCount'] ?? 0} sales (Net)'
+                  grossRevenueNum != revenueNum
+                      ? 'Net • Gross: $grossFormatted'
                       : 'From ${_stats['salesCount'] ?? 0} sales',
                   onTap: () {
                     HapticFeedback.lightImpact();

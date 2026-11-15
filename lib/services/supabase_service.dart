@@ -4469,7 +4469,7 @@ class SupabaseService {
   // Create a replacement with items in/out
   // Unit-aware stock updates and movement logs for both OUT (returned by customer)
   // and IN (given to customer) directions using items_per_wholesale_unit when unit matches wholesale unit.
-  static Future<void> createReplacement({
+  static Future<Map<String, dynamic>> createReplacement({
     required int originalSaleId,
     required String customerName,
     String? customerPhone,
@@ -4478,6 +4478,11 @@ class SupabaseService {
     String? notes,
     DateTime? replacementDate,
     String? paymentMethod,
+    String? collectMethod,
+    bool? waived,
+    String? waiverNote,
+    String? status,
+    String? returnCondition,
     String? replacementNumber,
     double? priceDifference, // new schema field
     double? amountDifference, // legacy param name
@@ -4492,17 +4497,24 @@ class SupabaseService {
 
     try {
       final double diff = priceDifference ?? amountDifference ?? 0.0;
-      // If any returned item is defective/damaged, we will not charge customer (set diff to 0)
-      final bool anyDefective = itemsOut.any((it) {
-        final c = (it['item_condition'] as String?)?.toLowerCase();
-        return c == 'defective' || c == 'damaged';
-      });
-      final double finalDiff = anyDefective ? 0.0 : diff;
+      final bool isWaived = waived ?? false;
+      final double finalDiff = isWaived ? 0.0 : diff;
       final String? finalReason = (reason != null && reason.isNotEmpty)
           ? reason
           : replacementReason;
       final String replNo =
-          replacementNumber ?? 'RPL-${DateTime.now().millisecondsSinceEpoch}';
+          replacementNumber ?? 'REP-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+
+      // Detect top condition from itemsOut
+      String detectedCondition = returnCondition ?? 'resellable';
+      if (itemsOut.any((it) {
+        final c = (it['item_condition'] as String?)?.toLowerCase();
+        return c == 'defective' || c == 'damaged';
+      })) {
+        detectedCondition = 'defective';
+      }
+
+      final effectiveMethod = paymentMethod ?? collectMethod ?? (isWaived ? 'waived' : 'cash');
 
       final insertData = <String, dynamic>{
         'business_id': businessId,
@@ -4516,9 +4528,13 @@ class SupabaseService {
         if (finalReason != null && finalReason.isNotEmpty)
           'reason': finalReason,
         'price_difference': finalDiff,
-        if (paymentMethod != null && paymentMethod.isNotEmpty)
-          'payment_method': paymentMethod,
-        'status': 'pending',
+        'payment_method': effectiveMethod,
+        'collect_method': effectiveMethod,
+        'status': status ?? 'Completed',
+        'waived': isWaived,
+        if (waiverNote != null && waiverNote.isNotEmpty)
+          'waiver_note': waiverNote,
+        'return_condition': detectedCondition,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
       };
 
@@ -4663,11 +4679,35 @@ class SupabaseService {
           }
         }
       }
+
+      invalidateReplacementsCache();
+      invalidateSalesCache();
+      invalidateProductsCache();
+
+      return Map<String, dynamic>.from(rep);
     } catch (e) {
       if (kDebugMode) {
         print('Error creating replacement: $e');
       }
       rethrow;
+    }
+  }
+
+  /// Fetches prior replacements associated with a specific sale ID.
+  static Future<List<Map<String, dynamic>>> getReplacementsForSale(int saleId) async {
+    try {
+      final res = await _client
+          .from('replacements')
+          .select('*, replacement_items_in(*, products(*)), replacement_items_out(*, products(*))')
+          .eq('original_sale_id', saleId);
+      return (res as List)
+          .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error fetching replacements for sale $saleId: $e');
+      }
+      return [];
     }
   }
 
@@ -6264,17 +6304,38 @@ class SupabaseService {
     }
 
     try {
-      final fetchLimit = limit ?? 300;
-      final response = await _client
-          .from('sales')
-          .select(
-            '*, sales_items(*, products(id, name, brand, current_stock))',
-          )
-          .eq('business_id', businessId)
-          .order('created_at', ascending: false)
-          .limit(fetchLimit);
+      final List allRows = [];
+      if (limit != null) {
+        final response = await _client
+            .from('sales')
+            .select(
+              '*, sales_items(*, products(id, name, brand, current_stock))',
+            )
+            .eq('business_id', businessId)
+            .order('created_at', ascending: false)
+            .limit(limit);
+        allRows.addAll(response as List);
+      } else {
+        int from = 0;
+        const int pageSize = 1000;
+        while (true) {
+          final response = await _client
+              .from('sales')
+              .select(
+                '*, sales_items(*, products(id, name, brand, current_stock))',
+              )
+              .eq('business_id', businessId)
+              .order('created_at', ascending: false)
+              .range(from, from + pageSize - 1);
+          final list = response as List;
+          if (list.isEmpty) break;
+          allRows.addAll(list);
+          if (list.length < pageSize) break;
+          from += pageSize;
+        }
+      }
 
-      final allSales = (response as List)
+      final allSales = allRows
           .map((json) => Sale.fromJson(Map<String, dynamic>.from(json)))
           .toList();
 
@@ -6328,15 +6389,34 @@ class SupabaseService {
     }
 
     try {
-      final fetchLimit = limit ?? 300;
-      final response = await _client
-          .from('purchases')
-          .select('*, purchase_items(*, products(*))')
-          .eq('business_id', businessId)
-          .order('created_at', ascending: false)
-          .limit(fetchLimit);
+      final List allRows = [];
+      if (limit != null) {
+        final response = await _client
+            .from('purchases')
+            .select('*, purchase_items(*, products(*))')
+            .eq('business_id', businessId)
+            .order('created_at', ascending: false)
+            .limit(limit);
+        allRows.addAll(response as List);
+      } else {
+        int from = 0;
+        const int pageSize = 1000;
+        while (true) {
+          final response = await _client
+              .from('purchases')
+              .select('*, purchase_items(*, products(*))')
+              .eq('business_id', businessId)
+              .order('created_at', ascending: false)
+              .range(from, from + pageSize - 1);
+          final list = response as List;
+          if (list.isEmpty) break;
+          allRows.addAll(list);
+          if (list.length < pageSize) break;
+          from += pageSize;
+        }
+      }
 
-      final allPurchases = (response as List)
+      final allPurchases = allRows
           .map((json) => Purchase.fromJson(json))
           .toList();
 
