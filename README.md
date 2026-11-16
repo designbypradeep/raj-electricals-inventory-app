@@ -1,19 +1,21 @@
-# Raj Electricals Inventory App
+# Raj Electricals Inventory App (Inventoza Mobile)
 
-A comprehensive Flutter inventory management application for electrical goods business with Supabase backend.
+A comprehensive, privacy-first Flutter retail inventory, POS, and storefront application with Supabase backend and local-first SQLite persistence.
 
 ## Features
 
-- 📦 **Product Management**: Add, edit, archive products with multiple images
-- 💰 **Sales & Purchases**: Record sales and purchases with detailed tracking
-- 📊 **Reports & Analytics**: Dashboard with charts, profit/loss analysis
-- 🔄 **Returns & Replacements**: Handle customer returns and product replacements
-- 🤝 **Suppliers Management**: Track suppliers/dealers with contact info, advances, and credits
-- 👥 **Customers Management**: Manage customers with debt tracking
-- 💳 **Supplier Credit System**: Credit notes for returns, apply credits to future purchases
-- 📱 **Shop Mode**: Customer-facing storefront with UPI payment
-- 🔐 **Authentication**: Secure login with biometric support
-- 🌙 **Dark Mode**: Full theme support
+- ⚡ **Local-First Delta Sync**: 0ms instant UI rendering using on-device SQLite (`Drift`) with lightweight background timestamp delta synchronization to avoid heavy Supabase database egress bills.
+- 📦 **Product Management**: Add, edit, archive products with multiple images, fractional units, and wholesale-to-single unit conversions.
+- 💰 **Sales & Purchases**: Record sales, wholesale purchases, and POS billing with detailed lot tracking.
+- 📊 **Zero-Surveillance Financials**: FIFO-based profit/loss analysis computed on-device with zero plaintext profit totals stored in the cloud.
+- 🔄 **Unified Retail Returns & Exchanges**: Comprehensive handling of all 5 retail exchange scenarios (resellable swaps, waived courtesy discounts, dues on account, secondary returns for full refund, and warranty write-offs). See [REPLACEMENT_ACCOUNTING_EXPLAINED.md](REPLACEMENT_ACCOUNTING_EXPLAINED.md).
+- 🧾 **Exchange & Sale Invoices**: High-resolution printable A4 PDF invoices with dynamic UPI QR codes and formatted WhatsApp sharing.
+- 🤝 **Suppliers Management**: Track suppliers/dealers with contact info, advances, and credits.
+- 👥 **Customers Management**: Manage customer debts and balances.
+- 💳 **Supplier Credit System**: Credit notes for supplier returns applied directly to future purchases.
+- 📱 **Shop Mode**: Customer-facing storefront with UPI payment.
+- 🔐 **Authentication & Security**: Multi-tenant Row-Level Security (RLS) with biometric authentication gate.
+- 🌙 **Dark Mode**: Dynamic brand theming with full light/dark mode support.
 
 ## Prerequisites
 
