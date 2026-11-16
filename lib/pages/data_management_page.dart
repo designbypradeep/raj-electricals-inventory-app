@@ -25,6 +25,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
   bool _isExporting = false;
   bool _isImporting = false;
   bool _isDeleting = false;
+  bool _isLoadingRole = true;
+  bool _isOwner = false;
   String? _exportPath;
   String? _message;
   bool _isSuccess = false;
@@ -43,6 +45,22 @@ class _DataManagementPageState extends State<DataManagementPage> {
   // Export/Import modes
   ExportMode _exportMode = ExportMode.catalogTemplate; // working now
   ImportMode _importMode = ImportMode.catalogTemplate; // working now
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOwnerPermission();
+  }
+
+  Future<void> _checkOwnerPermission() async {
+    final isOwner = await SupabaseService.isCurrentUserOwner();
+    if (mounted) {
+      setState(() {
+        _isOwner = isOwner;
+        _isLoadingRole = false;
+      });
+    }
+  }
 
   Future<Directory> _ensureDefaultBackupDir() async {
     final home =
@@ -640,6 +658,78 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingRole) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (!_isOwner) {
+      final theme = Theme.of(context);
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text('Data Management'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                  color: theme.colorScheme.error.withValues(alpha: 0.3),
+                ),
+              ),
+              color: theme.colorScheme.error.withValues(alpha: 0.05),
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.shield_outlined,
+                      size: 64,
+                      color: theme.colorScheme.error,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Restricted Access',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Only the store owner is authorized to export, import, or permanently delete store data.\n\nIf you are a staff member, please contact your store administrator.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back),
+                      label: const Text('Back to Dashboard'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
@@ -1742,6 +1832,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
         // Perform actual deletion via SupabaseService
         final ok = await SupabaseService.deleteBusinessData();
         if (ok) {
+          // Clear local SQLite Drift database so no ghost records remain
+          try {
+            await widget.db.clearAllData();
+          } catch (e) {
+            debugPrint('Failed to clear local SQLite database: $e');
+          }
+
           setState(() {
             _message = 'All business data has been permanently deleted.';
             _isSuccess = true;

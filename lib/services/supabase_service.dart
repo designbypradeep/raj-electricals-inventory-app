@@ -1895,6 +1895,18 @@ class SupabaseService {
     final businessId = getCurrentBusinessId();
     if (businessId == null) return false;
 
+    // 1. Primary path: Use transactional server-side stored procedure
+    try {
+      await _client.rpc('delete_business_data', params: {
+        'target_business_id': businessId,
+      });
+      return true;
+    } catch (rpcError) {
+      if (kDebugMode) {
+        print('Atomic delete_business_data RPC error (falling back): $rpcError');
+      }
+    }
+
     try {
       // Replacements related (child tables first)
       try {
@@ -4885,6 +4897,20 @@ class SupabaseService {
 
   // Check if user is authenticated
   static bool get isAuthenticated => currentUser != null;
+
+  /// Check if the currently signed in user is the owner of the active business
+  static Future<bool> isCurrentUserOwner() async {
+    try {
+      final user = _client.auth.currentUser;
+      if (user == null) return false;
+      final profile = await getCurrentBusinessProfile();
+      if (profile == null) return false;
+      return profile.userId == user.id;
+    } catch (e) {
+      if (kDebugMode) print('isCurrentUserOwner error: $e');
+      return false;
+    }
+  }
 
   // Get business profile for current user
   static Future<supabase_models.BusinessProfile?>

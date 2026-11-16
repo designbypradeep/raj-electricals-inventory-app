@@ -118,6 +118,13 @@ class AppDatabase extends _$AppDatabase {
 
     return purchaseId;
   }
+
+  // Clear all local SQLite data on cloud purge
+  Future<void> clearAllData() async {
+    await delete(requestItems).go();
+    await delete(purchases).go();
+    await delete(products).go();
+  }
 }
 
 LazyDatabase _openConnection() {
