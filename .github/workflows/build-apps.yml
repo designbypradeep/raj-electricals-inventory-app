@@ -36,7 +36,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: '3.38.7'
           cache: true
 
       - name: Configure iOS Bundle & Display Name
@@ -102,7 +102,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: '3.38.7'
           cache: true
 
       - name: Get Flutter dependencies
